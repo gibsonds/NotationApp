@@ -12,15 +12,67 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Prevent OSMD from adding unwanted margins */
+.score-container svg {
+  max-width: 100%;
+}
+
+/* Print styles — show only the score */
+@media print {
+  /* Reset page margins to minimum */
+  @page {
+    margin: 0.3in;
+  }
+
+  body {
+    background: white !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Hide non-score UI */
+  .print-hide {
+    display: none !important;
+  }
+
+  /* Remove all layout spacing */
+  .print-full {
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: none !important;
+    background: white !important;
+  }
+
+  .score-container {
+    height: auto !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .score-container > div,
+  .print-no-pad {
+    padding: 0 !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+  }
+
+  .score-container svg {
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
+  /* Remove the rounded white container border/bg in print */
+  .score-container > div.relative {
+    border-radius: 0 !important;
+  }
 }

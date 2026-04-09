@@ -1,65 +1,88 @@
-import Image from "next/image";
+"use client";
+
+import { useState, useEffect, useRef, useCallback } from "react";
+import dynamic from "next/dynamic";
+import { useScoreStore } from "@/store/score-store";
+import PromptPanel from "@/components/PromptPanel";
+import PropertiesPanel from "@/components/PropertiesPanel";
+import Toolbar from "@/components/Toolbar";
+import SelectionBar from "@/components/SelectionBar";
+
+// Dynamic import to prevent SSR for OSMD (uses browser APIs)
+const ScoreRenderer = dynamic(() => import("@/components/ScoreRenderer"), {
+  ssr: false,
+  loading: () => (
+    <div className="flex items-center justify-center h-full text-gray-400 text-sm">
+      Loading renderer...
+    </div>
+  ),
+});
 
 export default function Home() {
+  const { score, undo, redo, layout } = useScoreStore();
+  const [zoom, setZoom] = useState(1.0);
+  const printFnRef = useRef<(() => Promise<void>) | null>(null);
+  const handlePrint = useCallback(() => { printFnRef.current?.(); }, []);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "z") {
+        e.preventDefault();
+        if (e.shiftKey) {
+          redo();
+        } else {
+          undo();
+        }
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === "y") {
+        e.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [undo, redo]);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="flex flex-col h-screen bg-gray-100 print-full">
+      <div className="print-hide">
+        <Toolbar zoom={zoom} onZoomChange={setZoom} onPrint={handlePrint} />
+        <SelectionBar />
+      </div>
+
+      <div className="flex flex-1 overflow-hidden print-full">
+        {/* Left: Prompt Panel */}
+        <div className="w-80 shrink-0 print-hide">
+          <PromptPanel />
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+
+        {/* Center: Score View */}
+        <div className="flex-1 overflow-auto p-4 print-full">
+          {score ? (
+            <div className="score-container h-full">
+              <ScoreRenderer
+                score={score}
+                zoom={zoom}
+                layout={layout}
+                onReady={(h) => { printFnRef.current = h.printScore; }}
+              />
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center h-full text-gray-400 space-y-2 print-hide">
+              <div className="text-6xl opacity-30">&#119070;</div>
+              <p className="text-lg font-medium">No score yet</p>
+              <p className="text-sm">
+                Type a description in the prompt panel to generate a score
+              </p>
+            </div>
+          )}
         </div>
-      </main>
+
+        {/* Right: Properties Panel */}
+        <div className="w-72 shrink-0 print-hide">
+          <PropertiesPanel />
+        </div>
+      </div>
     </div>
   );
 }
