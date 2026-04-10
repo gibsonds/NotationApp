@@ -223,13 +223,24 @@ export function scoreToMusicXML(score: Score): string {
 
     lines.push(`  <part id="${esc(staff.id)}">`);
 
-    // Group notes by measure
+    // Group notes by voice and measure for multi-voice support
+    const voiceNotesByMeasure: { voiceNum: number; notesByMeasure: Record<number, Note[]> }[] = [];
+    for (let vi = 0; vi < staff.voices.length; vi++) {
+      const voice = staff.voices[vi];
+      const byMeasure: Record<number, Note[]> = {};
+      for (const note of voice.notes) {
+        if (!byMeasure[note.measure]) byMeasure[note.measure] = [];
+        byMeasure[note.measure].push(note);
+      }
+      voiceNotesByMeasure.push({ voiceNum: vi + 1, notesByMeasure: byMeasure });
+    }
+    const hasMultipleVoices = staff.voices.length > 1;
+
+    // Flat view for single-voice backward compat
     const notesByMeasure: Record<number, Note[]> = {};
     for (const voice of staff.voices) {
       for (const note of voice.notes) {
-        if (!notesByMeasure[note.measure]) {
-          notesByMeasure[note.measure] = [];
-        }
+        if (!notesByMeasure[note.measure]) notesByMeasure[note.measure] = [];
         notesByMeasure[note.measure].push(note);
       }
     }
@@ -302,183 +313,45 @@ export function scoreToMusicXML(score: Score): string {
         }
       }
 
-      const notes = notesByMeasure[m];
-      if (notes && notes.length > 0) {
-        // Sort by beat; within same beat, lyric-bearing note first, then by pitch
-        notes.sort((a, b) => {
-          const beatDiff = a.beat - b.beat;
-          if (Math.abs(beatDiff) > 0.01) return beatDiff;
-          // Lyric note comes first in chord group
-          if (a.lyric && !b.lyric) return -1;
-          if (!a.lyric && b.lyric) return 1;
-          return a.pitch.localeCompare(b.pitch);
-        });
+      if (hasMultipleVoices) {
+        // Multi-voice: render each voice separately with <backup> between them
+        for (let vIdx = 0; vIdx < voiceNotesByMeasure.length; vIdx++) {
+          const { voiceNum, notesByMeasure: vByMeasure } = voiceNotesByMeasure[vIdx];
+          const vNotes = vByMeasure[m];
 
-        // Pre-compute beam groups: consecutive beamable notes (eighth/sixteenth)
-        // within the same beat group (integer beat boundaries)
-        const beamable = new Set(["eighth", "sixteenth"]);
-        type BeamInfo = { start: number; end: number };
-        const beamGroups: BeamInfo[] = [];
-        let beamStart = -1;
-
-        for (let ni = 0; ni < notes.length; ni++) {
-          const note = notes[ni];
-          const isChordNote = ni > 0 && Math.abs(note.beat - notes[ni - 1].beat) < 0.01 && note.pitch !== "rest";
-          if (isChordNote) continue; // chord notes share beaming with their root
-
-          const isBeamable = beamable.has(note.duration) && note.pitch !== "rest";
-
-          if (isBeamable) {
-            if (beamStart === -1) beamStart = ni;
+          if (vIdx > 0) {
+            // <backup> rewinds the cursor to the start of the measure
+            const mDur = beats * (16 / beatType);
+            lines.push("      <backup>");
+            lines.push(`        <duration>${mDur}</duration>`);
+            lines.push("      </backup>");
           }
 
-          if (!isBeamable || ni === notes.length - 1 || isLastRhythmicInBeat(notes, ni, beamable)) {
-            if (beamStart !== -1) {
-              // Count actual rhythmic positions in this run
-              let rhythmicCount = 0;
-              for (let k = beamStart; k <= (isBeamable ? ni : ni - 1); k++) {
-                const isChord = k > 0 && Math.abs(notes[k].beat - notes[k - 1].beat) < 0.01 && notes[k].pitch !== "rest";
-                if (!isChord) rhythmicCount++;
-              }
-              if (rhythmicCount >= 2) {
-                beamGroups.push({ start: beamStart, end: isBeamable ? ni : ni - 1 });
-              }
-              beamStart = -1;
-            }
-            if (isBeamable && !isLastRhythmicInBeat(notes, ni, beamable)) {
-              beamStart = ni;
-            }
-          }
-        }
-
-        // Build a map: note index -> beam status
-        // Manual beam overrides take precedence over auto-beaming
-        const beamStatus = new Map<number, "begin" | "continue" | "end">();
-        for (const group of beamGroups) {
-          let rhythmicIdx = 0;
-          let lastRhythmicCount = 0;
-          for (let k = group.start; k <= group.end; k++) {
-            const isChord = k > 0 && Math.abs(notes[k].beat - notes[k - 1].beat) < 0.01 && notes[k].pitch !== "rest";
-            if (!isChord) lastRhythmicCount++;
-          }
-          for (let k = group.start; k <= group.end; k++) {
-            const isChord = k > 0 && Math.abs(notes[k].beat - notes[k - 1].beat) < 0.01 && notes[k].pitch !== "rest";
-            if (isChord) continue;
-            rhythmicIdx++;
-            if (rhythmicIdx === 1) beamStatus.set(k, "begin");
-            else if (rhythmicIdx === lastRhythmicCount) beamStatus.set(k, "end");
-            else beamStatus.set(k, "continue");
-          }
-        }
-
-        // Apply manual beam overrides from note.beam field
-        for (let ni = 0; ni < notes.length; ni++) {
-          const note = notes[ni];
-          if (note.beam) {
-            if (note.beam === "none") {
-              beamStatus.delete(ni);
-            } else {
-              beamStatus.set(ni, note.beam);
-            }
-          }
-        }
-
-        let prevBeat = -1;
-
-        for (let ni = 0; ni < notes.length; ni++) {
-          const note = notes[ni];
-          const parsed = parsePitch(note.pitch);
-          const baseDivisions = DURATION_DIVISIONS[note.duration] ?? 4;
-          const dur = baseDivisions;
-
-          // Detect chord: same beat as previous note
-          const isChordNote = Math.abs(note.beat - prevBeat) < 0.01 && note.pitch !== "rest";
-
-          lines.push("      <note>");
-
-          // Chord tag must come first, before pitch
-          if (isChordNote) {
-            lines.push("        <chord/>");
-          }
-
-          if (parsed) {
-            lines.push("        <pitch>");
-            lines.push(`          <step>${parsed.step}</step>`);
-            if (parsed.alter !== 0) {
-              lines.push(`          <alter>${parsed.alter}</alter>`);
-            }
-            lines.push(`          <octave>${parsed.octave}</octave>`);
-            lines.push("        </pitch>");
+          if (vNotes && vNotes.length > 0) {
+            emitVoiceNotes(lines, vNotes, voiceNum, staff.lyricsMode);
           } else {
-            lines.push("        <rest/>");
+            // Voice has no notes in this measure — write a whole-measure rest
+            const wholeDur = beats * (16 / beatType);
+            lines.push("      <note>");
+            lines.push('        <rest measure="yes"/>');
+            lines.push(`        <duration>${wholeDur}</duration>`);
+            lines.push(`        <voice>${voiceNum}</voice>`);
+            lines.push("      </note>");
           }
-          lines.push(`        <duration>${dur}</duration>`);
-          lines.push(
-            `        <type>${DURATION_TYPE[note.duration] ?? "quarter"}</type>`
-          );
-
-          if (note.dots > 0) {
-            for (let d = 0; d < note.dots; d++) {
-              lines.push("        <dot/>");
-            }
-          }
-
-          if (note.tieStart) {
-            lines.push('        <tie type="start"/>');
-          }
-          if (note.tieEnd) {
-            lines.push('        <tie type="stop"/>');
-          }
-
-          // Beam
-          const beam = beamStatus.get(ni);
-          if (beam && !isChordNote) {
-            lines.push(`        <beam number="1">${beam}</beam>`);
-          }
-
-          // Notations (ties, articulations, fermata)
-          const hasArticulations = note.articulations && note.articulations.length > 0;
-          const hasFermata = note.articulations?.includes("fermata");
-          const nonFermataArticulations = note.articulations?.filter((a) => a !== "fermata") ?? [];
-          if (note.tieStart || note.tieEnd || hasArticulations) {
-            lines.push("        <notations>");
-            if (note.tieEnd) {
-              lines.push('          <tied type="stop"/>');
-            }
-            if (note.tieStart) {
-              lines.push('          <tied type="start"/>');
-            }
-            if (nonFermataArticulations.length > 0) {
-              lines.push("          <articulations>");
-              for (const art of nonFermataArticulations) {
-                lines.push(`            <${art}/>`);
-              }
-              lines.push("          </articulations>");
-            }
-            if (hasFermata) {
-              lines.push('          <fermata type="upright"/>');
-            }
-            lines.push("        </notations>");
-          }
-
-          // Lyrics — only on the first note of a chord group
-          if (note.lyric && staff.lyricsMode === "attached" && !isChordNote) {
-            lines.push("        <lyric>");
-            lines.push(`          <text>${esc(note.lyric)}</text>`);
-            lines.push("        </lyric>");
-          }
-
-          lines.push("      </note>");
-
-          prevBeat = note.beat;
         }
       } else {
-        // Empty measure — write a whole rest
-        const wholeDur = beats * (16 / beatType);
-        lines.push("      <note>");
-        lines.push("        <rest measure=\"yes\"/>");
-        lines.push(`        <duration>${wholeDur}</duration>`);
-        lines.push("      </note>");
+        // Single voice: original path (no <voice> tags needed for compatibility)
+        const notes = notesByMeasure[m];
+        if (notes && notes.length > 0) {
+          emitVoiceNotes(lines, notes, undefined, staff.lyricsMode);
+        } else {
+          // Empty measure — write a whole rest
+          const wholeDur = beats * (16 / beatType);
+          lines.push("      <note>");
+          lines.push('        <rest measure="yes"/>');
+          lines.push(`        <duration>${wholeDur}</duration>`);
+          lines.push("      </note>");
+        }
       }
 
       lines.push("    </measure>");
@@ -489,6 +362,145 @@ export function scoreToMusicXML(score: Score): string {
 
   lines.push("</score-partwise>");
   return lines.join("\n");
+}
+
+// ── Emit notes for one voice in a measure ─────────────────────────────────
+
+function emitVoiceNotes(
+  lines: string[],
+  notes: Note[],
+  voiceNum: number | undefined,
+  lyricsMode: string
+) {
+  // Sort by beat; within same beat, lyric-bearing note first, then by pitch
+  notes.sort((a, b) => {
+    const beatDiff = a.beat - b.beat;
+    if (Math.abs(beatDiff) > 0.01) return beatDiff;
+    if (a.lyric && !b.lyric) return -1;
+    if (!a.lyric && b.lyric) return 1;
+    return a.pitch.localeCompare(b.pitch);
+  });
+
+  // Pre-compute beam groups
+  const beamable = new Set(["eighth", "sixteenth"]);
+  type BeamInfo = { start: number; end: number };
+  const beamGroups: BeamInfo[] = [];
+  let beamStart = -1;
+
+  for (let ni = 0; ni < notes.length; ni++) {
+    const note = notes[ni];
+    const isChordNote = ni > 0 && Math.abs(note.beat - notes[ni - 1].beat) < 0.01 && note.pitch !== "rest";
+    if (isChordNote) continue;
+
+    const isBeamable = beamable.has(note.duration) && note.pitch !== "rest";
+    if (isBeamable) {
+      if (beamStart === -1) beamStart = ni;
+    }
+    if (!isBeamable || ni === notes.length - 1 || isLastRhythmicInBeat(notes, ni, beamable)) {
+      if (beamStart !== -1) {
+        let rhythmicCount = 0;
+        for (let k = beamStart; k <= (isBeamable ? ni : ni - 1); k++) {
+          const isChord = k > 0 && Math.abs(notes[k].beat - notes[k - 1].beat) < 0.01 && notes[k].pitch !== "rest";
+          if (!isChord) rhythmicCount++;
+        }
+        if (rhythmicCount >= 2) {
+          beamGroups.push({ start: beamStart, end: isBeamable ? ni : ni - 1 });
+        }
+        beamStart = -1;
+      }
+      if (isBeamable && !isLastRhythmicInBeat(notes, ni, beamable)) {
+        beamStart = ni;
+      }
+    }
+  }
+
+  // Build beam status map
+  const beamStatus = new Map<number, "begin" | "continue" | "end">();
+  for (const group of beamGroups) {
+    let rhythmicIdx = 0;
+    let lastRhythmicCount = 0;
+    for (let k = group.start; k <= group.end; k++) {
+      const isChord = k > 0 && Math.abs(notes[k].beat - notes[k - 1].beat) < 0.01 && notes[k].pitch !== "rest";
+      if (!isChord) lastRhythmicCount++;
+    }
+    for (let k = group.start; k <= group.end; k++) {
+      const isChord = k > 0 && Math.abs(notes[k].beat - notes[k - 1].beat) < 0.01 && notes[k].pitch !== "rest";
+      if (isChord) continue;
+      rhythmicIdx++;
+      if (rhythmicIdx === 1) beamStatus.set(k, "begin");
+      else if (rhythmicIdx === lastRhythmicCount) beamStatus.set(k, "end");
+      else beamStatus.set(k, "continue");
+    }
+  }
+
+  // Apply manual beam overrides
+  for (let ni = 0; ni < notes.length; ni++) {
+    if (notes[ni].beam) {
+      if (notes[ni].beam === "none") beamStatus.delete(ni);
+      else beamStatus.set(ni, notes[ni].beam as "begin" | "continue" | "end");
+    }
+  }
+
+  let prevBeat = -1;
+  for (let ni = 0; ni < notes.length; ni++) {
+    const note = notes[ni];
+    const parsed = parsePitch(note.pitch);
+    const dur = DURATION_DIVISIONS[note.duration] ?? 4;
+    const isChordNote = Math.abs(note.beat - prevBeat) < 0.01 && note.pitch !== "rest";
+
+    lines.push("      <note>");
+    if (isChordNote) lines.push("        <chord/>");
+
+    if (parsed) {
+      lines.push("        <pitch>");
+      lines.push(`          <step>${parsed.step}</step>`);
+      if (parsed.alter !== 0) lines.push(`          <alter>${parsed.alter}</alter>`);
+      lines.push(`          <octave>${parsed.octave}</octave>`);
+      lines.push("        </pitch>");
+    } else {
+      lines.push("        <rest/>");
+    }
+    lines.push(`        <duration>${dur}</duration>`);
+    if (voiceNum !== undefined) lines.push(`        <voice>${voiceNum}</voice>`);
+    lines.push(`        <type>${DURATION_TYPE[note.duration] ?? "quarter"}</type>`);
+
+    if (note.dots > 0) {
+      for (let d = 0; d < note.dots; d++) lines.push("        <dot/>");
+    }
+    if (note.tieStart) lines.push('        <tie type="start"/>');
+    if (note.tieEnd) lines.push('        <tie type="stop"/>');
+
+    // Beam
+    const beam = beamStatus.get(ni);
+    if (beam && !isChordNote) lines.push(`        <beam number="1">${beam}</beam>`);
+
+    // Notations
+    const hasArticulations = note.articulations && note.articulations.length > 0;
+    const hasFermata = note.articulations?.includes("fermata");
+    const nonFermataArticulations = note.articulations?.filter((a: Articulation) => a !== "fermata") ?? [];
+    if (note.tieStart || note.tieEnd || hasArticulations) {
+      lines.push("        <notations>");
+      if (note.tieEnd) lines.push('          <tied type="stop"/>');
+      if (note.tieStart) lines.push('          <tied type="start"/>');
+      if (nonFermataArticulations.length > 0) {
+        lines.push("          <articulations>");
+        for (const art of nonFermataArticulations) lines.push(`            <${art}/>`);
+        lines.push("          </articulations>");
+      }
+      if (hasFermata) lines.push('          <fermata type="upright"/>');
+      lines.push("        </notations>");
+    }
+
+    // Lyrics
+    if (note.lyric && lyricsMode === "attached" && !isChordNote) {
+      lines.push("        <lyric>");
+      lines.push(`          <text>${esc(note.lyric)}</text>`);
+      lines.push("        </lyric>");
+    }
+
+    lines.push("      </note>");
+    prevBeat = note.beat;
+  }
 }
 
 // Check if the next rhythmic (non-chord) note crosses a beam-group boundary.

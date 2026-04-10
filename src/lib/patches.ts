@@ -50,20 +50,32 @@ export function applyPatch(score: Score, patch: ScorePatch): Score {
 
       return {
         ...score,
-        staves: score.staves.map((s) =>
-          s.id === patch.staffId
-            ? {
-                ...s,
-                voices: s.voices.map((v) => {
-                  if (v.id !== patch.voiceId) return v;
-                  // Merge: keep existing notes for measures NOT in the patch,
-                  // replace only the measures that the patch provides
-                  const kept = v.notes.filter((n) => !patchMeasures.has(n.measure));
-                  return { ...v, notes: [...kept, ...patch.notes] };
-                }),
-              }
-            : s
-        ),
+        staves: score.staves.map((s) => {
+          if (s.id !== patch.staffId) return s;
+
+          const voiceExists = s.voices.some((v) => v.id === patch.voiceId);
+          if (voiceExists) {
+            return {
+              ...s,
+              voices: s.voices.map((v) => {
+                if (v.id !== patch.voiceId) return v;
+                // Merge: keep existing notes for measures NOT in the patch,
+                // replace only the measures that the patch provides
+                const kept = v.notes.filter((n) => !patchMeasures.has(n.measure));
+                return { ...v, notes: [...kept, ...patch.notes] };
+              }),
+            };
+          }
+
+          // Auto-create the voice if it doesn't exist
+          return {
+            ...s,
+            voices: [
+              ...s.voices,
+              { id: patch.voiceId, role: "general" as const, notes: patch.notes },
+            ],
+          };
+        }),
       };
     }
 

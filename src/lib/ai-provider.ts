@@ -70,6 +70,8 @@ If you need to ask a question, explain something, or the request is ambiguous:
   "message": "Your question or explanation here"
 }
 
+Note objects have: { "pitch": string like "G4" or "rest", "duration": "whole"|"half"|"quarter"|"eighth"|"sixteenth", "dots": 0-2, "accidental": "sharp"|"flat"|"natural"|"none", "tieStart": boolean, "tieEnd": boolean, "lyric": string (optional), "articulations": ["accent"|"staccato"|"tenuto"|"fermata"|...] (optional array), "beam": "begin"|"continue"|"end"|"none" (optional — override auto-beaming), "measure": number, "beat": number }
+
 Available patch operations:
 - { "op": "set_title", "value": string }
 - { "op": "set_tempo", "value": number }
@@ -83,7 +85,11 @@ Available patch operations:
 - { "op": "set_chord_symbols", "chordSymbols": [...] }
 - { "op": "replace_score", "score": { full score intent object } }
 
-To add or change lyrics: use "set_notes" with the "lyric" field on each note. Also ensure the staff has lyricsMode "attached" via "update_staff". One syllable per note, hyphenate multi-syllable words: "A-", "ma-", "zing".
+BEAMING: By default, consecutive eighth/sixteenth notes are automatically beamed within beat groups. Use the "beam" field on notes to override: "begin" starts a beam group, "continue" extends it, "end" closes it, "none" prevents beaming on that note. Example: to beam two eighth notes on beats 3 and 4, set beam:"begin" on the first and beam:"end" on the second.
+
+MULTIPLE VOICES: Each staff can have multiple voices for polyphonic writing. Use separate "set_notes" patches with different voiceId values to write independent rhythmic layers on the same staff. Voice 1 is typically the melody/upper part, Voice 2 is the lower part. Both voices must independently fill each measure with correct durations. Common use: Voice 1 has beamed eighth notes while Voice 2 has longer note values or rests underneath.
+
+LYRICS: Use "set_notes" with the "lyric" field on each note. Ensure the staff has lyricsMode "attached" via "update_staff". One syllable per note, hyphenate multi-syllable words: "A-", "ma-", "zing".
 
 Rules:
 - Use minimal patches — only change what the user asked for.
