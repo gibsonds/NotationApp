@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Score } from "@/lib/schema";
 import { scoreToMusicXML } from "@/lib/musicxml";
-import { LayoutSettings, DEFAULT_LAYOUT, PRINT_LAYOUT } from "@/store/score-store";
+import { LayoutSettings, DEFAULT_LAYOUT, PRINT_LAYOUT, TEXT_FONT_STACKS } from "@/store/score-store";
 
 export interface ScoreRendererHandle {
   printScore: () => Promise<void>;
@@ -20,11 +20,10 @@ function applyLayout(osmd: any, layout: LayoutSettings, zoomLevel: number) {
   const rules = osmd.EngravingRules;
   if (!rules) return;
 
-  // CompactMode flag controls which top margin OSMD uses internally
+  // ── Spacing mode ──────────────────────────────────────────────
   rules.CompactMode = layout.compactMode;
 
   if (layout.compactMode) {
-    // Gentle compact: tighter than default but still readable with lyrics
     rules.VoiceSpacingMultiplierVexflow = 0.8;
     rules.VoiceSpacingAddendVexflow = 2.5;
     rules.MinSkyBottomDistBetweenStaves = 2;
@@ -32,7 +31,6 @@ function applyLayout(osmd: any, layout: LayoutSettings, zoomLevel: number) {
     rules.BetweenStaffDistance = 3;
     rules.StaffDistance = 4;
   } else {
-    // Default spacing
     rules.VoiceSpacingMultiplierVexflow = 0.85;
     rules.VoiceSpacingAddendVexflow = 3;
     rules.MinSkyBottomDistBetweenStaves = 5;
@@ -41,7 +39,7 @@ function applyLayout(osmd: any, layout: LayoutSettings, zoomLevel: number) {
     rules.StaffDistance = 7;
   }
 
-  // Set all layout values directly on the shared rules object
+  // ── Page layout ───────────────────────────────────────────────
   rules.SheetTitleHeight = layout.titleSize;
   rules.SheetComposerHeight = layout.composerSize;
   rules.TitleTopDistance = layout.titleTopDistance;
@@ -54,31 +52,57 @@ function applyLayout(osmd: any, layout: LayoutSettings, zoomLevel: number) {
   rules.MinimumDistanceBetweenSystems = layout.systemSpacing;
   rules.RenderTitle = true;
   rules.RenderComposer = true;
-
-  // Measures per system (0 = auto)
   rules.RenderXMeasuresPerLineAkaSystem = layout.measuresPerSystem;
 
-  // Note size scaling — affects notation, lyrics, staff height
+  // ── Note size scaling ─────────────────────────────────────────
   const s = layout.noteSize;
   rules.VexFlowDefaultNotationFontScale = 39 * s;
   rules.StaffHeight = 4 * s;
   rules.LyricsHeight = 2 * s;
   rules.ChordSymbolTextHeight = 2 * s;
 
-  // Part names: smaller text, less gap, abbreviate after first system
+  // ── Engraving quality — line weights ──────────────────────────
+  // Professional engraving uses carefully calibrated stroke widths
+  rules.StaffLineWidth = 0.1;
+  rules.StemWidth = 0.13;
+  rules.BeamWidth = 0.5;
+  rules.LedgerLineWidth = 0.12;           // Fix: default 1.0 is 10x too thick!
+  rules.WedgeLineWidth = 0.12;
+  rules.TupletLineWidth = 0.12;
+  rules.LyricUnderscoreLineWidth = 0.1;
+  rules.SystemThinLineWidth = 0.12;
+  rules.SystemBoldLineWidth = 0.5;
+
+  // ── Engraving quality — slurs & ties ──────────────────────────
+  rules.SlurHeightFactor = 1.1;
+  rules.SlurSlopeMaxAngle = 12;
+  rules.TieHeightMinimum = 0.3;
+  rules.TieHeightMaximum = 1.4;
+  rules.SlurPlacementUseSkyBottomLine = true;  // Smart collision avoidance
+
+  // ── Engraving quality — beams ─────────────────────────────────
+  rules.BeamSlopeMaxAngle = 10;
+
+  // ── Fonts ─────────────────────────────────────────────────────
+  rules.DefaultVexFlowNoteFont = layout.musicFont;
+  rules.DefaultFontFamily = TEXT_FONT_STACKS[layout.textFont] || TEXT_FONT_STACKS.georgia;
+
+  // ── Part names ────────────────────────────────────────────────
   rules.InstrumentLabelTextHeight = 1.5 * s;
   rules.SystemLabelsRightMargin = 0.5;
   rules.RenderPartAbbreviations = true;
 
-  // Better fonts: Bravura for notation, serif for text
-  rules.DefaultVexFlowNoteFont = "Bravura";
-  rules.DefaultFontFamily = "Georgia, 'Times New Roman', serif";
-
-  // Lyrics: prevent words from running together
+  // ── Lyrics spacing ────────────────────────────────────────────
   rules.LyricOverlapAllowedIntoNextMeasure = 0.5;
   rules.HorizontalBetweenLyricsDistance = 0.6;
   rules.LyricsXPaddingFactorForLongLyrics = 1.5;
   rules.LyricsUseXPaddingForLongLyrics = true;
+  rules.BetweenSyllableMinimumDistance = 0.8;
+
+  // ── Note spacing ──────────────────────────────────────────────
+  rules.MinNoteDistance = 2.2;
+  rules.MeasureLeftMargin = 0.8;
+  rules.ClefRightMargin = 0.9;
 
   // Page breaks: letter page format for pagination
   if (layout.pageBreaks) {

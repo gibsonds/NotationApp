@@ -1,6 +1,6 @@
 "use client";
 
-import { useScoreStore, DEFAULT_LAYOUT, PRINT_LAYOUT, LayoutSettings } from "@/store/score-store";
+import { useScoreStore, DEFAULT_LAYOUT, PRINT_LAYOUT, LayoutSettings, MusicFont, TextFont } from "@/store/score-store";
 import { KeySignature, Clef } from "@/lib/schema";
 import RevisionPanel from "./RevisionPanel";
 
@@ -236,6 +236,33 @@ export default function PropertiesPanel() {
               step={1}
               onChange={(v) => setLayout({ measuresPerSystem: v })}
             />
+            <div className="flex items-center gap-2">
+              <label className="text-[10px] text-gray-500 w-16 shrink-0">Notes</label>
+              <select
+                value={layout.musicFont}
+                onChange={(e) => setLayout({ musicFont: e.target.value as MusicFont })}
+                className="flex-1 px-1 py-0.5 text-[10px] border border-gray-200 rounded bg-white text-gray-800"
+              >
+                <option value="bravura">Bravura (classic)</option>
+                <option value="petaluma">Petaluma (handwritten)</option>
+                <option value="gonville">Gonville (screen)</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-[10px] text-gray-500 w-16 shrink-0">Text</label>
+              <select
+                value={layout.textFont}
+                onChange={(e) => setLayout({ textFont: e.target.value as TextFont })}
+                className="flex-1 px-1 py-0.5 text-[10px] border border-gray-200 rounded bg-white text-gray-800"
+              >
+                <option value="georgia">Georgia</option>
+                <option value="palatino">Palatino</option>
+                <option value="garamond">Garamond</option>
+                <option value="times">Times New Roman</option>
+                <option value="helvetica">Helvetica</option>
+                <option value="noto">Noto Serif</option>
+              </select>
+            </div>
             <div className="flex items-center gap-2">
               <label className="text-[10px] text-gray-500 w-16 shrink-0">Page breaks</label>
               <input

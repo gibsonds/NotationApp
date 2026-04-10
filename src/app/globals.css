@@ -23,6 +23,18 @@ body {
   max-width: 100%;
 }
 
+/* Professional engraving rendering quality */
+.score-container svg text {
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+.score-container svg path,
+.score-container svg line {
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 /* Print styles — show only the score */
 @media print {
   /* Reset page margins to minimum */
@@ -69,6 +81,8 @@ body {
   .score-container svg {
     max-width: 100% !important;
     width: 100% !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 
   /* Remove the rounded white container border/bg in print */

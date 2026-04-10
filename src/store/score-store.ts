@@ -22,6 +22,18 @@ export interface RecordedOperation {
   selection?: NoteSelection;
 }
 
+export type MusicFont = "bravura" | "petaluma" | "gonville";
+export type TextFont = "georgia" | "palatino" | "garamond" | "times" | "helvetica" | "noto";
+
+export const TEXT_FONT_STACKS: Record<TextFont, string> = {
+  georgia: "Georgia, 'Times New Roman', serif",
+  palatino: "'Palatino Linotype', 'Book Antiqua', Palatino, serif",
+  garamond: "Garamond, 'EB Garamond', Georgia, serif",
+  times: "'Times New Roman', Times, serif",
+  helvetica: "Helvetica, Arial, 'Helvetica Neue', sans-serif",
+  noto: "'Noto Serif', Georgia, serif",
+};
+
 export interface LayoutSettings {
   titleSize: number;       // OSMD SheetTitleHeight (default ~4)
   composerSize: number;    // SheetComposerHeight
@@ -35,6 +47,8 @@ export interface LayoutSettings {
   measuresPerSystem: number; // 0 = auto, >0 = fixed
   pageBreaks: boolean;      // enable page-height pagination
   noteSize: number;         // notation scale factor (1.0 = default, 0.7 = smaller)
+  musicFont: MusicFont;     // VexFlow music notation font
+  textFont: TextFont;       // CSS text font for lyrics, titles, etc.
 }
 
 export const DEFAULT_LAYOUT: LayoutSettings = {
@@ -50,6 +64,8 @@ export const DEFAULT_LAYOUT: LayoutSettings = {
   measuresPerSystem: 0,
   pageBreaks: false,
   noteSize: 1.0,
+  musicFont: "bravura",
+  textFont: "georgia",
 };
 
 export const PRINT_LAYOUT: LayoutSettings = {
@@ -65,6 +81,8 @@ export const PRINT_LAYOUT: LayoutSettings = {
   measuresPerSystem: 4,
   pageBreaks: true,
   noteSize: 0.65,
+  musicFont: "bravura",
+  textFont: "palatino",
 };
 
 export interface SavedRevision {
@@ -247,7 +265,7 @@ export const useScoreStore = create<ProjectState>()(
     }),
     {
       name: "notation-app-store",
-      version: 6,
+      version: 7,
       migrate: (persisted: any, version: number) => {
         if (version < 2) {
           persisted = { ...persisted, savedRevisions: persisted.savedRevisions ?? [] };
@@ -258,15 +276,18 @@ export const useScoreStore = create<ProjectState>()(
         if (version < 4) {
           persisted = { ...persisted, warnings: [] };
         }
-        if (version < 6) {
+        if (version < 7) {
           const layout = persisted.layout ?? DEFAULT_LAYOUT;
           persisted = {
             ...persisted,
             layout: {
+              ...DEFAULT_LAYOUT,
               ...layout,
               measuresPerSystem: layout.measuresPerSystem ?? 0,
               pageBreaks: layout.pageBreaks ?? false,
               noteSize: layout.noteSize ?? 1.0,
+              musicFont: layout.musicFont ?? "bravura",
+              textFont: layout.textFont ?? "georgia",
             },
           };
         }
