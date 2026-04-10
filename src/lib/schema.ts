@@ -69,6 +69,9 @@ export type Articulation = z.infer<typeof Articulation>;
 
 // ── Note ───────────────────────────────────────────────────────────────────
 
+export const BeamState = z.enum(["begin", "continue", "end", "none"]);
+export type BeamState = z.infer<typeof BeamState>;
+
 export const NoteSchema = z.object({
   pitch: z.string().describe('Scientific pitch notation, e.g. "G4", or "rest"'),
   duration: NoteDuration,
@@ -79,6 +82,7 @@ export const NoteSchema = z.object({
   lyric: z.string().optional(),
   dynamic: DynamicMarking.optional(),
   articulations: z.array(Articulation).optional(),
+  beam: BeamState.optional().describe('Override auto-beaming: begin/continue/end a beam group, or "none" to prevent beaming'),
   measure: z.number().int().min(1),
   beat: z.number().min(1),
 });

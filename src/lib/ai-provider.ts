@@ -37,7 +37,9 @@ Output ONLY valid JSON matching this schema:
   "rehearsalMarks": array of { "measure": number, "label": string } (optional)
 }
 
-Note objects have: { "pitch": string like "G4" or "rest", "duration": "whole"|"half"|"quarter"|"eighth"|"sixteenth", "dots": 0-2, "accidental": "sharp"|"flat"|"natural"|"none", "tieStart": boolean, "tieEnd": boolean, "lyric": string (optional — one syllable per note, use "-" suffix for melisma continuation e.g. "Hal-", "le-", "lu-", "jah"), "articulations": ["accent"|"strong-accent"|"staccato"|"staccatissimo"|"tenuto"|"detached-legato"|"fermata"] (optional array), "measure": number, "beat": number }
+Note objects have: { "pitch": string like "G4" or "rest", "duration": "whole"|"half"|"quarter"|"eighth"|"sixteenth", "dots": 0-2, "accidental": "sharp"|"flat"|"natural"|"none", "tieStart": boolean, "tieEnd": boolean, "lyric": string (optional — one syllable per note, use "-" suffix for melisma continuation e.g. "Hal-", "le-", "lu-", "jah"), "articulations": ["accent"|"strong-accent"|"staccato"|"staccatissimo"|"tenuto"|"detached-legato"|"fermata"] (optional array), "beam": "begin"|"continue"|"end"|"none" (optional — override auto-beaming; omit to use default beaming), "measure": number, "beat": number }
+
+BEAMING: By default, consecutive eighth/sixteenth notes are automatically beamed within beat groups. Use the "beam" field to override: "begin" starts a beam group, "continue" extends it, "end" closes it, "none" prevents beaming on that note. Example: to beam 4 eighth notes across beats 1-2, set beam:"begin" on the first, beam:"continue" on the middle two, beam:"end" on the last.
 
 LYRICS: To add lyrics, put a "lyric" field on each note that carries a syllable. For chords, only the first note (lowest beat value) gets the lyric. The staff must have "lyricsMode": "attached" (use "update_staff" to set this if needed). Break words into syllables with hyphens: "A-", "ma-", "zing" or "hal-", "le-", "lu-", "jah". One syllable per note.
 

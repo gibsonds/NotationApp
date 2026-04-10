@@ -352,11 +352,11 @@ export function scoreToMusicXML(score: Score): string {
         }
 
         // Build a map: note index -> beam status
+        // Manual beam overrides take precedence over auto-beaming
         const beamStatus = new Map<number, "begin" | "continue" | "end">();
         for (const group of beamGroups) {
           let rhythmicIdx = 0;
           let lastRhythmicCount = 0;
-          // Count rhythmic positions
           for (let k = group.start; k <= group.end; k++) {
             const isChord = k > 0 && Math.abs(notes[k].beat - notes[k - 1].beat) < 0.01 && notes[k].pitch !== "rest";
             if (!isChord) lastRhythmicCount++;
@@ -368,6 +368,18 @@ export function scoreToMusicXML(score: Score): string {
             if (rhythmicIdx === 1) beamStatus.set(k, "begin");
             else if (rhythmicIdx === lastRhythmicCount) beamStatus.set(k, "end");
             else beamStatus.set(k, "continue");
+          }
+        }
+
+        // Apply manual beam overrides from note.beam field
+        for (let ni = 0; ni < notes.length; ni++) {
+          const note = notes[ni];
+          if (note.beam) {
+            if (note.beam === "none") {
+              beamStatus.delete(ni);
+            } else {
+              beamStatus.set(ni, note.beam);
+            }
           }
         }
 
