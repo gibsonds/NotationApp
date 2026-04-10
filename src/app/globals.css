@@ -35,11 +35,16 @@ body {
   stroke-linejoin: round;
 }
 
+/* Print overlay elements — hidden on screen, visible only in print */
+.print-overlay {
+  display: none;
+}
+
 /* Print styles — show only the score */
 @media print {
   /* Reset page margins to minimum */
   @page {
-    margin: 0.3in;
+    margin: 0.4in 0.5in;
   }
 
   body {
@@ -88,5 +93,46 @@ body {
   /* Remove the rounded white container border/bg in print */
   .score-container > div.relative {
     border-radius: 0 !important;
+  }
+
+  /* Prevent OSMD systems (staff groups) from being split across pages */
+  .score-container svg > g {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Show print overlays */
+  .print-overlay {
+    display: block !important;
+    position: absolute;
+    left: 0;
+    right: 0;
+    font-family: Georgia, 'Times New Roman', serif;
+    color: #333;
+    pointer-events: none;
+    z-index: 100;
+  }
+
+  .print-header {
+    top: 4px;
+    text-align: center;
+    font-size: 9pt;
+    color: #555;
+  }
+
+  .print-footer-text {
+    bottom: 4px;
+    text-align: center;
+    font-size: 8pt;
+    color: #666;
+  }
+
+  .print-page-number {
+    bottom: 4px;
+    right: 0;
+    text-align: right;
+    font-size: 9pt;
+    color: #555;
+    padding-right: 4px;
   }
 }

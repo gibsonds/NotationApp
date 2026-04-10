@@ -1,6 +1,6 @@
 "use client";
 
-import { useScoreStore, DEFAULT_LAYOUT, PRINT_LAYOUT, LayoutSettings, MusicFont, TextFont } from "@/store/score-store";
+import { useScoreStore, DEFAULT_LAYOUT, PRINT_LAYOUT, LayoutSettings, MusicFont, TextFont, PageSize } from "@/store/score-store";
 import { KeySignature, Clef } from "@/lib/schema";
 import RevisionPanel from "./RevisionPanel";
 
@@ -272,9 +272,44 @@ export default function PropertiesPanel() {
                 className="accent-blue-500"
               />
               <span className="text-[10px] text-gray-400">
-                {layout.pageBreaks ? "Letter pages" : "Endless scroll"}
+                {layout.pageBreaks
+                  ? layout.pageSize === "a4" ? "A4 pages" : "Letter pages"
+                  : "Endless scroll"}
               </span>
             </div>
+            <div className="flex items-center gap-2">
+              <label className="text-[10px] text-gray-500 w-16 shrink-0">Page size</label>
+              <select
+                value={layout.pageSize}
+                onChange={(e) => setLayout({ pageSize: e.target.value as PageSize })}
+                className="flex-1 px-1 py-0.5 text-[10px] border border-gray-200 rounded bg-white text-gray-800"
+              >
+                <option value="letter">US Letter (8.5 &times; 11&quot;)</option>
+                <option value="a4">A4 (210 &times; 297mm)</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-[10px] text-gray-500 w-16 shrink-0">Page #s</label>
+              <input
+                type="checkbox"
+                checked={layout.printPageNumbers}
+                onChange={(e) => setLayout({ printPageNumbers: e.target.checked })}
+                className="accent-blue-500"
+              />
+              <span className="text-[10px] text-gray-400">
+                {layout.printPageNumbers ? "Shown in print" : "Hidden"}
+              </span>
+            </div>
+            <Field
+              label="Header"
+              value={layout.printHeader}
+              onChange={(v) => setLayout({ printHeader: v })}
+            />
+            <Field
+              label="Footer"
+              value={layout.printFooter}
+              onChange={(v) => setLayout({ printFooter: v })}
+            />
           </div>
         </section>
       </div>

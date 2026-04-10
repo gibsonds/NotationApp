@@ -24,6 +24,12 @@ export interface RecordedOperation {
 
 export type MusicFont = "bravura" | "petaluma" | "gonville";
 export type TextFont = "georgia" | "palatino" | "garamond" | "times" | "helvetica" | "noto";
+export type PageSize = "letter" | "a4";
+
+export const PAGE_DIMENSIONS: Record<PageSize, { width: number; height: number; label: string }> = {
+  letter: { width: 8.5, height: 11.0, label: "US Letter" },
+  a4: { width: 8.27, height: 11.69, label: "A4" },
+};
 
 export const TEXT_FONT_STACKS: Record<TextFont, string> = {
   georgia: "Georgia, 'Times New Roman', serif",
@@ -46,9 +52,13 @@ export interface LayoutSettings {
   compactMode: boolean;
   measuresPerSystem: number; // 0 = auto, >0 = fixed
   pageBreaks: boolean;      // enable page-height pagination
+  pageSize: PageSize;       // page dimensions for print/pagination
   noteSize: number;         // notation scale factor (1.0 = default, 0.7 = smaller)
   musicFont: MusicFont;     // VexFlow music notation font
   textFont: TextFont;       // CSS text font for lyrics, titles, etc.
+  printPageNumbers: boolean; // show page numbers in print output
+  printHeader: string;       // header text for printed pages (empty = none)
+  printFooter: string;       // footer/copyright text for printed pages (empty = none)
 }
 
 export const DEFAULT_LAYOUT: LayoutSettings = {
@@ -63,9 +73,13 @@ export const DEFAULT_LAYOUT: LayoutSettings = {
   compactMode: false,
   measuresPerSystem: 0,
   pageBreaks: false,
+  pageSize: "letter",
   noteSize: 1.0,
   musicFont: "bravura",
   textFont: "georgia",
+  printPageNumbers: true,
+  printHeader: "",
+  printFooter: "",
 };
 
 export const PRINT_LAYOUT: LayoutSettings = {
@@ -80,9 +94,13 @@ export const PRINT_LAYOUT: LayoutSettings = {
   compactMode: true,
   measuresPerSystem: 4,
   pageBreaks: true,
+  pageSize: "letter",
   noteSize: 0.65,
   musicFont: "bravura",
   textFont: "palatino",
+  printPageNumbers: true,
+  printHeader: "",
+  printFooter: "",
 };
 
 export interface SavedRevision {
@@ -265,7 +283,7 @@ export const useScoreStore = create<ProjectState>()(
     }),
     {
       name: "notation-app-store",
-      version: 7,
+      version: 8,
       migrate: (persisted: any, version: number) => {
         if (version < 2) {
           persisted = { ...persisted, savedRevisions: persisted.savedRevisions ?? [] };
@@ -288,6 +306,19 @@ export const useScoreStore = create<ProjectState>()(
               noteSize: layout.noteSize ?? 1.0,
               musicFont: layout.musicFont ?? "bravura",
               textFont: layout.textFont ?? "georgia",
+            },
+          };
+        }
+        if (version < 8) {
+          const layout = persisted.layout ?? DEFAULT_LAYOUT;
+          persisted = {
+            ...persisted,
+            layout: {
+              ...layout,
+              pageSize: layout.pageSize ?? "letter",
+              printPageNumbers: layout.printPageNumbers ?? true,
+              printHeader: layout.printHeader ?? "",
+              printFooter: layout.printFooter ?? "",
             },
           };
         }

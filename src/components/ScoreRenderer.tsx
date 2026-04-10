@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Score } from "@/lib/schema";
 import { scoreToMusicXML } from "@/lib/musicxml";
-import { LayoutSettings, DEFAULT_LAYOUT, PRINT_LAYOUT, TEXT_FONT_STACKS } from "@/store/score-store";
+import { LayoutSettings, DEFAULT_LAYOUT, PRINT_LAYOUT, TEXT_FONT_STACKS, PAGE_DIMENSIONS } from "@/store/score-store";
 
 export interface ScoreRendererHandle {
   printScore: () => Promise<void>;
@@ -14,6 +14,58 @@ interface ScoreRendererProps {
   zoom?: number;
   layout?: LayoutSettings;
   onReady?: (handle: ScoreRendererHandle) => void;
+}
+
+/**
+ * Inject page-number, header, and footer overlays into each OSMD page's SVG container.
+ * OSMD renders each page as a separate child div inside the container. We append
+ * lightweight overlay divs that are visible only in print (via CSS class).
+ */
+function injectPrintOverlays(
+  container: HTMLDivElement | null,
+  layout: LayoutSettings,
+  title: string
+) {
+  if (!container) return;
+  // OSMD creates one child <div> per page when page breaks are enabled.
+  // Each child contains an <svg>. We overlay on each.
+  const pageEls = container.querySelectorAll<HTMLElement>(":scope > div");
+  const pages = pageEls.length > 0 ? Array.from(pageEls) : [container];
+
+  pages.forEach((page, index) => {
+    page.style.position = "relative";
+
+    if (layout.printHeader) {
+      const header = document.createElement("div");
+      header.className = "print-overlay print-header";
+      header.textContent = layout.printHeader === "{title}" ? title : layout.printHeader;
+      page.appendChild(header);
+    }
+
+    if (layout.printFooter) {
+      const footer = document.createElement("div");
+      footer.className = "print-overlay print-footer-text";
+      footer.textContent = layout.printFooter;
+      page.appendChild(footer);
+    }
+
+    if (layout.printPageNumbers && pages.length > 1) {
+      const pageNum = document.createElement("div");
+      pageNum.className = "print-overlay print-page-number";
+      pageNum.textContent = String(index + 1);
+      page.appendChild(pageNum);
+    }
+  });
+}
+
+/** Remove all injected print overlays. */
+function removePrintOverlays(container: HTMLDivElement | null) {
+  if (!container) return;
+  container.querySelectorAll(".print-overlay").forEach((el) => el.remove());
+  // Reset position style on page containers
+  container.querySelectorAll<HTMLElement>(":scope > div").forEach((el) => {
+    el.style.position = "";
+  });
 }
 
 function applyLayout(osmd: any, layout: LayoutSettings, zoomLevel: number) {
@@ -104,10 +156,11 @@ function applyLayout(osmd: any, layout: LayoutSettings, zoomLevel: number) {
   rules.MeasureLeftMargin = 0.8;
   rules.ClefRightMargin = 0.9;
 
-  // Page breaks: letter page format for pagination
+  // Page breaks: use selected page size for pagination
   if (layout.pageBreaks) {
+    const dims = PAGE_DIMENSIONS[layout.pageSize] || PAGE_DIMENSIONS.letter;
     const PF = rules.PageFormat.constructor as any;
-    rules.PageFormat = new PF(8.5, 11.0, "letter");
+    rules.PageFormat = new PF(dims.width, dims.height, layout.pageSize);
     rules.NewPageAtXMLNewPageAttribute = true;
   } else {
     // Endless scroll: undefined page format, huge page height
@@ -153,9 +206,22 @@ export default function ScoreRenderer({ score, zoom = 1.0, layout = DEFAULT_LAYO
     const scoreName = scoreRef.current?.title;
     if (scoreName) document.title = scoreName;
 
+    // Build the print layout, inheriting user's page size and print settings
+    const userLayout = layoutRef.current;
+    const printLayout: LayoutSettings = {
+      ...PRINT_LAYOUT,
+      pageSize: userLayout.pageSize,
+      printPageNumbers: userLayout.printPageNumbers,
+      printHeader: userLayout.printHeader,
+      printFooter: userLayout.printFooter,
+    };
+
     // Re-render with tight print layout
-    applyLayout(osmd, PRINT_LAYOUT, 1.0);
+    applyLayout(osmd, printLayout, 1.0);
     osmd.render();
+
+    // Inject print overlays (page numbers, headers, footers)
+    injectPrintOverlays(containerRef.current, printLayout, scoreName || "");
 
     // Wait for browser to paint via double-rAF, then print
     await new Promise<void>((resolve) => {
@@ -164,12 +230,12 @@ export default function ScoreRenderer({ score, zoom = 1.0, layout = DEFAULT_LAYO
       });
     });
 
-    window.print();
-
-    // Safari fires afterprint before capturing — delay restore
-    // so the print sheet captures the print layout DOM
-    setTimeout(() => {
+    // Restore after print completes — use afterprint event for Safari compatibility.
+    // Safari's window.print() is non-blocking, so we must wait for the afterprint
+    // event rather than restoring immediately after the call.
+    const restore = () => {
       document.title = prevTitle;
+      removePrintOverlays(containerRef.current);
       const saved = savedPrintLayoutRef.current;
       if (saved && osmdRef.current) {
         applyLayout(osmdRef.current, saved.layout, saved.zoom);
@@ -177,7 +243,24 @@ export default function ScoreRenderer({ score, zoom = 1.0, layout = DEFAULT_LAYO
         savedPrintLayoutRef.current = null;
       }
       printingRef.current = false;
-    }, 1000);
+    };
+
+    // Listen for afterprint — works on Safari, Chrome, Firefox
+    const onAfterPrint = () => {
+      window.removeEventListener("afterprint", onAfterPrint);
+      clearTimeout(fallbackTimer);
+      // Small delay ensures Safari has fully captured the print snapshot
+      setTimeout(restore, 100);
+    };
+    window.addEventListener("afterprint", onAfterPrint);
+
+    // Fallback timer in case afterprint never fires (e.g. some mobile browsers)
+    const fallbackTimer = setTimeout(() => {
+      window.removeEventListener("afterprint", onAfterPrint);
+      restore();
+    }, 30000);
+
+    window.print();
   }, []);
 
   // Notify parent when ready
@@ -257,8 +340,9 @@ export default function ScoreRenderer({ score, zoom = 1.0, layout = DEFAULT_LAYO
   // Restore layout after Cmd+P (system-initiated print, not our button)
   useEffect(() => {
     const handleAfterPrint = () => {
-      // If our printScore is handling the cycle, skip — it restores via timeout
+      // If our printScore is handling the cycle, skip — it restores via its own listener
       if (printingRef.current) return;
+      removePrintOverlays(containerRef.current);
       const osmd = osmdRef.current;
       if (!osmd) return;
       applyLayout(osmd, layoutRef.current, zoomRef.current);
