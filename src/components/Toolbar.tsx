@@ -224,7 +224,7 @@ export default function Toolbar({ zoom, onZoomChange, onPrint }: ToolbarProps) {
         <input
           ref={fileInputRef}
           type="file"
-          accept=".snt,.musicxml,.mxl,.xml,.json"
+          accept=".mid,.midi,.snt,.musicxml,.mxl,.xml,.json"
           onChange={handleImport}
           className="hidden"
         />

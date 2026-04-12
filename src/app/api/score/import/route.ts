@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { parseSNT } from "@/lib/importers/staffpad";
+import { parseMidi } from "@/lib/importers/midi-import";
 import { validateScore } from "@/lib/validation";
 
 export async function POST(req: NextRequest) {
@@ -21,6 +22,8 @@ export async function POST(req: NextRequest) {
 
     if (filename.endsWith(".snt")) {
       score = await parseSNT(buffer);
+    } else if (filename.endsWith(".mid") || filename.endsWith(".midi")) {
+      score = parseMidi(buffer);
     } else if (
       filename.endsWith(".musicxml") ||
       filename.endsWith(".mxl") ||
@@ -37,7 +40,7 @@ export async function POST(req: NextRequest) {
     } else {
       return NextResponse.json(
         {
-          error: `Unsupported file format: ${filename.split(".").pop()}. Supported: .snt, .musicxml`,
+          error: `Unsupported file format: ${filename.split(".").pop()}. Supported: .mid, .midi, .snt, .musicxml`,
         },
         { status: 400 }
       );

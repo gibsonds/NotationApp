@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@tonejs/midi": "^2.0.28",
     "bplist-parser": "^0.3.2",
     "next": "16.2.3",
     "opensheetmusicdisplay": "^1.9.7",
