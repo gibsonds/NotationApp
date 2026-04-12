@@ -23,7 +23,34 @@ export async function POST(req: NextRequest) {
     if (filename.endsWith(".snt")) {
       score = await parseSNT(buffer);
     } else if (filename.endsWith(".mid") || filename.endsWith(".midi")) {
-      score = parseMidi(buffer);
+      try {
+        score = parseMidi(buffer);
+      } catch (midiErr: any) {
+        // Return debug info so the user can see what's happening
+        const { Midi } = await import("@tonejs/midi");
+        const uint8 = new Uint8Array(buffer);
+        const midi = new Midi(uint8);
+        const trackInfo = midi.tracks.map((t, i) => ({
+          index: i,
+          name: t.name,
+          notes: t.notes.length,
+          instrument: t.instrument?.name,
+        }));
+        return NextResponse.json(
+          {
+            error: `MIDI import failed: ${midiErr.message}`,
+            debug: {
+              fileSize: buffer.byteLength,
+              headerName: midi.header.name,
+              totalTracks: midi.tracks.length,
+              tracks: trackInfo,
+              tempos: midi.header.tempos.length,
+              timeSignatures: midi.header.timeSignatures.length,
+            },
+          },
+          { status: 500 }
+        );
+      }
     } else if (
       filename.endsWith(".musicxml") ||
       filename.endsWith(".mxl") ||
