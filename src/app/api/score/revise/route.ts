@@ -8,10 +8,11 @@ import { NoteSelection } from "@/lib/transforms";
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { prompt, currentScore, selection } = body as {
+    const { prompt, currentScore, selection, selectedNote } = body as {
       prompt: string;
       currentScore: unknown;
       selection?: NoteSelection;
+      selectedNote?: string;
     };
 
     if (!prompt || typeof prompt !== "string") {
@@ -53,7 +54,10 @@ export async function POST(req: NextRequest) {
       const staffNote = selection.staffIds
         ? ` on staves: ${selection.staffIds.join(", ")}`
         : "";
-      augmentedPrompt = `[SELECTION: ${range}${staffNote}] ${prompt}`;
+      const noteInfo = selectedNote ? ` (selected note: ${selectedNote})` : "";
+      augmentedPrompt = `[SELECTION: ${range}${staffNote}${noteInfo}] ${prompt}`;
+    } else if (selectedNote) {
+      augmentedPrompt = `[SELECTED NOTE: ${selectedNote}] ${prompt}`;
     }
 
     const provider = createProvider();

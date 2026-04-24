@@ -18,8 +18,11 @@ export default function PromptPanel() {
     applyPatches,
     score,
     selection,
+    stepEntry,
     lastOperation,
     setLastOperation,
+    copySelection,
+    pasteAtSelection,
   } = useScoreStore();
 
   useEffect(() => {
@@ -50,6 +53,18 @@ export default function PromptPanel() {
     if (score) {
       const builtin = matchBuiltinCommand(prompt);
       if (builtin) {
+        // Copy and paste are special — they use store clipboard, not transforms
+        if (builtin.name === "copy") {
+          const msg = copySelection();
+          addMessage({ id: uuidv4(), role: "assistant", content: msg || "Copied.", timestamp: Date.now() });
+          return;
+        }
+        if (builtin.name === "paste") {
+          const msg = pasteAtSelection();
+          addMessage({ id: uuidv4(), role: "assistant", content: msg || "Pasted.", timestamp: Date.now() });
+          return;
+        }
+
         const newScore = builtin.execute(score, selection ?? undefined);
         setScore(newScore);
         setLastOperation({
@@ -72,8 +87,39 @@ export default function PromptPanel() {
     setIsGenerating(true);
     try {
       const endpoint = score ? "/api/score/revise" : "/api/score/create";
+      // Build selection context: use explicit selection range, or derive from stepEntry (selected note)
+      let effectiveSelection = selection ?? undefined;
+      if (!effectiveSelection && stepEntry && score) {
+        // Single note selected — create a selection covering its measure+staff
+        effectiveSelection = {
+          startMeasure: stepEntry.measure,
+          endMeasure: stepEntry.measure,
+          staffIds: [stepEntry.staffId],
+        };
+      }
+      // Find the specific note at the cursor + surrounding notes for the LLM
+      let selectedNoteInfo: string | undefined;
+      if (stepEntry && score) {
+        const staff = score.staves.find(s => s.id === stepEntry.staffId);
+        const voice = staff?.voices.find(v => v.id === stepEntry.voiceId) || staff?.voices[0];
+        if (voice) {
+          const sorted = voice.notes
+            .filter(n => n.pitch !== "rest")
+            .sort((a, b) => a.measure - b.measure || a.beat - b.beat);
+          const idx = sorted.findIndex(n => n.measure === stepEntry.measure && Math.abs(n.beat - stepEntry.beat) < 0.05);
+          if (idx >= 0) {
+            const note = sorted[idx];
+            const prev = idx > 0 ? sorted[idx - 1] : null;
+            const next = idx < sorted.length - 1 ? sorted[idx + 1] : null;
+            let info = `${note.pitch} at measure ${note.measure} beat ${note.beat} on staff "${staff?.name}" (voice "${voice.id}")`;
+            if (prev) info += `. Previous note: ${prev.pitch} m${prev.measure} b${prev.beat}`;
+            if (next) info += `. Next note: ${next.pitch} m${next.measure} b${next.beat}`;
+            selectedNoteInfo = info;
+          }
+        }
+      }
       const body = score
-        ? { prompt, currentScore: score, selection: selection ?? undefined }
+        ? { prompt, currentScore: score, selection: effectiveSelection, selectedNote: selectedNoteInfo }
         : { prompt };
 
       const res = await fetch(endpoint, {
