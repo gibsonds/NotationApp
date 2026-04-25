@@ -79,6 +79,92 @@ export function applyPatch(score: Score, patch: ScorePatch): Score {
       };
     }
 
+    case "add_notes": {
+      // Build a set of positions being added (measure+beat) to remove conflicts
+      const newPositions = new Set(
+        patch.notes.map((n) => `${n.measure}:${Math.round(n.beat * 1000)}`)
+      );
+
+      return {
+        ...score,
+        staves: score.staves.map((s) => {
+          if (s.id !== patch.staffId) return s;
+          const voiceExists = s.voices.some((v) => v.id === patch.voiceId);
+          if (voiceExists) {
+            return {
+              ...s,
+              voices: s.voices.map((v) => {
+                if (v.id !== patch.voiceId) return v;
+                // Remove existing notes at the same beat positions, then add new ones
+                const kept = v.notes.filter(
+                  (n) => !newPositions.has(`${n.measure}:${Math.round(n.beat * 1000)}`)
+                );
+                return { ...v, notes: [...kept, ...patch.notes] };
+              }),
+            };
+          }
+          return {
+            ...s,
+            voices: [
+              ...s.voices,
+              { id: patch.voiceId, role: "general" as const, notes: patch.notes },
+            ],
+          };
+        }),
+      };
+    }
+
+    case "update_note": {
+      return {
+        ...score,
+        staves: score.staves.map((s) => {
+          if (s.id !== patch.staffId) return s;
+          return {
+            ...s,
+            voices: s.voices.map((v) => {
+              if (v.id !== patch.voiceId) return v;
+              return {
+                ...v,
+                notes: v.notes.map((n) => {
+                  if (
+                    n.measure === patch.measure &&
+                    Math.abs(n.beat - patch.beat) < 0.001 &&
+                    n.pitch === patch.pitch
+                  ) {
+                    return { ...n, ...patch.updates };
+                  }
+                  return n;
+                }),
+              };
+            }),
+          };
+        }),
+      };
+    }
+
+    case "remove_note": {
+      return {
+        ...score,
+        staves: score.staves.map((s) => {
+          if (s.id !== patch.staffId) return s;
+          return {
+            ...s,
+            voices: s.voices.map((v) => {
+              if (v.id !== patch.voiceId) return v;
+              return {
+                ...v,
+                notes: v.notes.filter((n) =>
+                  !(n.measure === patch.measure &&
+                    Math.abs(n.beat - patch.beat) < 0.001 &&
+                    n.pitch === patch.pitch)
+                ),
+              };
+            }),
+          };
+        }),
+      };
+    }
+
     case "set_chord_symbols":
       return { ...score, chordSymbols: patch.chordSymbols };
 

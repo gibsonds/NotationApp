@@ -7,7 +7,17 @@ import { Score, Note } from "./schema";
 export interface NoteSelection {
   startMeasure: number;
   endMeasure: number;
+  startBeat?: number;  // beat-level granularity (1-indexed); omit = start of measure
+  endBeat?: number;    // omit = end of measure
   staffIds?: string[];
+}
+
+/** Check if a note falls within a selection */
+export function noteInSelection(note: Note, sel: NoteSelection): boolean {
+  if (note.measure < sel.startMeasure || note.measure > sel.endMeasure) return false;
+  if (sel.startBeat !== undefined && note.measure === sel.startMeasure && note.beat < sel.startBeat - 0.001) return false;
+  if (sel.endBeat !== undefined && note.measure === sel.endMeasure && note.beat > sel.endBeat + 0.001) return false;
+  return true;
 }
 
 export type TransformFn = (note: Note) => Note;
@@ -154,9 +164,7 @@ export function applyTransform(
           ...voice,
           notes: voice.notes.map((note) => {
             if (selection) {
-              if (note.measure < selection.startMeasure || note.measure > selection.endMeasure) {
-                return note;
-              }
+              if (!noteInSelection(note, selection)) return note;
             }
             return transform(note);
           }),
@@ -207,6 +215,9 @@ export const BUILTIN_COMMANDS: BuiltinCommand[] = [
   },
 ];
 
+// Copy and paste are handled via the store (clipboard state), not as transforms.
+// They're registered as builtin commands so prompts like "copy" and "paste" work.
+
 /**
  * Check if a user prompt matches a built-in command.
  * Returns the command if matched, null otherwise.
@@ -256,6 +267,14 @@ export function matchBuiltinCommand(prompt: string): BuiltinCommand | null {
       }
       return BUILTIN_COMMANDS.find((c) => c.name === "transpose-up-half")!;
     }
+  }
+
+  // Copy / Paste
+  if (/^cop(y|ied)$/.test(lower) || lower === "copy notes" || lower === "copy measures" || lower === "copy selection") {
+    return { name: "copy", description: "Copy selected measures to clipboard", execute: (s) => s };
+  }
+  if (/^paste$/.test(lower) || lower === "paste notes" || lower === "paste measures" || lower === "paste here") {
+    return { name: "paste", description: "Paste clipboard at selection", execute: (s) => s };
   }
 
   return null;

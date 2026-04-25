@@ -44,6 +44,8 @@ interface ScoreRendererProps {
     staffIndex: number;
     pitch?: string;       // present when an actual note was clicked
     shiftKey?: boolean;
+    metaKey?: boolean;
+    ctrlKey?: boolean;
     isRightClick?: boolean;
     clientX?: number;     // for context menu positioning
     clientY?: number;
@@ -139,22 +141,42 @@ function applyLayout(osmd: any, layout: LayoutSettings, zoomLevel: number) {
   rules.LyricsHeight = 2 * s;
   rules.ChordSymbolTextHeight = 2 * s;
 
-  rules.StaffLineWidth = 0.1;
-  rules.StemWidth = 0.13;
-  rules.BeamWidth = 0.5;
-  rules.LedgerLineWidth = 0.12;
-  rules.WedgeLineWidth = 0.12;
-  rules.TupletLineWidth = 0.12;
-  rules.LyricUnderscoreLineWidth = 0.1;
-  rules.SystemThinLineWidth = 0.12;
-  rules.SystemBoldLineWidth = 0.5;
+  // Style-specific engraving rules
+  if (layout.musicFont === "petaluma") {
+    // Real Book / handwritten style — thicker, more organic feel
+    rules.StaffLineWidth = 0.12;
+    rules.StemWidth = 0.15;
+    rules.BeamWidth = 0.6;
+    rules.LedgerLineWidth = 0.14;
+    rules.WedgeLineWidth = 0.14;
+    rules.TupletLineWidth = 0.14;
+    rules.LyricUnderscoreLineWidth = 0.12;
+    rules.SystemThinLineWidth = 0.14;
+    rules.SystemBoldLineWidth = 0.6;
+    rules.SlurHeightFactor = 1.3;
+    rules.SlurSlopeMaxAngle = 15;
+    rules.TieHeightMinimum = 0.35;
+    rules.TieHeightMaximum = 1.6;
+    rules.BeamSlopeMaxAngle = 12;
+  } else {
+    // Modern / clean style — precise, thin lines
+    rules.StaffLineWidth = 0.1;
+    rules.StemWidth = 0.13;
+    rules.BeamWidth = 0.5;
+    rules.LedgerLineWidth = 0.12;
+    rules.WedgeLineWidth = 0.12;
+    rules.TupletLineWidth = 0.12;
+    rules.LyricUnderscoreLineWidth = 0.1;
+    rules.SystemThinLineWidth = 0.12;
+    rules.SystemBoldLineWidth = 0.5;
+    rules.SlurHeightFactor = 1.1;
+    rules.SlurSlopeMaxAngle = 12;
+    rules.TieHeightMinimum = 0.3;
+    rules.TieHeightMaximum = 1.4;
+    rules.BeamSlopeMaxAngle = 10;
+  }
 
-  rules.SlurHeightFactor = 1.1;
-  rules.SlurSlopeMaxAngle = 12;
-  rules.TieHeightMinimum = 0.3;
-  rules.TieHeightMaximum = 1.4;
   rules.SlurPlacementUseSkyBottomLine = true;
-  rules.BeamSlopeMaxAngle = 10;
 
   rules.DefaultVexFlowNoteFont = layout.musicFont;
   rules.DefaultFontFamily = TEXT_FONT_STACKS[layout.textFont] || TEXT_FONT_STACKS.georgia;
@@ -550,8 +572,8 @@ export default function ScoreRenderer({
       el.style.top = `${mp.y - 2}px`;
       el.style.width = `${mp.width}px`;
       el.style.height = `${mp.height + 4}px`;
-      el.style.backgroundColor = "rgba(250, 204, 21, 0.15)";
-      el.style.border = "1.5px solid rgba(250, 204, 21, 0.5)";
+      el.style.backgroundColor = "rgba(37, 99, 235, 0.1)";
+      el.style.border = "1.5px solid rgba(37, 99, 235, 0.4)";
       el.style.borderRadius = "3px";
       el.style.pointerEvents = "none";
       el.style.zIndex = "18";
@@ -634,6 +656,8 @@ export default function ScoreRenderer({
           staffIndex: bestHit.staffIndex,
           pitch: bestHit.pitch,
           shiftKey: e.shiftKey,
+          metaKey: e.metaKey,
+          ctrlKey: e.ctrlKey,
         });
         return;
       }
@@ -687,6 +711,8 @@ export default function ScoreRenderer({
         beat: Math.max(1, Math.min(beat, beatsPerMeasure + 0.99)),
         staffIndex: clickedStaff,
         shiftKey: e.shiftKey,
+        metaKey: e.metaKey,
+        ctrlKey: e.ctrlKey,
       });
     };
 
@@ -807,11 +833,16 @@ export default function ScoreRenderer({
 
         if (cancelled) return;
 
+        // Apply layout BEFORE load — sets VexFlowDefaultNotationFontScale
+        // so note objects are created at the correct size.
+        applyLayout(osmdRef.current, currentLayout, currentZoom);
+
         const musicxml = scoreToMusicXML(currentScore);
         await osmdRef.current.load(musicxml);
 
         if (cancelled) return;
 
+        // Re-apply after load in case load() reset any rules
         applyLayout(osmdRef.current, currentLayout, currentZoom);
 
         // Temporarily lock scroll during OSMD render to prevent jump
@@ -853,6 +884,8 @@ export default function ScoreRenderer({
           });
           (window as any).__measurePositions = measurePositionsRef.current;
           (window as any).__osmd = osmdRef.current;
+          (window as any).__osmdFontScale = osmdRef.current?.EngravingRules?.VexFlowDefaultNotationFontScale;
+          (window as any).__osmdNoteSize = currentLayout.noteSize;
         }
 
         // Make notes interactive and position overlays

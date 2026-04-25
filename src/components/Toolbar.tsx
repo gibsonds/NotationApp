@@ -15,7 +15,32 @@ interface ToolbarProps {
 }
 
 export default function Toolbar({ zoom, onZoomChange, onPrint }: ToolbarProps) {
-  const { score, undo, redo, history, historyIndex, reset, setScore, setWarnings, addMessage, setIsGenerating, saveRevision } = useScoreStore();
+  const { score, undo, redo, history, historyIndex, reset, setScore, setWarnings, addMessage, setIsGenerating, saveRevision, messages, savedRevisions, layout, setLayout } = useScoreStore();
+  const projectInputRef = useRef<HTMLInputElement>(null);
+
+  const handleNew = () => {
+    reset();
+    setScore({
+      id: uuidv4(),
+      title: "Untitled Score",
+      composer: "",
+      tempo: 120,
+      timeSignature: "4/4",
+      keySignature: "C",
+      measures: 16,
+      staves: [{
+        id: uuidv4(),
+        name: "Staff 1",
+        clef: "treble",
+        lyricsMode: "none",
+        voices: [{ id: uuidv4(), role: "general", notes: [] }],
+      }],
+      chordSymbols: [],
+      rehearsalMarks: [],
+      repeats: [],
+      metadata: {},
+    });
+  };
   const fileInputRef = useRef<HTMLInputElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
 
@@ -163,6 +188,73 @@ export default function Toolbar({ zoom, onZoomChange, onPrint }: ToolbarProps) {
       content: `Saved revision: "${name}". View revisions in the Properties panel.`,
       timestamp: Date.now(),
     });
+  };
+
+  const handleSaveProject = () => {
+    if (!score) return;
+    const project = {
+      version: 1,
+      score,
+      history,
+      historyIndex,
+      messages,
+      savedRevisions,
+      layout,
+    };
+    const json = JSON.stringify(project, null, 2);
+    downloadFile(json, `${score.title || "project"}.notation`, "application/json");
+    addMessage({
+      id: uuidv4(),
+      role: "assistant",
+      content: `Project saved as "${score.title || "project"}.notation".`,
+      timestamp: Date.now(),
+    });
+  };
+
+  const handleOpenProject = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const project = JSON.parse(text);
+      if (!project.score) throw new Error("Invalid project file — no score found.");
+
+      // Validate the score
+      const result = ScoreSchema.safeParse(project.score);
+      if (!result.success) {
+        throw new Error(`Invalid score data: ${result.error.issues.map(i => i.message).join(", ")}`);
+      }
+
+      // Restore everything
+      reset();
+
+      // Use zustand setState directly to restore full state
+      const store = useScoreStore.getState();
+      useScoreStore.setState({
+        score: result.data,
+        history: project.history || [result.data],
+        historyIndex: project.historyIndex ?? 0,
+        messages: project.messages || [],
+        savedRevisions: project.savedRevisions || [],
+        layout: project.layout ? { ...store.layout, ...project.layout } : store.layout,
+      });
+
+      addMessage({
+        id: uuidv4(),
+        role: "assistant",
+        content: `Opened project "${file.name}" — "${result.data.title}".`,
+        timestamp: Date.now(),
+      });
+    } catch (err: any) {
+      addMessage({
+        id: uuidv4(),
+        role: "assistant",
+        content: `Open project error: ${err.message}`,
+        timestamp: Date.now(),
+      });
+    } finally {
+      if (projectInputRef.current) projectInputRef.current.value = "";
+    }
   };
 
   const handleTranscribe = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -321,10 +413,34 @@ export default function Toolbar({ zoom, onZoomChange, onPrint }: ToolbarProps) {
           JSON
         </button>
         <div className="w-px h-5 bg-gray-300 mx-1" />
+        <input
+          ref={projectInputRef}
+          type="file"
+          accept=".notation,.json"
+          onChange={handleOpenProject}
+          className="hidden"
+        />
+        <button
+          onClick={() => projectInputRef.current?.click()}
+          className="px-3 py-1.5 text-xs font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded transition-colors"
+          title="Open a .notation project file"
+        >
+          Open
+        </button>
+        <button
+          onClick={handleSaveProject}
+          disabled={!score}
+          className="px-3 py-1.5 text-xs font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          title="Save full project as .notation file"
+        >
+          Save Project
+        </button>
+        <div className="w-px h-5 bg-gray-300 mx-1" />
         <button
           onClick={handleSave}
           disabled={!score}
           className="px-3 py-1.5 text-xs font-medium text-green-700 bg-green-50 hover:bg-green-100 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          title="Quick-save a revision (in browser)"
         >
           Save
         </button>
@@ -332,6 +448,7 @@ export default function Toolbar({ zoom, onZoomChange, onPrint }: ToolbarProps) {
           onClick={handleSaveAs}
           disabled={!score}
           className="px-3 py-1.5 text-xs font-medium text-green-700 bg-green-50 hover:bg-green-100 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          title="Save a named revision (in browser)"
         >
           Save As
         </button>
@@ -346,7 +463,7 @@ export default function Toolbar({ zoom, onZoomChange, onPrint }: ToolbarProps) {
         <MidiKeyboard />
         <div className="w-px h-5 bg-gray-300 mx-1" />
         <button
-          onClick={reset}
+          onClick={handleNew}
           className="px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 rounded transition-colors"
         >
           New

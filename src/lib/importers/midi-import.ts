@@ -26,7 +26,7 @@ const SNAP_TABLE: { dur: Note["duration"]; dots: number; beats: number }[] = [
 
 // Duration → beats lookup
 const DUR_BEATS: Record<string, number> = {
-  whole: 4, half: 2, quarter: 1, eighth: 0.5, sixteenth: 0.25,
+  whole: 4, half: 2, quarter: 1, eighth: 0.5, sixteenth: 0.25, "thirty-second": 0.125, "sixty-fourth": 0.0625,
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -191,112 +191,157 @@ export function parseMidi(
   }
   const keySignature = detectKeySignature(allMidiNotes);
 
-  // Build staves
+  // Build staves — separate overlapping notes into distinct voices/staves
   const staves: Staff[] = [];
 
   for (const { track, idx } of selectedTracks) {
-    const trackMidiNotes = track.notes.map((n) => n.midi);
-    const clef = detectClef(trackMidiNotes);
-    const staffId = uuidv4();
-    const voiceId = uuidv4();
-    // Make track names unique (Logic can export duplicates)
+    // Make track names unique
     const rawName = track.name || `Track ${idx + 1}`;
     const nameCount = staves.filter((s) => s.name === rawName || s.name.startsWith(rawName + " (")).length;
-    const trackName = nameCount > 0 ? `${rawName} (${nameCount + 1})` : rawName;
+    const trackBaseName = nameCount > 0 ? `${rawName} (${nameCount + 1})` : rawName;
 
-    // Step 1: Convert MIDI notes to quantized events grouped by measure
-    type QNote = { pitch: string; measure: number; beat: number; durBeats: number };
+    // Step 1: Quantize all MIDI notes
+    type QNote = {
+      pitch: string;
+      midi: number;
+      measure: number;
+      beat: number;
+      durBeats: number;
+      startBeat: number; // absolute beat position for overlap detection
+    };
     const qNotes: QNote[] = [];
 
     for (const midiNote of track.notes) {
       const beatPos = midiNote.time / secondsPerBeat;
       const durBeats = midiNote.duration / secondsPerBeat;
-
       const qBeat = quantizeBeat(beatPos, quantizeGrid);
       const measure = Math.floor(qBeat / beatsPerMeasure) + 1;
       if (measure < 1 || measure > totalMeasures) continue;
 
-      const beatInMeasure = (qBeat % beatsPerMeasure) + 1; // 1-based
-
-      // Clamp duration so it doesn't overflow the measure
+      const beatInMeasure = (qBeat % beatsPerMeasure) + 1;
       const remainingInMeasure = beatsPerMeasure - (beatInMeasure - 1);
       const clampedDur = Math.min(durBeats, remainingInMeasure);
-
-      if (clampedDur < 0.125) continue; // skip tiny artifacts
+      if (clampedDur < 0.125) continue;
 
       qNotes.push({
         pitch: midiNoteToPitch(midiNote.midi),
+        midi: midiNote.midi,
         measure,
-        beat: Math.round(beatInMeasure * 4) / 4, // snap to sixteenth grid
+        beat: Math.round(beatInMeasure * 4) / 4,
         durBeats: clampedDur,
+        startBeat: qBeat,
       });
     }
 
-    // Step 2: For each measure, lay out notes and fill gaps with rests
-    const scoreNotes: Note[] = [];
+    // Step 2: Separate into voices using greedy allocation
+    // Each voice tracks when it's "free" (endBeat). When a note overlaps,
+    // it goes to the next available voice. Highest pitch = voice 0 (lead).
+    qNotes.sort((a, b) => a.startBeat - b.startBeat || b.midi - a.midi);
 
-    for (let m = 1; m <= totalMeasures; m++) {
-      const measureNotes = qNotes
-        .filter((n) => n.measure === m)
-        .sort((a, b) => a.beat - b.beat);
+    type VoiceBucket = { notes: QNote[]; endBeat: number };
+    const voiceBuckets: VoiceBucket[] = [];
 
-      if (measureNotes.length === 0) {
-        // Whole-measure rest
-        scoreNotes.push(...fillRests(m, 1, beatsPerMeasure));
-        continue;
-      }
-
-      let cursor = 1; // current beat position (1-based)
-
-      for (const qn of measureNotes) {
-        // Fill gap before this note with rests
-        const gap = qn.beat - cursor;
-        if (gap > 0.001) {
-          scoreNotes.push(...fillRests(m, cursor, gap));
-          cursor += gap;
+    for (const qn of qNotes) {
+      // Find a voice that's free at this beat
+      let assigned = false;
+      for (const bucket of voiceBuckets) {
+        if (qn.startBeat >= bucket.endBeat - 0.01) {
+          bucket.notes.push(qn);
+          bucket.endBeat = qn.startBeat + qn.durBeats;
+          assigned = true;
+          break;
         }
-
-        // If this note overlaps with cursor (two notes at same beat = chord),
-        // don't advance cursor
-        if (qn.beat < cursor - 0.001) continue;
-
-        // Snap the duration
-        const snapped = snapDuration(qn.durBeats);
-
-        scoreNotes.push({
-          pitch: qn.pitch,
-          duration: snapped.dur,
-          dots: snapped.dots,
-          accidental: "none",
-          tieStart: false,
-          tieEnd: false,
-          measure: m,
-          beat: Math.round(cursor * 1000) / 1000,
-        });
-
-        cursor += snapped.beats;
       }
-
-      // Fill remaining beats after last note
-      const remaining = beatsPerMeasure - (cursor - 1);
-      if (remaining > 0.001) {
-        scoreNotes.push(...fillRests(m, cursor, remaining));
+      if (!assigned) {
+        voiceBuckets.push({
+          notes: [qn],
+          endBeat: qn.startBeat + qn.durBeats,
+        });
       }
     }
 
-    const voice: Voice = {
-      id: voiceId,
-      role: clef === "bass" ? "bass" : "melody",
-      notes: scoreNotes,
-    };
+    // Filter out voice buckets with very few notes (likely artifacts)
+    const MIN_VOICE_NOTES = 10;
+    const filteredBuckets = voiceBuckets.filter(
+      (b, i) => i === 0 || b.notes.length >= MIN_VOICE_NOTES
+    );
 
-    staves.push({
-      id: staffId,
-      name: trackName,
-      clef,
-      lyricsMode: "none",
-      voices: [voice],
-    });
+    // Step 3: Create a staff per voice (if polyphonic) or single staff
+    const isPolyphonic = filteredBuckets.length > 1;
+
+    for (let vi = 0; vi < filteredBuckets.length; vi++) {
+      const bucket = filteredBuckets[vi];
+      const staffId = uuidv4();
+      const voiceId = uuidv4();
+
+      const voiceMidi = bucket.notes.map((n) => n.midi);
+      const clef = detectClef(voiceMidi);
+
+      let staffName: string;
+      if (!isPolyphonic) {
+        staffName = trackBaseName;
+      } else if (vi === 0) {
+        staffName = `${trackBaseName} - Lead`;
+      } else {
+        staffName = `${trackBaseName} - Harmony ${vi}`;
+      }
+
+      // Build notes for this voice, filling gaps with rests
+      const scoreNotes: Note[] = [];
+
+      for (let m = 1; m <= totalMeasures; m++) {
+        const measureNotes = bucket.notes
+          .filter((n) => n.measure === m)
+          .sort((a, b) => a.beat - b.beat);
+
+        if (measureNotes.length === 0) {
+          scoreNotes.push(...fillRests(m, 1, beatsPerMeasure));
+          continue;
+        }
+
+        let cursor = 1;
+        for (const qn of measureNotes) {
+          const gap = qn.beat - cursor;
+          if (gap > 0.001) {
+            scoreNotes.push(...fillRests(m, cursor, gap));
+            cursor += gap;
+          }
+          if (qn.beat < cursor - 0.001) continue;
+
+          const snapped = snapDuration(qn.durBeats);
+          scoreNotes.push({
+            pitch: qn.pitch,
+            duration: snapped.dur,
+            dots: snapped.dots,
+            accidental: "none",
+            tieStart: false,
+            tieEnd: false,
+            measure: m,
+            beat: Math.round(cursor * 1000) / 1000,
+          });
+          cursor += snapped.beats;
+        }
+
+        const remaining = beatsPerMeasure - (cursor - 1);
+        if (remaining > 0.001) {
+          scoreNotes.push(...fillRests(m, cursor, remaining));
+        }
+      }
+
+      const voice: Voice = {
+        id: voiceId,
+        role: vi === 0 ? "melody" : "harmony",
+        notes: scoreNotes,
+      };
+
+      staves.push({
+        id: staffId,
+        name: staffName,
+        clef,
+        lyricsMode: "none",
+        voices: [voice],
+      });
+    }
   }
 
   const title = midi.header.name || "Imported MIDI";

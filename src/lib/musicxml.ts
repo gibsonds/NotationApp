@@ -19,11 +19,13 @@ const KEY_FIFTHS: Record<string, number> = {
 };
 
 const DURATION_DIVISIONS: Record<string, number> = {
-  whole: 16,
-  half: 8,
-  quarter: 4,
-  eighth: 2,
-  sixteenth: 1,
+  whole: 64,
+  half: 32,
+  quarter: 16,
+  eighth: 8,
+  sixteenth: 4,
+  "thirty-second": 2,
+  "sixty-fourth": 1,
 };
 
 const DURATION_TYPE: Record<string, string> = {
@@ -32,6 +34,8 @@ const DURATION_TYPE: Record<string, string> = {
   quarter: "quarter",
   eighth: "eighth",
   sixteenth: "16th",
+  "thirty-second": "32nd",
+  "sixty-fourth": "64th",
 };
 
 // ── Clef mapping ───────────────────────────────────────────────────────────
@@ -169,7 +173,7 @@ function parseChordSymbol(symbol: string): {
 
 export function scoreToMusicXML(score: Score): string {
   const lines: string[] = [];
-  const divisions = 4; // quarter note = 4 divisions
+  const divisions = 16; // quarter note = 16 divisions (supports 64th notes)
 
   lines.push('<?xml version="1.0" encoding="UTF-8"?>');
   lines.push(
@@ -213,7 +217,7 @@ export function scoreToMusicXML(score: Score): string {
   const chordLookup = buildChordLookup(score.chordSymbols);
 
   // Measure duration in divisions
-  const measureDivisions = beats * (16 / beatType);
+  const measureDivisions = beats * (64 / beatType);
 
   // Parts
   for (let si = 0; si < score.staves.length; si++) {
@@ -321,17 +325,17 @@ export function scoreToMusicXML(score: Score): string {
 
           if (vIdx > 0) {
             // <backup> rewinds the cursor to the start of the measure
-            const mDur = beats * (16 / beatType);
+            const mDur = beats * (64 / beatType);
             lines.push("      <backup>");
             lines.push(`        <duration>${mDur}</duration>`);
             lines.push("      </backup>");
           }
 
           if (vNotes && vNotes.length > 0) {
-            emitVoiceNotes(lines, vNotes, voiceNum, staff.lyricsMode);
+            emitVoiceNotes(lines, vNotes, voiceNum, staff.lyricsMode, beats);
           } else {
             // Voice has no notes in this measure — write a whole-measure rest
-            const wholeDur = beats * (16 / beatType);
+            const wholeDur = beats * (64 / beatType);
             lines.push("      <note>");
             lines.push('        <rest measure="yes"/>');
             lines.push(`        <duration>${wholeDur}</duration>`);
@@ -343,10 +347,10 @@ export function scoreToMusicXML(score: Score): string {
         // Single voice: original path (no <voice> tags needed for compatibility)
         const notes = notesByMeasure[m];
         if (notes && notes.length > 0) {
-          emitVoiceNotes(lines, notes, undefined, staff.lyricsMode);
+          emitVoiceNotes(lines, notes, undefined, staff.lyricsMode, beats);
         } else {
           // Empty measure — write a whole rest
-          const wholeDur = beats * (16 / beatType);
+          const wholeDur = beats * (64 / beatType);
           lines.push("      <note>");
           lines.push('        <rest measure="yes"/>');
           lines.push(`        <duration>${wholeDur}</duration>`);
@@ -370,7 +374,8 @@ function emitVoiceNotes(
   lines: string[],
   notes: Note[],
   voiceNum: number | undefined,
-  lyricsMode: string
+  lyricsMode: string,
+  beatsPerMeasure: number = 4,
 ) {
   // Sort by beat; within same beat, lyric-bearing note first, then by pitch
   notes.sort((a, b) => {
@@ -382,7 +387,7 @@ function emitVoiceNotes(
   });
 
   // Pre-compute beam groups
-  const beamable = new Set(["eighth", "sixteenth"]);
+  const beamable = new Set(["eighth", "sixteenth", "thirty-second", "sixty-fourth"]);
   type BeamInfo = { start: number; end: number };
   const beamGroups: BeamInfo[] = [];
   let beamStart = -1;
@@ -441,12 +446,19 @@ function emitVoiceNotes(
     }
   }
 
+  // Track position and fill gaps with rests to ensure measure totals are correct
+  let currentBeat = 1; // 1-indexed beat position
   let prevBeat = -1;
   for (let ni = 0; ni < notes.length; ni++) {
     const note = notes[ni];
     const parsed = parsePitch(note.pitch);
     const dur = DURATION_DIVISIONS[note.duration] ?? 4;
     const isChordNote = Math.abs(note.beat - prevBeat) < 0.01 && note.pitch !== "rest";
+
+    // Fill gap before this note with rests (skip for chord notes)
+    if (!isChordNote && note.beat > currentBeat + 0.01) {
+      emitGapRests(lines, currentBeat, note.beat, voiceNum);
+    }
 
     lines.push("      <note>");
     if (isChordNote) lines.push("        <chord/>");
@@ -467,6 +479,15 @@ function emitVoiceNotes(
     if (note.dots > 0) {
       for (let d = 0; d < note.dots; d++) lines.push("        <dot/>");
     }
+
+    // Tuplet time-modification
+    if (note.tuplet) {
+      lines.push("        <time-modification>");
+      lines.push(`          <actual-notes>${note.tuplet.actualNotes}</actual-notes>`);
+      lines.push(`          <normal-notes>${note.tuplet.normalNotes}</normal-notes>`);
+      lines.push("        </time-modification>");
+    }
+
     if (note.tieStart) lines.push('        <tie type="start"/>');
     if (note.tieEnd) lines.push('        <tie type="stop"/>');
 
@@ -478,10 +499,14 @@ function emitVoiceNotes(
     const hasArticulations = note.articulations && note.articulations.length > 0;
     const hasFermata = note.articulations?.includes("fermata");
     const nonFermataArticulations = note.articulations?.filter((a: Articulation) => a !== "fermata") ?? [];
-    if (note.tieStart || note.tieEnd || hasArticulations) {
+    const hasTupletStart = note.tuplet && isTupletStart(notes, ni);
+    const hasTupletStop = note.tuplet && isTupletEnd(notes, ni);
+    if (note.tieStart || note.tieEnd || hasArticulations || hasTupletStart || hasTupletStop) {
       lines.push("        <notations>");
       if (note.tieEnd) lines.push('          <tied type="stop"/>');
       if (note.tieStart) lines.push('          <tied type="start"/>');
+      if (hasTupletStart) lines.push('          <tuplet type="start"/>');
+      if (hasTupletStop) lines.push('          <tuplet type="stop"/>');
       if (nonFermataArticulations.length > 0) {
         lines.push("          <articulations>");
         for (const art of nonFermataArticulations) lines.push(`            <${art}/>`);
@@ -499,7 +524,54 @@ function emitVoiceNotes(
     }
 
     lines.push("      </note>");
+
+    // Advance currentBeat past this note (skip for chord notes — they don't advance time)
+    if (!isChordNote) {
+      let noteDurBeats = (DURATION_DIVISIONS[note.duration] ?? 16) / 16; // divisions to beats
+      if (note.dots > 0) noteDurBeats *= 1.5;
+      if (note.tuplet) noteDurBeats *= note.tuplet.normalNotes / note.tuplet.actualNotes;
+      currentBeat = note.beat + noteDurBeats;
+    }
     prevBeat = note.beat;
+  }
+
+  // Fill trailing gap to end of measure with rests
+  const measureEnd = 1 + beatsPerMeasure;
+  if (currentBeat < measureEnd - 0.01) {
+    emitGapRests(lines, currentBeat, measureEnd, voiceNum);
+  }
+}
+
+/**
+ * Emit rests to fill a gap from `fromBeat` to `toBeat`.
+ * Uses the largest fitting durations to minimize rest count.
+ */
+function emitGapRests(lines: string[], fromBeat: number, toBeat: number, voiceNum: number | undefined) {
+  const GAP_DURS: { beats: number; dur: string; type: string }[] = [
+    { beats: 4, dur: "64", type: "whole" },
+    { beats: 2, dur: "32", type: "half" },
+    { beats: 1, dur: "16", type: "quarter" },
+    { beats: 0.5, dur: "8", type: "eighth" },
+    { beats: 0.25, dur: "4", type: "16th" },
+    { beats: 0.125, dur: "2", type: "32nd" },
+    { beats: 0.0625, dur: "1", type: "64th" },
+  ];
+
+  let pos = fromBeat;
+  while (pos < toBeat - 0.001) {
+    const gap = toBeat - pos;
+    // Find largest duration that fits
+    let chosen = GAP_DURS[GAP_DURS.length - 1];
+    for (const d of GAP_DURS) {
+      if (d.beats <= gap + 0.001) { chosen = d; break; }
+    }
+    lines.push("      <note>");
+    lines.push("        <rest/>");
+    lines.push(`        <duration>${chosen.dur}</duration>`);
+    if (voiceNum !== undefined) lines.push(`        <voice>${voiceNum}</voice>`);
+    lines.push(`        <type>${chosen.type}</type>`);
+    lines.push("      </note>");
+    pos += chosen.beats;
   }
 }
 
@@ -520,6 +592,37 @@ function isLastRhythmicInBeat(notes: Note[], ni: number, beamable: Set<string>):
     const nextBeamGroup = Math.floor((notes[k].beat - 1) / 2);
     if (nextBeamGroup !== beamGroup) return true;
     return false;
+  }
+  return true;
+}
+
+/** Is this note the first in a tuplet group? */
+function isTupletStart(notes: Note[], ni: number): boolean {
+  if (!notes[ni].tuplet) return false;
+  if (ni === 0) return true;
+  // Previous non-chord note doesn't have the same tuplet
+  for (let k = ni - 1; k >= 0; k--) {
+    if (Math.abs(notes[k].beat - notes[ni].beat) < 0.01) continue; // chord
+    const kTup = notes[k].tuplet;
+    const niTup = notes[ni].tuplet!;
+    return !kTup ||
+      kTup.actualNotes !== niTup.actualNotes ||
+      kTup.normalNotes !== niTup.normalNotes;
+  }
+  return true;
+}
+
+/** Is this note the last in a tuplet group? */
+function isTupletEnd(notes: Note[], ni: number): boolean {
+  if (!notes[ni].tuplet) return false;
+  if (ni === notes.length - 1) return true;
+  for (let k = ni + 1; k < notes.length; k++) {
+    if (Math.abs(notes[k].beat - notes[ni].beat) < 0.01) continue; // chord
+    const kTup = notes[k].tuplet;
+    const niTup = notes[ni].tuplet!;
+    return !kTup ||
+      kTup.actualNotes !== niTup.actualNotes ||
+      kTup.normalNotes !== niTup.normalNotes;
   }
   return true;
 }

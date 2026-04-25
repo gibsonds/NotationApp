@@ -243,42 +243,42 @@ export default function PromptPanel() {
     : null;
 
   return (
-    <div className="flex flex-col h-full bg-gray-50 border-r border-gray-200">
+    <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-gray-200 bg-white">
-        <h2 className="font-semibold text-gray-800 text-sm">Prompt</h2>
-        <p className="text-xs text-gray-500 mt-0.5">
-          Describe the music you want to create
+      <div className="px-4 py-3 border-b border-white/10">
+        <h2 className="font-semibold text-gray-100 text-sm tracking-wide">AI Assistant</h2>
+        <p className="text-[10px] text-gray-500 mt-0.5">
+          Describe the music you want to create or edit
         </p>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      <div className="flex-1 overflow-y-auto p-3 space-y-2.5">
         {messages.length === 0 && (
-          <div className="text-center text-gray-400 text-sm mt-8 space-y-3">
-            <p className="text-lg">&#9833;</p>
-            <p>Describe a score to get started</p>
-            <div className="space-y-1.5 text-xs text-gray-400">
-              <p>&quot;4/4 time, key of G, lead sheet with chord symbols&quot;</p>
-              <p>&quot;SATB hymn in D major, 8 measures&quot;</p>
-              <p>&quot;12-bar blues in F with walking bass&quot;</p>
+          <div className="text-center text-gray-500 text-xs mt-8 space-y-3">
+            <p className="text-2xl opacity-40">&#9833;</p>
+            <p className="text-gray-400">Describe a score to get started</p>
+            <div className="space-y-1.5 text-[11px] text-gray-600">
+              <p className="bg-white/5 rounded-lg px-3 py-1.5 cursor-default hover:bg-white/10 transition-colors">&quot;4/4 time, key of G, lead sheet with chord symbols&quot;</p>
+              <p className="bg-white/5 rounded-lg px-3 py-1.5 cursor-default hover:bg-white/10 transition-colors">&quot;SATB hymn in D major, 8 measures&quot;</p>
+              <p className="bg-white/5 rounded-lg px-3 py-1.5 cursor-default hover:bg-white/10 transition-colors">&quot;12-bar blues in F with walking bass&quot;</p>
             </div>
           </div>
         )}
         {messages.map((msg) => (
           <div
             key={msg.id}
-            className={`text-sm rounded-lg px-3 py-2 ${
+            className={`text-[13px] rounded-xl px-3 py-2 leading-relaxed ${
               msg.role === "user"
-                ? "bg-blue-600 text-white ml-4"
-                : "bg-white text-gray-800 border border-gray-200 mr-4"
+                ? "bg-blue-600 text-white ml-6"
+                : "bg-white/10 text-gray-200 mr-4"
             }`}
           >
             {msg.content}
           </div>
         ))}
         {isGenerating && (
-          <div className="bg-white text-gray-500 border border-gray-200 rounded-lg px-3 py-2 text-sm mr-4">
+          <div className="bg-white/10 text-gray-400 rounded-xl px-3 py-2 text-sm mr-4">
             <span className="inline-flex gap-1">
               <span className="animate-bounce">.</span>
               <span className="animate-bounce" style={{ animationDelay: "0.1s" }}>.</span>
@@ -291,11 +291,11 @@ export default function PromptPanel() {
 
       {/* Replay button */}
       {lastOperation && score && (
-        <div className="px-3 py-2 border-t border-gray-100">
+        <div className="px-3 py-2 border-t border-white/5">
           <button
             onClick={replayLastOperation}
             disabled={isGenerating}
-            className="w-full px-3 py-1.5 text-xs font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-lg disabled:opacity-50 transition-colors text-left"
+            className="w-full px-3 py-1.5 text-[11px] font-medium text-purple-300 bg-purple-500/15 hover:bg-purple-500/25 rounded-lg disabled:opacity-50 transition-colors text-left"
           >
             &#x21bb; Replay &quot;{lastOperation.prompt.slice(0, 40)}
             {lastOperation.prompt.length > 40 ? "..." : ""}&quot;
@@ -306,15 +306,15 @@ export default function PromptPanel() {
 
       {/* Selection indicator */}
       {selectionLabel && (
-        <div className="px-3 py-1 bg-blue-50 border-t border-blue-100 text-xs text-blue-600">
+        <div className="px-3 py-1.5 bg-blue-500/10 border-t border-blue-500/20 text-[11px] text-blue-300">
           Selection: {selectionLabel}
           {selection?.staffIds && ` (${selection.staffIds.length} staves)`}
-          {" "}&mdash; edits will apply to selection only
+          {" "}&mdash; edits apply to selection
         </div>
       )}
 
       {/* Input */}
-      <form onSubmit={handleSubmit} className="p-3 border-t border-gray-200 bg-white">
+      <form onSubmit={handleSubmit} className="p-3 border-t border-white/10">
         <div className="flex gap-2">
           <input
             type="text"
@@ -328,12 +328,12 @@ export default function PromptPanel() {
                 : "Describe the score you want..."
             }
             disabled={isGenerating}
-            className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 text-gray-800 placeholder-gray-400"
+            className="flex-1 px-3 py-2 text-sm bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/30 disabled:opacity-50 text-gray-200 placeholder-gray-600"
           />
           <button
             type="submit"
             disabled={isGenerating || !input.trim()}
-            className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-xl hover:bg-blue-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
           >
             {isGenerating ? "..." : "Send"}
           </button>

@@ -82,8 +82,11 @@ Available patch operations:
 - { "op": "add_staff", "staff": { full staff object } }
 - { "op": "remove_staff", "staffId": string }
 - { "op": "set_notes", "staffId": string, "voiceId": string, "notes": [...note objects] }  (MERGES by measure — only measures present in notes array are replaced; other measures are preserved)
+- { "op": "update_note", "staffId": string, "voiceId": string, "measure": number, "beat": number, "pitch": string, "updates": { ...fields to change } }  (modifies a single existing note in place — use for ties, accidentals, dots, articulations, lyrics, beam overrides)
 - { "op": "set_chord_symbols", "chordSymbols": [...] }
 - { "op": "replace_score", "score": { full score intent object } }
+
+TIES: To add a tie between two notes of the same pitch, use "update_note" to set "tieStart": true on the first note and "tieEnd": true on the second note. NEVER use "set_notes" just to add ties — "set_notes" replaces ALL notes in that measure, which will delete other notes. Always use "update_note" for modifying properties of existing notes (ties, accidentals, dots, articulations, lyrics).
 
 BEAMING: By default, consecutive eighth/sixteenth notes are automatically beamed within beat groups. Use the "beam" field on notes to override: "begin" starts a beam group, "continue" extends it, "end" closes it, "none" prevents beaming on that note. Example: to beam two eighth notes on beats 3 and 4, set beam:"begin" on the first and beam:"end" on the second.
 

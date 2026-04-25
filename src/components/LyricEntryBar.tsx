@@ -212,7 +212,7 @@ export default function LyricEntryBar({ staffId, voiceId, startMeasure, startBea
   if (!score) return null;
 
   return (
-    <div className="print-hide flex items-center gap-3 px-4 py-2 bg-pink-900 text-white text-xs border-t border-pink-700">
+    <div className="print-hide flex items-center gap-3 px-4 py-2 bg-[#1a1a2e] text-white text-xs border-t border-pink-500/30">
       <span className="text-pink-300 font-bold text-sm">LYRIC</span>
 
       {currentNote ? (
@@ -231,7 +231,7 @@ export default function LyricEntryBar({ staffId, voiceId, startMeasure, startBea
         onChange={handleChange}
         onKeyDown={handleKeyDown}
         placeholder="Type lyric, Space=next, hyphen=syllable, arrows=navigate, Esc=done"
-        className="flex-1 px-2 py-1 text-sm bg-pink-800 text-white border border-pink-600 rounded focus:outline-none focus:border-pink-400 placeholder-pink-500"
+        className="flex-1 px-2 py-1 text-sm bg-white/5 text-white border border-pink-500/30 rounded-lg focus:outline-none focus:border-pink-400 placeholder-pink-500/50"
         autoFocus
       />
 
@@ -253,7 +253,7 @@ export default function LyricEntryBar({ staffId, voiceId, startMeasure, startBea
 
       <button
         onClick={() => { commitLyric(text.trim(), false); onClose(); }}
-        className="px-2 py-0.5 text-[10px] bg-pink-700 hover:bg-pink-600 rounded"
+        className="px-2 py-0.5 text-[10px] bg-pink-600/30 hover:bg-pink-600/50 rounded-lg text-pink-300 transition-colors"
       >
         Done (Esc)
       </button>

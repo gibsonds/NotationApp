@@ -10,6 +10,7 @@ interface NoteContextMenuProps {
   note: { measure: number; beat: number; pitch: string; staffIndex: number };
   onClose: () => void;
   onLyricEdit: () => void;
+  onAIEdit?: (note: { measure: number; beat: number; pitch: string; staffIndex: number }, position: { x: number; y: number }) => void;
 }
 
 const DURATIONS: { label: string; value: NoteDuration }[] = [
@@ -20,7 +21,7 @@ const DURATIONS: { label: string; value: NoteDuration }[] = [
   { label: "16th", value: "sixteenth" },
 ];
 
-export default function NoteContextMenu({ x, y, note, onClose, onLyricEdit }: NoteContextMenuProps) {
+export default function NoteContextMenu({ x, y, note, onClose, onLyricEdit, onAIEdit }: NoteContextMenuProps) {
   const { score, applyPatches } = useScoreStore();
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -250,6 +251,18 @@ export default function NoteContextMenu({ x, y, note, onClose, onLyricEdit }: No
           <span className="text-gray-400 text-xs">L</span>
         </button>
       </div>
+
+      {/* Edit with AI */}
+      {onAIEdit && (
+        <div className="border-t border-gray-100">
+          <button
+            onClick={() => { onClose(); onAIEdit(note, { x, y }); }}
+            className="w-full text-left px-3 py-1.5 hover:bg-purple-50 text-purple-700 flex justify-between"
+          >
+            <span>Edit with AI...</span>
+          </button>
+        </div>
+      )}
 
       {/* Delete */}
       <div className="border-t border-gray-100">

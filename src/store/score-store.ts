@@ -24,7 +24,7 @@ export interface RecordedOperation {
 }
 
 export type MusicFont = "bravura" | "petaluma" | "gonville";
-export type TextFont = "georgia" | "palatino" | "garamond" | "times" | "helvetica" | "noto";
+export type TextFont = "georgia" | "palatino" | "garamond" | "times" | "helvetica" | "noto" | "handwritten";
 export type PageSize = "letter" | "a4";
 
 export const PAGE_DIMENSIONS: Record<PageSize, { width: number; height: number; label: string }> = {
@@ -39,6 +39,7 @@ export const TEXT_FONT_STACKS: Record<TextFont, string> = {
   times: "'Times New Roman', Times, serif",
   helvetica: "Helvetica, Arial, 'Helvetica Neue', sans-serif",
   noto: "'Noto Serif', Georgia, serif",
+  handwritten: "'Marker Felt', 'Comic Neue', 'Caveat', 'Bradley Hand', cursive",
 };
 
 export interface LayoutSettings {
@@ -104,6 +105,48 @@ export const PRINT_LAYOUT: LayoutSettings = {
   printFooter: "",
 };
 
+/** Real Book style — handwritten feel, compact, like classic jazz fake books */
+export const REALBOOK_LAYOUT: LayoutSettings = {
+  titleSize: 3.2,
+  composerSize: 1.0,
+  titleTopDistance: 3,
+  titleBottomDistance: 0.5,
+  pageTopMargin: 3,
+  pageLeftMargin: 4,
+  pageRightMargin: 4,
+  systemSpacing: 3,
+  compactMode: true,
+  measuresPerSystem: 4,
+  pageBreaks: false,
+  pageSize: "letter",
+  noteSize: 1.0,
+  musicFont: "petaluma",
+  textFont: "handwritten",
+  printPageNumbers: false,
+  printHeader: "",
+  printFooter: "",
+};
+
+export type StylePreset = "modern" | "realbook" | "print";
+
+export const STYLE_PRESETS: Record<StylePreset, { label: string; layout: LayoutSettings }> = {
+  modern: { label: "Modern", layout: DEFAULT_LAYOUT },
+  realbook: { label: "Real Book", layout: REALBOOK_LAYOUT },
+  print: { label: "Print", layout: PRINT_LAYOUT },
+};
+
+export interface UIState {
+  sidebarOpen: boolean;
+  aiDrawerOpen: boolean;
+  propsDrawerOpen: boolean;
+}
+
+export const DEFAULT_UI_STATE: UIState = {
+  sidebarOpen: true,
+  aiDrawerOpen: true,
+  propsDrawerOpen: false,
+};
+
 export interface SavedRevision {
   id: string;
   name: string;
@@ -159,6 +202,8 @@ export interface ProjectState {
   stepEntry: StepEntryState | null;
   // Clipboard for copy/paste (not persisted)
   clipboard: ClipboardData | null;
+  // UI state (persisted)
+  uiState: UIState;
   // Actions
   setScore: (score: Score) => void;
   applyPatches: (patches: ScorePatch[]) => void;
@@ -179,6 +224,7 @@ export interface ProjectState {
   stepBack: (beats: number) => void;
   copySelection: () => string | null;
   pasteAtSelection: () => string | null;
+  setUIState: (partial: Partial<UIState>) => void;
   reset: () => void;
 }
 
@@ -200,6 +246,7 @@ export const useScoreStore = create<ProjectState>()(
   layout: DEFAULT_LAYOUT,
   stepEntry: null,
   clipboard: null,
+  uiState: DEFAULT_UI_STATE,
 
   setScore: (score) => {
     const state = get();
@@ -310,6 +357,10 @@ export const useScoreStore = create<ProjectState>()(
 
   setLayout: (partial) => {
     set((s) => ({ layout: { ...s.layout, ...partial } }));
+  },
+
+  setUIState: (partial) => {
+    set((s) => ({ uiState: { ...s.uiState, ...partial } }));
   },
 
   setStepEntry: (entry) => set({ stepEntry: entry }),
@@ -490,12 +541,13 @@ export const useScoreStore = create<ProjectState>()(
       lastOperation: null,
       savedRevisions: [],
       layout: DEFAULT_LAYOUT,
+      uiState: DEFAULT_UI_STATE,
       stepEntry: null,
     }),
     }),
     {
       name: "notation-app-store",
-      version: 9,
+      version: 10,
       migrate: (persisted: any, version: number) => {
         if (version < 2) {
           persisted = { ...persisted, savedRevisions: persisted.savedRevisions ?? [] };
@@ -542,6 +594,12 @@ export const useScoreStore = create<ProjectState>()(
             stepEntry: null,
           };
         }
+        if (version < 10) {
+          persisted = {
+            ...persisted,
+            uiState: persisted.uiState ?? DEFAULT_UI_STATE,
+          };
+        }
         return persisted as ProjectState;
       },
       partialize: (state) => ({
@@ -555,6 +613,7 @@ export const useScoreStore = create<ProjectState>()(
         lastOperation: state.lastOperation,
         savedRevisions: state.savedRevisions,
         layout: state.layout,
+        uiState: state.uiState,
         // warnings intentionally excluded — they're transient validation results
       }),
       storage: {

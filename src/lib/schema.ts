@@ -11,6 +11,8 @@ export const NoteDuration = z.enum([
   "quarter",
   "eighth",
   "sixteenth",
+  "thirty-second",
+  "sixty-fourth",
 ]);
 export type NoteDuration = z.infer<typeof NoteDuration>;
 
@@ -83,6 +85,10 @@ export const NoteSchema = z.object({
   dynamic: DynamicMarking.optional(),
   articulations: z.array(Articulation).optional(),
   beam: BeamState.optional().describe('Override auto-beaming: begin/continue/end a beam group, or "none" to prevent beaming'),
+  tuplet: z.object({
+    actualNotes: z.number().int().min(2),
+    normalNotes: z.number().int().min(1),
+  }).optional().describe('Tuplet grouping, e.g. {actualNotes:3, normalNotes:2} for triplet'),
   measure: z.number().int().min(1),
   beat: z.number().min(1),
 });
@@ -238,6 +244,38 @@ export const ScorePatchSchema = z.discriminatedUnion("op", [
     staffId: z.string(),
     voiceId: z.string(),
     notes: z.array(NoteSchema),
+  }),
+  z.object({
+    op: z.literal("add_notes"),
+    staffId: z.string(),
+    voiceId: z.string(),
+    notes: z.array(NoteSchema),
+  }),
+  z.object({
+    op: z.literal("update_note"),
+    staffId: z.string(),
+    voiceId: z.string(),
+    measure: z.number().int().min(1),
+    beat: z.number().min(1),
+    pitch: z.string(),
+    updates: z.object({
+      tieStart: z.boolean().optional(),
+      tieEnd: z.boolean().optional(),
+      dots: z.number().int().min(0).max(2).optional(),
+      accidental: z.enum(["sharp", "flat", "natural", "none"]).optional(),
+      duration: NoteDuration.optional(),
+      lyric: z.string().optional(),
+      articulations: z.array(Articulation).optional(),
+      beam: BeamState.optional(),
+    }),
+  }),
+  z.object({
+    op: z.literal("remove_note"),
+    staffId: z.string(),
+    voiceId: z.string(),
+    measure: z.number().int().min(1),
+    beat: z.number().min(1),
+    pitch: z.string(),
   }),
   z.object({
     op: z.literal("set_chord_symbols"),

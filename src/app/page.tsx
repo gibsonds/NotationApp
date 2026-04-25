@@ -6,10 +6,12 @@ import { useScoreStore } from "@/store/score-store";
 import { playScore, stopPlayback, isPlaying } from "@/lib/playback";
 import PromptPanel from "@/components/PromptPanel";
 import PropertiesPanel from "@/components/PropertiesPanel";
-import Toolbar from "@/components/Toolbar";
-import SelectionBar from "@/components/SelectionBar";
+import MenuBar from "@/components/MenuBar";
+import MidiKeyboard from "@/components/MidiKeyboard";
 import LyricEntryBar from "@/components/LyricEntryBar";
 import NoteContextMenu from "@/components/NoteContextMenu";
+import CommandPalette, { PaletteCommand } from "@/components/CommandPalette";
+import InlineAIPrompt from "@/components/InlineAIPrompt";
 
 // Dynamic import to prevent SSR for OSMD (uses browser APIs)
 const ScoreRenderer = dynamic(() => import("@/components/ScoreRenderer"), {
@@ -43,6 +45,14 @@ export default function Home() {
   const [lyricMode, setLyricMode] = useState(false);
   const [lyricJumpKey, setLyricJumpKey] = useState(0);
   const [lyricHighlight, setLyricHighlight] = useState<{ measure: number; beat: number; staffIndex: number } | null>(null);
+  const uiState = useScoreStore((s) => s.uiState);
+  const setUIState = useScoreStore((s) => s.setUIState);
+  const leftPanelOpen = uiState.sidebarOpen;
+  const setLeftPanelOpen = useCallback((v: boolean | ((prev: boolean) => boolean)) => {
+    setUIState({ sidebarOpen: typeof v === "function" ? v(uiState.sidebarOpen) : v });
+  }, [setUIState, uiState.sidebarOpen]);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [inlineAI, setInlineAI] = useState<{ note: { measure: number; beat: number; pitch: string; staffIndex: number }; position: { x: number; y: number } } | null>(null);
   const printFnRef = useRef<(() => Promise<void>) | null>(null);
   const handlePrint = useCallback(() => { printFnRef.current?.(); }, []);
 
@@ -56,7 +66,7 @@ export default function Home() {
   // Handle score click — now receives precise pitch when a note was clicked
   const handleScoreClick = useCallback((info: {
     measure: number; beat: number; staffIndex: number;
-    pitch?: string; shiftKey?: boolean;
+    pitch?: string; shiftKey?: boolean; metaKey?: boolean; ctrlKey?: boolean;
     isRightClick?: boolean; clientX?: number; clientY?: number;
   }) => {
     if (!score) return;
@@ -83,27 +93,36 @@ export default function Home() {
 
     // Shift+click: extend selection range
     if (info.shiftKey) {
-      const anchor = selectedNote
-        ? { measure: selectedNote.measure, beat: selectedNote.beat }
-        : stepEntry
-          ? { measure: stepEntry.measure, beat: stepEntry.beat }
-          : { measure: info.measure, beat: info.beat };
+      if (info.pitch) {
+        // Shift+click on a note — beat-level range selection
+        const anchor = selectedNote
+          ? { measure: selectedNote.measure, beat: selectedNote.beat }
+          : stepEntry
+            ? { measure: stepEntry.measure, beat: stepEntry.beat }
+            : { measure: info.measure, beat: info.beat };
 
-      const startM = Math.min(anchor.measure, info.measure);
-      const endM = Math.max(anchor.measure, info.measure);
-      const startB = anchor.measure < info.measure ? anchor.beat
-        : anchor.measure > info.measure ? info.beat
-        : Math.min(anchor.beat, info.beat);
-      const endB = anchor.measure < info.measure ? info.beat
-        : anchor.measure > info.measure ? anchor.beat
-        : Math.max(anchor.beat, info.beat);
+        const startM = Math.min(anchor.measure, info.measure);
+        const endM = Math.max(anchor.measure, info.measure);
+        const startB = anchor.measure < info.measure ? anchor.beat
+          : anchor.measure > info.measure ? info.beat
+          : Math.min(anchor.beat, info.beat);
+        const endB = anchor.measure < info.measure ? info.beat
+          : anchor.measure > info.measure ? anchor.beat
+          : Math.max(anchor.beat, info.beat);
 
-      setSelection({
-        startMeasure: startM,
-        endMeasure: endM,
-        startBeat: Math.round(startB * 100) / 100,
-        endBeat: Math.round(endB * 100) / 100,
-      });
+        setSelection({
+          startMeasure: startM,
+          endMeasure: endM,
+          startBeat: Math.round(startB * 100) / 100,
+          endBeat: Math.round(endB * 100) / 100,
+        });
+      } else {
+        // Shift+click on empty space — measure-level range selection
+        const anchorM = selection?.startMeasure ?? stepEntry?.measure ?? info.measure;
+        const start = Math.min(anchorM, info.measure);
+        const end = Math.max(anchorM, info.measure);
+        setSelection({ startMeasure: start, endMeasure: end, staffIds: selection?.staffIds });
+      }
       return;
     }
 
@@ -116,9 +135,33 @@ export default function Home() {
       return;
     }
 
-    // Normal click on empty space — move cursor, deselect
+    // Normal click on empty space — select the measure (for LLM/range operations)
     setSelectedNote(null);
-    setSelection(null);
+    if (info.metaKey || info.ctrlKey) {
+      // Cmd/Ctrl+click on empty space: toggle staff in/out of selection
+      if (selection) {
+        const allStaffIds = score.staves.map(s => s.id);
+        const current = selection.staffIds || allStaffIds;
+        const clickedStaffId = staff.id;
+        const updated = current.includes(clickedStaffId)
+          ? current.filter(id => id !== clickedStaffId)
+          : [...current, clickedStaffId];
+        if (updated.length === 0) {
+          setSelection(null);
+        } else {
+          setSelection({
+            ...selection,
+            staffIds: updated.length === allStaffIds.length ? undefined : updated,
+          });
+        }
+      }
+    } else {
+      // Plain click on empty space: select just this measure
+      setSelection({
+        startMeasure: info.measure,
+        endMeasure: info.measure,
+      });
+    }
     setStepEntry({
       active: true,
       staffId: staff.id,
@@ -126,7 +169,7 @@ export default function Home() {
       measure: info.measure,
       beat: Math.max(1, info.beat),
     });
-  }, [stepEntry, score, setStepEntry, selectedNote, setSelection, lyricMode]);
+  }, [stepEntry, score, setStepEntry, selectedNote, selection, setSelection, lyricMode]);
 
   // Arrow keys to move cursor + Delete to remove selected note
   useEffect(() => {
@@ -143,6 +186,30 @@ export default function Home() {
       if ((e.metaKey || e.ctrlKey) && e.key === "y") {
         e.preventDefault();
         redo();
+        return;
+      }
+
+      // Command palette
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setCommandPaletteOpen(p => !p);
+        return;
+      }
+
+      // Toggle sidebar
+      if ((e.metaKey || e.ctrlKey) && e.key === "b" && !e.shiftKey) {
+        e.preventDefault();
+        setLeftPanelOpen(p => !p);
+        return;
+      }
+
+      // Select All
+      if ((e.metaKey || e.ctrlKey) && e.key === "a") {
+        e.preventDefault();
+        if (score) {
+          setSelection({ startMeasure: 1, endMeasure: score.measures });
+          setSelectedNote(null);
+        }
         return;
       }
 
@@ -249,6 +316,20 @@ export default function Home() {
         return;
       }
 
+      // Escape — clear selection
+      if (e.key === "Escape") {
+        if (selection) {
+          e.preventDefault();
+          setSelection(null);
+          return;
+        }
+        if (selectedNote) {
+          e.preventDefault();
+          setSelectedNote(null);
+          return;
+        }
+      }
+
       // Delete selected note (only when a note is explicitly selected, not during general step-entry)
       if (e.key === "Delete" && selectedNote && !e.shiftKey) {
         e.preventDefault();
@@ -266,26 +347,111 @@ export default function Home() {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [stepEntry, score, selectedNote, undo, redo, setStepEntry, applyPatches, copySelection, pasteAtSelection, addMessage, lyricMode, setLyricMode]);
+  }, [stepEntry, score, selectedNote, selection, undo, redo, setStepEntry, setSelection, applyPatches, copySelection, pasteAtSelection, addMessage, lyricMode, setLyricMode]);
+
+  // Command palette commands
+  const paletteCommands: PaletteCommand[] = useMemo(() => [
+    { id: "edit.undo", label: "Undo", category: "Edit", shortcut: "Cmd+Z", action: undo, enabled: true },
+    { id: "edit.redo", label: "Redo", category: "Edit", shortcut: "Cmd+Shift+Z", action: redo, enabled: true },
+    { id: "edit.copy", label: "Copy Selection", category: "Edit", shortcut: "Cmd+C", action: () => copySelection(), enabled: !!selection },
+    { id: "edit.paste", label: "Paste", category: "Edit", shortcut: "Cmd+V", action: () => pasteAtSelection(), enabled: !!selection },
+    { id: "edit.selectAll", label: "Select All", category: "Edit", shortcut: "Cmd+A", action: () => { if (score) setSelection({ startMeasure: 1, endMeasure: score.measures }); }, enabled: !!score },
+    { id: "edit.clearSelection", label: "Clear Selection", category: "Edit", shortcut: "Esc", action: () => setSelection(null), enabled: !!selection },
+    { id: "view.toggleSidebar", label: "Toggle Sidebar", category: "View", shortcut: "Cmd+B", action: () => setLeftPanelOpen(p => !p) },
+    { id: "view.zoomIn", label: "Zoom In", category: "View", action: () => setZoom(z => Math.min(2, z + 0.1)) },
+    { id: "view.zoomOut", label: "Zoom Out", category: "View", action: () => setZoom(z => Math.max(0.5, z - 0.1)) },
+    { id: "view.resetZoom", label: "Reset Zoom", category: "View", action: () => setZoom(1.0) },
+    { id: "tools.lyricMode", label: lyricMode ? "Exit Lyric Mode" : "Enter Lyric Mode", category: "Tools", shortcut: "L", action: () => {
+      if (lyricMode) { setLyricMode(false); setLyricHighlight(null); }
+      else if (stepEntry) {
+        applyPatches([{ op: "update_staff" as const, staffId: stepEntry.staffId, lyricsMode: "attached" as const }]);
+        setLyricMode(true);
+      }
+    }, enabled: !!stepEntry || lyricMode },
+    { id: "navigate.cursorRight", label: "Cursor Right", category: "Navigate", shortcut: "\u2192", action: () => {
+      if (!stepEntry || !score) return;
+      const [num, den] = score.timeSignature.split("/").map(Number);
+      const bpm = num * (4 / den);
+      let { measure, beat } = stepEntry;
+      beat = Math.floor(beat) + 1;
+      if (beat >= bpm + 1 - 0.001) { beat = 1; measure = Math.min(measure + 1, score.measures); }
+      setStepEntry({ ...stepEntry, measure, beat: Math.round(beat * 1000) / 1000 });
+    }, enabled: !!stepEntry },
+    { id: "navigate.cursorLeft", label: "Cursor Left", category: "Navigate", shortcut: "\u2190", action: () => {
+      if (!stepEntry || !score) return;
+      const [num, den] = score.timeSignature.split("/").map(Number);
+      const bpm = num * (4 / den);
+      let { measure, beat } = stepEntry;
+      beat = Math.ceil(beat) - 1;
+      if (beat < 1) { if (measure > 1) { measure--; beat = bpm; } else beat = 1; }
+      setStepEntry({ ...stepEntry, measure, beat: Math.round(beat * 1000) / 1000 });
+    }, enabled: !!stepEntry },
+  ], [score, selection, stepEntry, lyricMode, undo, redo, copySelection, pasteAtSelection, setSelection, setStepEntry, applyPatches]);
 
   return (
-    <div className="flex flex-col h-screen bg-gray-100 print-full">
+    <div className="flex flex-col h-screen bg-[#f8f9fa] print-full">
       <div className="print-hide">
-        <Toolbar zoom={zoom} onZoomChange={setZoom} onPrint={handlePrint} />
-        <SelectionBar />
+        <MenuBar
+          zoom={zoom}
+          onZoomChange={setZoom}
+          onPrint={handlePrint}
+          onToggleSidebar={() => setLeftPanelOpen(p => !p)}
+          sidebarOpen={leftPanelOpen}
+        />
       </div>
 
       <div className="flex flex-1 overflow-hidden print-full">
-        {/* Left: Prompt Panel */}
-        <div className="w-80 shrink-0 print-hide">
-          <PromptPanel />
+        {/* Left sidebar: AI + Properties drawers (collapsible) */}
+        <div
+          className={`shrink-0 print-hide transition-all duration-300 ease-in-out overflow-hidden ${
+            leftPanelOpen ? "w-80" : "w-0"
+          }`}
+        >
+          <div className="w-80 h-full flex flex-col bg-[#1a1a2e] text-gray-200 overflow-y-auto">
+            {/* Sidebar header with close button */}
+            <div className="flex items-center justify-between px-4 py-2 shrink-0">
+              <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">Panels</span>
+              <button
+                onClick={() => setLeftPanelOpen(false)}
+                className="p-1 rounded hover:bg-white/10 text-gray-500 hover:text-gray-300 transition-colors"
+                title="Close sidebar (Cmd+B)"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+            </div>
+            {/* AI Chat drawer */}
+            <DrawerSection title="AI Assistant" open={uiState.aiDrawerOpen} onToggle={(v) => setUIState({ aiDrawerOpen: v })} flex>
+              <PromptPanel />
+            </DrawerSection>
+
+            {/* Properties drawer */}
+            <DrawerSection title="Properties" open={uiState.propsDrawerOpen} onToggle={(v) => setUIState({ propsDrawerOpen: v })}>
+              <PropertiesPanel embedded />
+            </DrawerSection>
+          </div>
         </div>
 
+        {/* Sidebar toggle */}
+        {!leftPanelOpen && (
+          <button
+            onClick={() => setLeftPanelOpen(true)}
+            className="print-hide shrink-0 w-7 flex items-center justify-center bg-[#1a1a2e] hover:bg-[#16213e] border-r border-gray-800 text-gray-500 hover:text-gray-300 transition-colors"
+            title="Show sidebar (Cmd+B)"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+        )}
+
         {/* Center: Score View */}
-        <div className="flex-1 overflow-auto p-4 print-full">
+        <div className="flex-1 overflow-auto p-4 print-full bg-[#f8f9fa]">
           {score ? (
             <div className="score-container h-full">
               <ScoreRenderer
+                key={`${layout.musicFont}-${layout.noteSize}-${layout.textFont}`}
                 score={score}
                 zoom={zoom}
                 layout={layout}
@@ -297,25 +463,20 @@ export default function Home() {
               />
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center h-full text-gray-400 space-y-2 print-hide">
-              <div className="text-6xl opacity-30">&#119070;</div>
-              <p className="text-lg font-medium">No score yet</p>
-              <p className="text-sm">
+            <div className="flex flex-col items-center justify-center h-full text-gray-400 space-y-3 print-hide">
+              <div className="text-7xl opacity-20">&#119070;</div>
+              <p className="text-lg font-light tracking-wide">No score yet</p>
+              <p className="text-sm text-gray-400">
                 Type a description in the prompt panel to generate a score
               </p>
             </div>
           )}
         </div>
-
-        {/* Right: Properties Panel */}
-        <div className="w-72 shrink-0 print-hide">
-          <PropertiesPanel />
-        </div>
       </div>
 
       {/* Bottom status bar */}
       {score && (
-        <div className="print-hide flex items-center justify-between px-4 py-1.5 bg-gray-800 text-white text-xs font-mono border-t border-gray-700">
+        <div className="print-hide flex items-center justify-between px-4 py-1.5 bg-[#0f0f23] text-white text-xs font-mono border-t border-white/10">
           <div className="flex items-center gap-3">
             {/* Playback controls */}
             <button
@@ -432,16 +593,55 @@ export default function Home() {
 
             <span className="text-gray-600">|</span>
 
-            {/* Selection range */}
+            {/* Selection range with staff toggles */}
             {selection ? (
-              <span className="text-yellow-300 text-[10px]">
-                Sel: M{selection.startMeasure}
-                {selection.startBeat ? `:B${selection.startBeat}` : ""}
-                {(selection.endMeasure !== selection.startMeasure || (selection.endBeat && selection.endBeat !== selection.startBeat))
-                  ? ` \u2192 M${selection.endMeasure}${selection.endBeat ? `:B${selection.endBeat}` : ""}`
-                  : ""}
-                {selection.staffIds ? ` [${selection.staffIds.map(id => score.staves.find(s => s.id === id)?.name || id).join(",")}]` : ""}
-              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-blue-300 text-[10px] font-medium">
+                  m{selection.startMeasure}
+                  {selection.endMeasure !== selection.startMeasure ? `-${selection.endMeasure}` : ""}
+                  {selection.startBeat ? `:b${selection.startBeat}` : ""}
+                  {selection.endBeat && selection.endBeat !== selection.startBeat ? `-b${selection.endBeat}` : ""}
+                </span>
+                {score.staves.length > 1 && (
+                  <div className="flex items-center gap-px">
+                    {score.staves.map((staff) => {
+                      const active = !selection.staffIds || selection.staffIds.includes(staff.id);
+                      return (
+                        <button
+                          key={staff.id}
+                          onClick={() => {
+                            const allIds = score.staves.map(s => s.id);
+                            const current = selection.staffIds || allIds;
+                            const updated = active
+                              ? current.filter(id => id !== staff.id)
+                              : [...current, staff.id];
+                            if (updated.length === 0) return;
+                            setSelection({
+                              ...selection,
+                              staffIds: updated.length === allIds.length ? undefined : updated,
+                            });
+                          }}
+                          className={`px-1 py-0 text-[9px] rounded transition-colors ${
+                            active
+                              ? "bg-blue-600 text-white"
+                              : "bg-gray-700 text-gray-500"
+                          }`}
+                          title={`${active ? "Exclude" : "Include"} ${staff.name}`}
+                        >
+                          {staff.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                <button
+                  onClick={() => setSelection(null)}
+                  className="px-1 py-0 text-[9px] text-gray-400 hover:text-white transition-colors"
+                  title="Clear selection (Escape)"
+                >
+                  Clear
+                </button>
+              </div>
             ) : (
               <span className="text-gray-500 text-[10px]">No selection</span>
             )}
@@ -477,6 +677,11 @@ export default function Home() {
                 Clip: {clipboard.measureCount}m, {clipboard.staves.reduce((s, st) => s + st.voices.reduce((v, vo) => v + vo.notes.length, 0), 0)} notes
               </span>
             )}
+
+            <span className="text-gray-600">|</span>
+
+            {/* MIDI keyboard */}
+            <MidiKeyboard />
 
             <span className="text-gray-600">|</span>
 
@@ -557,7 +762,71 @@ export default function Home() {
             }]);
             setLyricMode(true);
           }}
+          onAIEdit={(n, pos) => setInlineAI({ note: n, position: pos })}
         />
+      )}
+
+      {/* Inline AI prompt (from right-click → Edit with AI) */}
+      {inlineAI && (
+        <InlineAIPrompt
+          note={inlineAI.note}
+          position={inlineAI.position}
+          onClose={() => setInlineAI(null)}
+        />
+      )}
+
+      {/* Command palette */}
+      <CommandPalette
+        commands={paletteCommands}
+        isOpen={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+      />
+    </div>
+  );
+}
+
+/** Collapsible drawer section for the sidebar.
+ * `flex` mode: when open, fills remaining vertical space (for the chat panel).
+ * Supports controlled (`open`/`onToggle`) or uncontrolled (`defaultOpen`) modes. */
+function DrawerSection({ title, open: controlledOpen, onToggle, defaultOpen = false, flex = false, children }: {
+  title: string;
+  open?: boolean;
+  onToggle?: (open: boolean) => void;
+  defaultOpen?: boolean;
+  flex?: boolean;
+  children: React.ReactNode;
+}) {
+  const [localOpen, setLocalOpen] = useState(defaultOpen);
+  const isOpen = controlledOpen !== undefined ? controlledOpen : localOpen;
+  const toggle = () => {
+    const next = !isOpen;
+    if (onToggle) onToggle(next);
+    else setLocalOpen(next);
+  };
+  return (
+    <div className={`border-t border-gray-700/50 ${flex && isOpen ? "flex-1 min-h-0 flex flex-col" : ""}`}>
+      <button
+        onClick={toggle}
+        className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-gray-400 hover:text-gray-200 hover:bg-white/5 transition-colors shrink-0"
+      >
+        <span>{title}</span>
+        <svg
+          className={`w-3 h-3 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}
+          fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {flex ? (
+        <div className={`transition-all duration-200 ease-in-out overflow-hidden ${isOpen ? "flex-1 min-h-0 flex flex-col" : "h-0"}`}>
+          {children}
+        </div>
+      ) : (
+        <div className={`transition-all duration-200 ease-in-out overflow-hidden ${isOpen ? "max-h-[5000px] opacity-100" : "max-h-0 opacity-0"}`}>
+          <div className="overflow-y-auto" style={{ maxHeight: "calc(100vh - 10rem)" }}>
+            {children}
+          </div>
+        </div>
       )}
     </div>
   );
