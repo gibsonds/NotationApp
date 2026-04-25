@@ -451,7 +451,6 @@ export default function Home() {
           {score ? (
             <div className="score-container h-full">
               <ScoreRenderer
-                key={`${layout.musicFont}-${layout.noteSize}-${layout.textFont}`}
                 score={score}
                 zoom={zoom}
                 layout={layout}

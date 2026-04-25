@@ -833,9 +833,27 @@ export default function ScoreRenderer({
 
         if (cancelled) return;
 
-        // Apply layout BEFORE load — sets VexFlowDefaultNotationFontScale
-        // so note objects are created at the correct size.
+        // Apply layout BEFORE load — sets VexFlowDefaultNotationFontScale on
+        // EngravingRules so the new graphic uses these values.
         applyLayout(osmdRef.current, currentLayout, currentZoom);
+
+        // OSMD/VexFlow note-size bug workaround.
+        // VexFlow bakes `glyph_font_scale` into each StaveNote at construction
+        // time, reading from the global `Vex.Flow.DEFAULT_NOTATION_FONT_SCALE`.
+        // OSMD only writes that global inside `drawer.drawSheet()` (i.e. during
+        // `render()`), and the StaveNotes are constructed by `load()` BEFORE
+        // any render runs. So on a preset change, `load()` builds the new
+        // graphic using the *previous* render's font scale — and the new notes
+        // render at the wrong size. Calling `render()` once before `load()`
+        // forces drawSheet's preamble to push the just-applied EngravingRules
+        // scale into the Vex.Flow global, so the upcoming load() builds notes
+        // at the correct scale. The second render() below is what the user
+        // actually sees.
+        const isReRender = !!osmdRef.current.graphic;
+        if (isReRender) {
+          containerRef.current.style.visibility = "hidden";
+          try { osmdRef.current.render(); } catch { /* may throw if container size 0 */ }
+        }
 
         const musicxml = scoreToMusicXML(currentScore);
         await osmdRef.current.load(musicxml);
@@ -851,8 +869,11 @@ export default function ScoreRenderer({
         }
 
         osmdRef.current.render();
+        if (isReRender) {
+          containerRef.current.style.visibility = "";
+        }
 
-        // Restore scroll position and re-enable scrolling immediately
+        // Restore scroll position and re-enable scrolling
         if (scrollParent) {
           scrollParent.scrollTop = prevScrollTop;
           scrollParent.scrollLeft = prevScrollLeft;
