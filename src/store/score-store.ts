@@ -183,6 +183,11 @@ export interface ProjectState {
   projectId: string | null;
   // Revision history for undo/redo
   history: Score[];
+  // Cursor (stepEntry) snapshot at each history index. Kept in lock-step with
+  // `history` so undo/redo restore both score AND cursor — without this, a
+  // step-entry user undoes a note but the cursor stays at the post-advance
+  // position, and the next placed note lands at the wrong beat.
+  stepEntryHistory: (StepEntryState | null)[];
   historyIndex: number;
   // Chat messages
   messages: ChatMessage[];
@@ -236,6 +241,7 @@ export const useScoreStore = create<ProjectState>()(
   score: null,
   projectId: null,
   history: [],
+  stepEntryHistory: [],
   historyIndex: -1,
   messages: [],
   warnings: [],
@@ -254,13 +260,18 @@ export const useScoreStore = create<ProjectState>()(
       ...state.history.slice(0, state.historyIndex + 1),
       score,
     ];
-    // Cap history to prevent localStorage quota overflow
+    let newStepHistory = [
+      ...state.stepEntryHistory.slice(0, state.historyIndex + 1),
+      state.stepEntry,
+    ];
     if (newHistory.length > MAX_HISTORY) {
       newHistory = newHistory.slice(newHistory.length - MAX_HISTORY);
+      newStepHistory = newStepHistory.slice(newStepHistory.length - MAX_HISTORY);
     }
     set({
       score,
       history: newHistory,
+      stepEntryHistory: newStepHistory,
       historyIndex: newHistory.length - 1,
     });
   },
@@ -278,12 +289,24 @@ export const useScoreStore = create<ProjectState>()(
       ...state.history.slice(0, state.historyIndex + 1),
       current,
     ];
+    // Snapshot the current stepEntry alongside the new history entry. The
+    // snapshot is later updated by advanceStepCursor/stepBack when the cursor
+    // moves as part of the same logical action. On undo, we restore this
+    // snapshot so the cursor returns to the position it had when this entry
+    // was the active state.
+    let newStepHistory = [
+      ...state.stepEntryHistory.slice(0, state.historyIndex + 1),
+      state.stepEntry,
+    ];
     if (newHistory.length > MAX_HISTORY) {
       newHistory = newHistory.slice(newHistory.length - MAX_HISTORY);
+      newStepHistory = newStepHistory.slice(newStepHistory.length - MAX_HISTORY);
     }
+    debugLog(`[Patches] ${patches.map(p => p.op).join(",")} → history[${newHistory.length - 1}], stepEntry=M${state.stepEntry?.measure}B${state.stepEntry?.beat}`);
     set({
       score: current,
       history: newHistory,
+      stepEntryHistory: newStepHistory,
       historyIndex: newHistory.length - 1,
     });
   },
@@ -292,9 +315,12 @@ export const useScoreStore = create<ProjectState>()(
     const state = get();
     if (state.historyIndex <= 0) return;
     const newIndex = state.historyIndex - 1;
+    const restoredCursor = state.stepEntryHistory[newIndex] ?? state.stepEntry;
+    debugLog(`[Undo] index ${state.historyIndex} → ${newIndex}, cursor M${state.stepEntry?.measure}B${state.stepEntry?.beat} → M${restoredCursor?.measure}B${restoredCursor?.beat}`);
     set({
       score: state.history[newIndex],
       historyIndex: newIndex,
+      stepEntry: restoredCursor,
     });
   },
 
@@ -302,9 +328,12 @@ export const useScoreStore = create<ProjectState>()(
     const state = get();
     if (state.historyIndex >= state.history.length - 1) return;
     const newIndex = state.historyIndex + 1;
+    const restoredCursor = state.stepEntryHistory[newIndex] ?? state.stepEntry;
+    debugLog(`[Redo] index ${state.historyIndex} → ${newIndex}, cursor M${state.stepEntry?.measure}B${state.stepEntry?.beat} → M${restoredCursor?.measure}B${restoredCursor?.beat}`);
     set({
       score: state.history[newIndex],
       historyIndex: newIndex,
+      stepEntry: restoredCursor,
     });
   },
 
@@ -339,12 +368,18 @@ export const useScoreStore = create<ProjectState>()(
       ...state.history.slice(0, state.historyIndex + 1),
       rev.score,
     ];
+    let newStepHistory = [
+      ...state.stepEntryHistory.slice(0, state.historyIndex + 1),
+      state.stepEntry,
+    ];
     if (newHistory.length > MAX_HISTORY) {
       newHistory = newHistory.slice(newHistory.length - MAX_HISTORY);
+      newStepHistory = newStepHistory.slice(newStepHistory.length - MAX_HISTORY);
     }
     set({
       score: rev.score,
       history: newHistory,
+      stepEntryHistory: newStepHistory,
       historyIndex: newHistory.length - 1,
     });
   },
@@ -400,19 +435,33 @@ export const useScoreStore = create<ProjectState>()(
         debugLog(`[Measure ${prevMeasure} dump] ${mNotes.length} notes, totalBeats=${totalBeats}/${beatsPerMeasure}: ${desc.join(", ")}`);
       }
     }
+    const newCursor = { ...state.stepEntry, measure, beat: Math.round(beat * 1000) / 1000 };
+
     // Expand score if needed
     if (measure > state.score.measures) {
       const newScore = { ...state.score, measures: measure };
       let newHistory = [...state.history.slice(0, state.historyIndex + 1), newScore];
-      if (newHistory.length > MAX_HISTORY) newHistory = newHistory.slice(newHistory.length - MAX_HISTORY);
+      let newStepHistory = [...state.stepEntryHistory.slice(0, state.historyIndex + 1), newCursor];
+      if (newHistory.length > MAX_HISTORY) {
+        newHistory = newHistory.slice(newHistory.length - MAX_HISTORY);
+        newStepHistory = newStepHistory.slice(newStepHistory.length - MAX_HISTORY);
+      }
       set({
         score: newScore,
         history: newHistory,
+        stepEntryHistory: newStepHistory,
         historyIndex: newHistory.length - 1,
-        stepEntry: { ...state.stepEntry, measure, beat: Math.round(beat * 1000) / 1000 },
+        stepEntry: newCursor,
       });
     } else {
-      set({ stepEntry: { ...state.stepEntry, measure, beat: Math.round(beat * 1000) / 1000 } });
+      // Update the cursor snapshot at the current history index so undo/redo
+      // restore the post-advance position (i.e. where the user actually is now).
+      const updatedStepHistory = [...state.stepEntryHistory];
+      if (state.historyIndex >= 0) updatedStepHistory[state.historyIndex] = newCursor;
+      set({
+        stepEntry: newCursor,
+        stepEntryHistory: updatedStepHistory,
+      });
     }
   },
 
@@ -423,13 +472,22 @@ export const useScoreStore = create<ProjectState>()(
     const beatsPerMeasure = parseInt(beatsStr) * (4 / parseInt(beatTypeStr));
 
     let { measure, beat } = state.stepEntry;
+    const prevBeat = beat;
+    const prevMeasure = measure;
     beat -= beats;
     while (beat < 1 && measure > 1) {
       beat += beatsPerMeasure;
       measure--;
     }
     if (beat < 1) beat = 1;
-    set({ stepEntry: { ...state.stepEntry, measure, beat: Math.round(beat * 1000) / 1000 } });
+    const newCursor = { ...state.stepEntry, measure, beat: Math.round(beat * 1000) / 1000 };
+    debugLog(`[StepBack] -${beats}: M${prevMeasure} B${prevBeat} → M${measure} B${beat.toFixed(3)}`);
+    const updatedStepHistory = [...state.stepEntryHistory];
+    if (state.historyIndex >= 0) updatedStepHistory[state.historyIndex] = newCursor;
+    set({
+      stepEntry: newCursor,
+      stepEntryHistory: updatedStepHistory,
+    });
   },
 
   copySelection: () => {
@@ -517,10 +575,15 @@ export const useScoreStore = create<ProjectState>()(
       result = applyPatch(result, patch);
     }
     let newHistory = [...state.history.slice(0, state.historyIndex + 1), result];
-    if (newHistory.length > MAX_HISTORY) newHistory = newHistory.slice(newHistory.length - MAX_HISTORY);
+    let newStepHistory = [...state.stepEntryHistory.slice(0, state.historyIndex + 1), state.stepEntry];
+    if (newHistory.length > MAX_HISTORY) {
+      newHistory = newHistory.slice(newHistory.length - MAX_HISTORY);
+      newStepHistory = newStepHistory.slice(newStepHistory.length - MAX_HISTORY);
+    }
     set({
       score: result,
       history: newHistory,
+      stepEntryHistory: newStepHistory,
       historyIndex: newHistory.length - 1,
     });
 
@@ -533,6 +596,7 @@ export const useScoreStore = create<ProjectState>()(
       score: null,
       projectId: null,
       history: [],
+      stepEntryHistory: [],
       historyIndex: -1,
       messages: [],
       warnings: [],

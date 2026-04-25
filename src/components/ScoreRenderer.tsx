@@ -475,36 +475,90 @@ export default function ScoreRenderer({
            n.staffIndex === cp.staffIndex
     );
 
+    const mp = measurePositionsRef.current.find(
+      p => p.measure === cp.measure && p.staffIndex === cp.staffIndex
+    );
+
+    // Helper to get a note's live X (preferring the SVG bounding box, which
+    // reflects VexFlow's actual layout — the cached `hit.x` from extractNoteHits
+    // can drift if the measure relayouts after extraction).
+    const containerEl = containerRef.current;
+    const cRect = containerEl?.getBoundingClientRect();
+    const liveX = (hit: NoteHit): number => {
+      if (hit.svgElement?.isConnected && cRect) {
+        const r = hit.svgElement.getBoundingClientRect();
+        return r.x - cRect.left + r.width / 2;
+      }
+      return hit.x;
+    };
+
     if (exactNote) {
-      // Position cursor exactly at the note
-      const mp = measurePositionsRef.current.find(
-        p => p.measure === cp.measure && p.staffIndex === cp.staffIndex
-      );
       cursor.style.display = "block";
-      cursor.style.left = `${exactNote.x - 1}px`;
+      cursor.style.left = `${liveX(exactNote) - 1}px`;
       cursor.style.top = `${mp ? mp.y : exactNote.y - 20}px`;
       cursor.style.height = `${mp ? mp.height : 40}px`;
+      return;
+    }
+
+    if (!mp) {
+      cursor.style.display = "none";
+      return;
+    }
+
+    // No exact note — interpolate using actual note X coords in the same
+    // measure+staff. VexFlow doesn't space notes linearly within a measure
+    // (clefs, time signatures, accidentals all shift things), so anchoring
+    // to real notes is much more accurate than (beat-1)/beatsPerMeasure.
+    const sameMeasure = noteHitsRef.current
+      .filter(n => n.measure === cp.measure && n.staffIndex === cp.staffIndex)
+      .sort((a, b) => a.beat - b.beat);
+
+    let cursorX: number;
+    if (sameMeasure.length === 0) {
+      // No notes in this measure — fall back to proportional within the bar.
+      const ts = scoreRef.current?.timeSignature || "4/4";
+      const [num, den] = ts.split("/").map(Number);
+      const beatsPerMeasure = num * (4 / den);
+      const beatFrac = Math.max(0, Math.min(1, (cp.beat - 1) / beatsPerMeasure));
+      const contentOffset = mp.measure === 1 ? mp.width * 0.15 : mp.width * 0.05;
+      const contentWidth = mp.width - contentOffset;
+      cursorX = mp.x + contentOffset + beatFrac * contentWidth;
     } else {
-      // Fall back to proportional position within measure
-      const mp = measurePositionsRef.current.find(
-        p => p.measure === cp.measure && p.staffIndex === cp.staffIndex
-      );
-      if (mp) {
-        const ts = scoreRef.current?.timeSignature || "4/4";
-        const [num, den] = ts.split("/").map(Number);
-        const beatsPerMeasure = num * (4 / den);
-        const beatFrac = (cp.beat - 1) / beatsPerMeasure;
-        const contentOffset = mp.measure === 1 ? mp.width * 0.15 : mp.width * 0.05;
-        const contentWidth = mp.width - contentOffset;
-        const cursorX = mp.x + contentOffset + beatFrac * contentWidth - 1;
-        cursor.style.display = "block";
-        cursor.style.left = `${cursorX}px`;
-        cursor.style.top = `${mp.y}px`;
-        cursor.style.height = `${mp.height}px`;
+      // Find the surrounding notes by beat
+      const prev = [...sameMeasure].reverse().find(n => n.beat <= cp.beat);
+      const next = sameMeasure.find(n => n.beat > cp.beat);
+
+      if (prev && next) {
+        // Interpolate between prev and next note X coords
+        const t = (cp.beat - prev.beat) / (next.beat - prev.beat);
+        cursorX = liveX(prev) + t * (liveX(next) - liveX(prev));
+      } else if (prev) {
+        // Cursor is past the last note — extrapolate using an average per-beat width
+        const lastX = liveX(prev);
+        if (sameMeasure.length >= 2) {
+          const first = sameMeasure[0];
+          const beatSpan = prev.beat - first.beat || 1;
+          const xSpan = lastX - liveX(first);
+          const perBeat = xSpan / beatSpan;
+          cursorX = lastX + (cp.beat - prev.beat) * perBeat;
+        } else {
+          // Only one note in measure; nudge a bit to the right of it.
+          cursorX = lastX + (mp.x + mp.width - lastX) * 0.5;
+        }
+        // Clamp to inside the measure box
+        cursorX = Math.min(cursorX, mp.x + mp.width - 4);
+      } else if (next) {
+        // Cursor is before the first note — line up with that note.
+        cursorX = liveX(next);
       } else {
-        cursor.style.display = "none";
+        cursorX = mp.x + mp.width / 2;
       }
     }
+
+    cursor.style.display = "block";
+    cursor.style.left = `${cursorX - 1}px`;
+    cursor.style.top = `${mp.y}px`;
+    cursor.style.height = `${mp.height}px`;
   }, []);
 
   // ── Highlight selected note via CSS class on SVG element ─────

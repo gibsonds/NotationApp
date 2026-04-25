@@ -62,13 +62,6 @@ interface TupletMode {
   remaining: number; // notes left to enter in this tuplet
 }
 
-// Tracks the last placed note so we can attach a lyric to it
-interface LastPlacedNote {
-  measure: number;
-  beat: number;
-  pitch: string;
-}
-
 export default function MidiKeyboard() {
   const {
     score, applyPatches, addMessage, stepEntry, setStepEntry, advanceStepCursor, stepBack,
@@ -81,10 +74,6 @@ export default function MidiKeyboard() {
   const [tupletMode, setTupletMode] = useState<TupletMode | null>(null);
   const [tupletPending, setTupletPending] = useState(false);
   const [lastEnteredBeats, setLastEnteredBeats] = useState(0);
-  const [lyricMode, setLyricMode] = useState(false);
-  const [lyricPending, setLyricPending] = useState<LastPlacedNote | null>(null);
-  const [lyricText, setLyricText] = useState("");
-  const lyricInputRef = useRef<HTMLInputElement>(null);
   // Duration-first entry state
   const [currentDuration, setCurrentDuration] = useState<string>("3"); // default quarter
   const [lastPitch, setLastPitch] = useState<string | null>(null);
@@ -187,8 +176,6 @@ export default function MidiKeyboard() {
       setStepEntry(null);
       setTupletMode(null);
       setTupletPending(false);
-      setLyricMode(false);
-      setLyricPending(null);
     } else if (score) {
       const staff = score.staves[0];
       const voice = staff?.voices[0];
@@ -239,15 +226,7 @@ export default function MidiKeyboard() {
       : beats;
     setLastEnteredBeats(actualBeats);
     advanceStepCursor(actualBeats);
-
-    // If lyric mode is on and this is a pitched note, prompt for lyric
-    if (lyricMode && pitchOrRest !== "rest") {
-      setLyricPending({ measure: stepEntry.measure, beat: stepEntry.beat, pitch: pitchOrRest });
-      setLyricText("");
-      // Focus the lyric input after render
-      setTimeout(() => lyricInputRef.current?.focus(), 0);
-    }
-  }, [score, stepEntry, applyPatches, advanceStepCursor, lyricMode]);
+  }, [score, stepEntry, applyPatches, advanceStepCursor]);
 
   // Add dot to last entered note
   const addDotToLast = useCallback(() => {
@@ -267,6 +246,7 @@ export default function MidiKeyboard() {
 
     // Remove old note and add dotted version
     const updatedNote = { ...lastNote, dots: lastNote.dots + 1 };
+    debugLog(`[AddDot] dotting ${lastNote.pitch}@M${lastNote.measure}B${lastNote.beat} dots ${lastNote.dots} → ${updatedNote.dots}`);
     applyPatches([
       {
         op: "remove_note",
@@ -289,38 +269,6 @@ export default function MidiKeyboard() {
     advanceStepCursor(extraBeats);
   }, [score, stepEntry, applyPatches, advanceStepCursor, lastEnteredBeats]);
 
-  // Commit lyric to the pending note
-  const commitLyric = useCallback(() => {
-    if (!lyricPending || !stepEntry || !score) return;
-    const staff = score.staves.find(s => s.id === stepEntry.staffId);
-    const voice = staff?.voices.find(v => v.id === stepEntry.voiceId);
-    if (!voice) return;
-
-    // Find the note we just placed
-    const target = voice.notes.find(n =>
-      n.measure === lyricPending.measure &&
-      Math.abs(n.beat - lyricPending.beat) < 0.001 &&
-      n.pitch === lyricPending.pitch
-    );
-    if (!target) { setLyricPending(null); return; }
-
-    if (lyricText.trim()) {
-      const updated = { ...target, lyric: lyricText.trim() };
-      applyPatches([
-        { op: "remove_note", staffId: stepEntry.staffId, voiceId: stepEntry.voiceId, measure: target.measure, beat: target.beat, pitch: target.pitch },
-        { op: "add_notes", staffId: stepEntry.staffId, voiceId: stepEntry.voiceId, notes: [updated] },
-      ]);
-    }
-    setLyricPending(null);
-    setLyricText("");
-  }, [lyricPending, lyricText, stepEntry, score, applyPatches]);
-
-  // Skip lyric (empty) for this note
-  const skipLyric = useCallback(() => {
-    setLyricPending(null);
-    setLyricText("");
-  }, []);
-
   // Delete last note and move cursor back
   const deleteLastNote = useCallback(() => {
     if (!score || !stepEntry) return;
@@ -328,12 +276,21 @@ export default function MidiKeyboard() {
     const voice = staff?.voices.find(v => v.id === stepEntry.voiceId);
     if (!voice || voice.notes.length === 0) return;
 
-    // Find the last note by position
-    const sorted = [...voice.notes].sort(
+    // Find the last note BEFORE OR AT the cursor (not the absolute last note in
+    // the voice). If the user has navigated back, "delete last" should remove
+    // the note immediately preceding the cursor — otherwise Backspace silently
+    // deletes a note far away from where the user is looking.
+    const beforeCursor = voice.notes.filter(
+      n => n.measure < stepEntry.measure ||
+           (n.measure === stepEntry.measure && n.beat < stepEntry.beat - 0.001)
+    );
+    const candidates = beforeCursor.length > 0 ? beforeCursor : voice.notes;
+    const sorted = [...candidates].sort(
       (a, b) => a.measure - b.measure || a.beat - b.beat
     );
     const lastNote = sorted[sorted.length - 1];
     if (!lastNote) return;
+    debugLog(`[DeleteLast] cursor M${stepEntry.measure}B${stepEntry.beat}, deleting ${lastNote.pitch}@M${lastNote.measure}B${lastNote.beat} (${lastNote.duration})`);
 
     // Calculate beats to step back
     const DUR_BEATS: Record<string, number> = {
@@ -376,8 +333,6 @@ export default function MidiKeyboard() {
         setStepEntry(null);
         setTupletMode(null);
         setTupletPending(false);
-        setLyricMode(false);
-        setLyricPending(null);
         return;
       }
 
@@ -545,9 +500,6 @@ export default function MidiKeyboard() {
           {spaceHeld && (
             <span className="text-[10px] text-purple-600 font-medium bg-purple-50 px-1 rounded">REST</span>
           )}
-          {lyricMode && !lyricPending && (
-            <span className="text-[10px] text-pink-600 font-medium bg-pink-50 px-1 rounded">LYR</span>
-          )}
           {tupletPending && (
             <span className="text-[10px] text-teal-600 font-medium animate-pulse bg-teal-50 px-1 rounded">T:?</span>
           )}
@@ -556,43 +508,9 @@ export default function MidiKeyboard() {
               {tupletMode.actualNotes}:{tupletMode.normalNotes} ({tupletMode.remaining} left)
             </span>
           )}
-          {!connected && activeKeys.size === 0 && !spaceHeld && !lyricPending && (
+          {!connected && activeKeys.size === 0 && !spaceHeld && (
             <span className="text-[10px] text-gray-400 italic">1-7 set duration, A-G enter notes</span>
           )}
-
-          {/* Lyric input */}
-          {lyricPending && (
-            <input
-              ref={lyricInputRef}
-              type="text"
-              value={lyricText}
-              onChange={(e) => setLyricText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === "Tab") {
-                  e.preventDefault();
-                  commitLyric();
-                } else if (e.key === "Escape") {
-                  e.preventDefault();
-                  skipLyric();
-                }
-              }}
-              placeholder="lyric..."
-              className="w-20 px-1 py-0.5 text-[10px] border border-pink-300 rounded focus:outline-none focus:border-pink-500"
-            />
-          )}
-
-          {/* Lyric toggle */}
-          <button
-            onClick={() => setLyricMode(prev => !prev)}
-            className={`px-1.5 py-0.5 text-[10px] font-medium rounded transition-colors ${
-              lyricMode
-                ? "text-white bg-pink-500 hover:bg-pink-600"
-                : "text-pink-600 bg-pink-50 hover:bg-pink-100"
-            }`}
-            title="Toggle lyric entry (L)"
-          >
-            Lyric
-          </button>
         </div>
       )}
     </div>

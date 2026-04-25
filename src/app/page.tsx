@@ -12,6 +12,7 @@ import LyricEntryBar from "@/components/LyricEntryBar";
 import NoteContextMenu from "@/components/NoteContextMenu";
 import CommandPalette, { PaletteCommand } from "@/components/CommandPalette";
 import InlineAIPrompt from "@/components/InlineAIPrompt";
+import { cleanScoreOverflow } from "@/lib/score-cleanup";
 
 // Dynamic import to prevent SSR for OSMD (uses browser APIs)
 const ScoreRenderer = dynamic(() => import("@/components/ScoreRenderer"), {
@@ -368,6 +369,18 @@ export default function Home() {
         setLyricMode(true);
       }
     }, enabled: !!stepEntry || lyricMode },
+    { id: "tools.cleanOverflow", label: selection ? `Clean Overflow Notes in Measures ${selection.startMeasure}-${selection.endMeasure}` : "Clean Overflow Notes (whole score)", category: "Tools", action: () => {
+      if (!score) return;
+      const target = selection ? Array.from({ length: selection.endMeasure - selection.startMeasure + 1 }, (_, i) => selection.startMeasure + i) : undefined;
+      const { patches, removed } = cleanScoreOverflow(score, target);
+      if (patches.length === 0) {
+        addMessage({ id: `cleanup-${Date.now()}`, timestamp: Date.now(), role: "assistant", content: "No overflow detected — score is clean." });
+        return;
+      }
+      applyPatches(patches);
+      const lines = removed.map(r => `  • ${r.staffName} M${r.measure}: ${r.pitch}@B${r.beat} ${r.duration}${r.dots ? "." + r.dots : ""} — ${r.reason}`).join("\n");
+      addMessage({ id: `cleanup-${Date.now()}`, timestamp: Date.now(), role: "assistant", content: `Removed ${removed.length} overflow note${removed.length === 1 ? "" : "s"}:\n${lines}\n\nThis is undoable (Cmd+Z).` });
+    }, enabled: !!score },
     { id: "navigate.cursorRight", label: "Cursor Right", category: "Navigate", shortcut: "\u2192", action: () => {
       if (!stepEntry || !score) return;
       const [num, den] = score.timeSignature.split("/").map(Number);
@@ -386,7 +399,7 @@ export default function Home() {
       if (beat < 1) { if (measure > 1) { measure--; beat = bpm; } else beat = 1; }
       setStepEntry({ ...stepEntry, measure, beat: Math.round(beat * 1000) / 1000 });
     }, enabled: !!stepEntry },
-  ], [score, selection, stepEntry, lyricMode, undo, redo, copySelection, pasteAtSelection, setSelection, setStepEntry, applyPatches]);
+  ], [score, selection, stepEntry, lyricMode, undo, redo, copySelection, pasteAtSelection, setSelection, setStepEntry, applyPatches, addMessage]);
 
   return (
     <div className="flex flex-col h-screen bg-[#f8f9fa] print-full">
