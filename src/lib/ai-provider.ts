@@ -24,6 +24,14 @@ export interface ScoreIntentProvider {
 
 export const SYSTEM_PROMPT_CREATE = `You are a music notation assistant. Given a natural language description of a musical score, output a structured JSON object representing the score intent.
 
+There are TWO output modes — pick based on the user's request:
+
+(A) FULL NOTATION mode: generate \`staves\` with notes for melody/harmony/bass. Use this for instrumental pieces, melodies, transcriptions, or anything where the user explicitly wants notes on a staff.
+
+(B) CHORD CHART mode (a.k.a. songbook / lead sheet / lyrics-and-chords / "no notation"): generate \`sections\` and OMIT \`staves\` (use an empty array []). Use this when the user provides lyrics, asks for "just lyrics and chords", says "no notation", describes a song by sections ("verse", "chorus") and chords, or asks for a chord chart / songbook / lead sheet. ALWAYS use this mode when the user's input is primarily lyric text.
+
+LYRICS-FIRST WORKFLOW: If the user pastes lyrics with no chord information ("just lyrics", "no chords yet", or just lyric text alone), output a chord chart with the lyrics filled in and chord lines LEFT EMPTY. Don't invent chords they didn't ask for. They will follow up with "add chords [D G D A]..." in a revise step.
+
 Output ONLY valid JSON matching this schema:
 {
   "title": string (optional),
@@ -31,11 +39,40 @@ Output ONLY valid JSON matching this schema:
   "tempo": number (BPM, optional),
   "timeSignature": string like "4/4" (optional),
   "keySignature": one of "C","G","D","A","E","B","F#","Gb","Db","Ab","Eb","Bb","F","Am","Em","Bm","F#m","C#m","G#m","D#m","Dm","Gm","Cm","Fm","Bbm","Ebm" (optional),
-  "measures": number (optional),
-  "staves": array of { "name": string, "clef": "treble"|"bass"|"alto"|"tenor", "lyricsMode": "attached"|"none" (optional), "voices": array of { "role": "melody"|"harmony"|"bass"|"accompaniment"|"general", "notes": array of note objects } (optional) } (optional),
+  "measures": number (optional, full-notation mode only),
+  "staves": array of { "name": string, "clef": "treble"|"bass"|"alto"|"tenor", "lyricsMode": "attached"|"none" (optional), "voices": array of { "role": "melody"|"harmony"|"bass"|"accompaniment"|"general", "notes": array of note objects } (optional) } (notation mode — omit or [] for chord-chart mode),
   "chordSymbols": array of { "measure": number, "beat": number, "symbol": string } (optional),
-  "rehearsalMarks": array of { "measure": number, "label": string } (optional)
+  "rehearsalMarks": array of { "measure": number, "label": string } (optional),
+  "sections": array of { "id": string, "label": string, "lines": array of { "chords": string, "lyrics": string } } (chord-chart mode),
+  "form": array of section IDs in playback order (chord-chart mode, optional — order will default to sections[] order if not specified)
 }
+
+CHORD CHART MODE — LINE FORMAT:
+The \`lines\` array represents the section as it should appear on the page, top to bottom. Each line has a \`chords\` overlay (free-form text) and a \`lyrics\` line. They render in MONOSPACE so column N of the chord line visually sits above column N of the lyric line — that's how a chord change is positioned over a specific syllable.
+
+The \`chords\` field is a free-form string mixing chord names and bar markers ("|"), padded with spaces so each chord lines up above the syllable where it changes. Examples:
+  chords: "D                G              D       A"
+  lyrics: "Once I saw a tree with a bend so big it broke"
+
+  chords: "|D    |D    |"
+  lyrics: ""                       ← chord-only line (intro vamp pattern)
+
+  chords: "        |            |G          |"
+  lyrics: "when it was just a twig that was long ago"
+
+  chords: ""
+  lyrics: "Must have gotten crushed"   ← lyric-only line (no chord change here)
+
+A blank line (both empty) creates vertical spacing between phrases. Use it sparingly.
+
+CHORD CHART MODE — RULES:
+- Each section's \`id\` is short ("V", "C", "B", "intro", "outro", "bridge"). The \`label\` is the human display name ("Verse", "Verse 1", "Chorus", "Bridge", "Intro").
+- Pure-lyrics input (no chord info from user) → emit lines with the lyrics filled in and chord strings as "". Do NOT guess chords.
+- When the user asks for chords, place them above the syllable where they change. Pad with spaces. Use bar markers "|" if the user used them or asked for them.
+- Chord names use standard notation: C, Am, G7, Cmaj7, F#m7b5, etc.
+- A "vamp" of N bars on chord X = a chord-only line like "|X    |X    |X    |X    |" (one line, multiple bars).
+- \`form\` is the ordered sequence of section IDs that play. "VVCVCBVCC" means \`["V","V","C","V","C","B","V","C","C"]\`. Optional — omit it if the user hasn't specified.
+- Set \`measures\` to 1 for chord-chart mode (it's not used by the chord-chart renderer; it just satisfies the schema).
 
 Note objects have: { "pitch": string like "G4" or "rest", "duration": "whole"|"half"|"quarter"|"eighth"|"sixteenth", "dots": 0-2, "accidental": "sharp"|"flat"|"natural"|"none", "tieStart": boolean, "tieEnd": boolean, "lyric": string (optional — one syllable per note, use "-" suffix for melisma continuation e.g. "Hal-", "le-", "lu-", "jah"), "articulations": ["accent"|"strong-accent"|"staccato"|"staccatissimo"|"tenuto"|"detached-legato"|"fermata"] (optional array), "beam": "begin"|"continue"|"end"|"none" (optional — override auto-beaming; omit to use default beaming), "measure": number, "beat": number }
 
@@ -85,6 +122,17 @@ Available patch operations:
 - { "op": "update_note", "staffId": string, "voiceId": string, "measure": number, "beat": number, "pitch": string, "updates": { ...fields to change } }  (modifies a single existing note in place — use for ties, accidentals, dots, articulations, lyrics, beam overrides)
 - { "op": "set_chord_symbols", "chordSymbols": [...] }
 - { "op": "replace_score", "score": { full score intent object } }
+
+CHORD CHART EDITS: If the score has \`sections\` populated (chord-chart / songbook mode), use \`replace_score\` to update sections. The format is:
+  sections: [{ id, label, lines: [{ chords: string, lyrics: string }, ...] }]
+- The \`chords\` line is a free-form string with chord names and "|" bar markers, space-padded so each chord sits above the syllable in the \`lyrics\` line below it (monospace alignment).
+- Common edits:
+  - "add chords for verse 1: D G D A" → fill in the verse's chord lines, placing chords above syllables. If the user lists chords without saying which syllable, distribute them evenly across the line.
+  - "no chords yet, just lyrics" → emit lines with chords: "" and lyrics filled in.
+  - "change the second chord to G7" → modify just that chord in the right line.
+  - "add a chorus" → append a new section to sections[].
+- Preserve existing sections the user didn't ask to change. If only modifying one section, still emit the full sections array via \`replace_score\` with all sections.
+- For chord charts, \`staves\` should be [] and \`measures\` should be 1.
 
 TIES: To add a tie between two notes of the same pitch, use "update_note" to set "tieStart": true on the first note and "tieEnd": true on the second note. NEVER use "set_notes" just to add ties — "set_notes" replaces ALL notes in that measure, which will delete other notes. Always use "update_note" for modifying properties of existing notes (ties, accidentals, dots, articulations, lyrics).
 
@@ -427,9 +475,17 @@ function buildRevisionPrompt(score: Score, prompt: string, selection?: NoteSelec
       )
     : undefined;
 
+  // Hard-pin the AI into chord-chart mode when the score is one. Without this,
+  // the model sometimes "helpfully" offers to convert it to staff notation or
+  // asks clarifying questions that imply a notation interpretation.
+  const isChordChart = Array.isArray(score.sections) && score.sections.length > 0;
+  const modeHint = isChordChart
+    ? `MODE: chord-chart (a.k.a. songbook / lead sheet). The score has ${score.sections.length} section(s) and NO staves. Edit sections via \`replace_score\`. Do NOT add staves, do NOT convert to staff notation, do NOT ask whether the user wants notation — they don't. Adding/removing sections, filling in chord lines, editing lyrics, and reordering sections all happen in chord-chart format. If the user asks to "add an Intro section", append a new section to \`sections\` with id="intro" or similar; do not interpret this as adding a staff or notation measures.\n\n`
+    : "";
+
   // If the full score is small enough (< 8K tokens), send it as-is
   if (fullTokens < 8000) {
-    return `Current score:\n${fullJson}\n\nRevision request: ${prompt}`;
+    return `${modeHint}Current score:\n${fullJson}\n\nRevision request: ${prompt}`;
   }
 
   // Otherwise, send a compact version with full notes for selected measures
@@ -441,7 +497,7 @@ function buildRevisionPrompt(score: Score, prompt: string, selection?: NoteSelec
   );
 
   let instructions =
-    `Current score (compact — note details summarized per measure):\n${compactJson}\n\n` +
+    `${modeHint}Current score (compact — note details summarized per measure):\n${compactJson}\n\n` +
     `IMPORTANT: The score has ${score.measures} measures across ${score.staves.length} staves. `;
 
   if (focusMeasures) {

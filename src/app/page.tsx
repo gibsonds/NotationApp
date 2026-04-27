@@ -12,6 +12,7 @@ import LyricEntryBar from "@/components/LyricEntryBar";
 import NoteContextMenu from "@/components/NoteContextMenu";
 import CommandPalette, { PaletteCommand } from "@/components/CommandPalette";
 import InlineAIPrompt from "@/components/InlineAIPrompt";
+import ChordChartView from "@/components/ChordChartView";
 import { cleanScoreOverflow } from "@/lib/score-cleanup";
 
 // Dynamic import to prevent SSR for OSMD (uses browser APIs)
@@ -459,21 +460,27 @@ export default function Home() {
           </button>
         )}
 
-        {/* Center: Score View */}
+        {/* Center: Score View — chord chart if `sections` is populated, else notation */}
         <div className="flex-1 overflow-auto p-4 print-full bg-[#f8f9fa]">
           {score ? (
-            <div className="score-container h-full">
-              <ScoreRenderer
-                score={score}
-                zoom={zoom}
-                layout={layout}
-                onReady={(h) => { printFnRef.current = h.printScore; }}
-                cursorPosition={cursorPosition}
-                selectedNote={selectedNote}
-                onScoreClick={handleScoreClick}
-                selection={selection}
-              />
-            </div>
+            score.sections && score.sections.length > 0 ? (
+              <div className="score-container h-full">
+                <ChordChartView score={score} />
+              </div>
+            ) : (
+              <div className="score-container h-full">
+                <ScoreRenderer
+                  score={score}
+                  zoom={zoom}
+                  layout={layout}
+                  onReady={(h) => { printFnRef.current = h.printScore; }}
+                  cursorPosition={cursorPosition}
+                  selectedNote={selectedNote}
+                  onScoreClick={handleScoreClick}
+                  selection={selection}
+                />
+              </div>
+            )
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-gray-400 space-y-3 print-hide">
               <div className="text-7xl opacity-20">&#119070;</div>

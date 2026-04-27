@@ -44,20 +44,28 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Augment prompt with selection context
+    // Augment prompt with selection context — but ONLY when the score has
+    // staves+notes. Chord-chart-mode scores don't have measure-and-staff
+    // selection semantics; passing a stale [SELECTION: measure X on staves Y]
+    // when sections are populated confuses the LLM into asking whether to
+    // "convert to notation" or chasing a non-existent staff ID.
+    const isChordChart = Array.isArray((score as Score).sections) && (score as Score).sections.length > 0;
+
     let augmentedPrompt = prompt;
-    if (selection) {
-      const range =
-        selection.startMeasure === selection.endMeasure
-          ? `measure ${selection.startMeasure}`
-          : `measures ${selection.startMeasure}-${selection.endMeasure}`;
-      const staffNote = selection.staffIds
-        ? ` on staves: ${selection.staffIds.join(", ")}`
-        : "";
-      const noteInfo = selectedNote ? ` (selected note: ${selectedNote})` : "";
-      augmentedPrompt = `[SELECTION: ${range}${staffNote}${noteInfo}] ${prompt}`;
-    } else if (selectedNote) {
-      augmentedPrompt = `[SELECTED NOTE: ${selectedNote}] ${prompt}`;
+    if (!isChordChart) {
+      if (selection) {
+        const range =
+          selection.startMeasure === selection.endMeasure
+            ? `measure ${selection.startMeasure}`
+            : `measures ${selection.startMeasure}-${selection.endMeasure}`;
+        const staffNote = selection.staffIds
+          ? ` on staves: ${selection.staffIds.join(", ")}`
+          : "";
+        const noteInfo = selectedNote ? ` (selected note: ${selectedNote})` : "";
+        augmentedPrompt = `[SELECTION: ${range}${staffNote}${noteInfo}] ${prompt}`;
+      } else if (selectedNote) {
+        augmentedPrompt = `[SELECTED NOTE: ${selectedNote}] ${prompt}`;
+      }
     }
 
     const provider = createProvider();

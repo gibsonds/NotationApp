@@ -143,6 +143,33 @@ export const RepeatSchema = z.object({
 });
 export type Repeat = z.infer<typeof RepeatSchema>;
 
+// ── Chord Chart (songbook) ─────────────────────────────────────────────────
+
+/**
+ * One visible line of a chord chart: a `chords` overlay (free-form, may contain
+ * chord names like "D", "Am7" and bar markers "|", separated by spaces) and a
+ * `lyrics` line below it. They're rendered in monospace so column N of the
+ * chord line visually appears above column N of the lyric line — that's how
+ * the user positions chord changes over specific syllables.
+ *
+ * Either field may be empty:
+ *   - chords-only line (e.g. an instrumental bar pattern: "|D    |D    |")
+ *   - lyrics-only line (e.g. a lyric phrase with no chord changes on it)
+ *   - both empty = blank line (visual spacing)
+ */
+export const ChordChartLineSchema = z.object({
+  chords: z.string().default(""),
+  lyrics: z.string().default(""),
+});
+export type ChordChartLine = z.infer<typeof ChordChartLineSchema>;
+
+export const ChordChartSectionSchema = z.object({
+  id: z.string(),                                  // unique ID, e.g. "V" or "verse-1"
+  label: z.string(),                               // human label, e.g. "Verse 1"
+  lines: z.array(ChordChartLineSchema).default([]),
+});
+export type ChordChartSection = z.infer<typeof ChordChartSectionSchema>;
+
 // ── Score (top-level) ──────────────────────────────────────────────────────
 
 export const ScoreSchema = z.object({
@@ -153,10 +180,18 @@ export const ScoreSchema = z.object({
   timeSignature: z.string().regex(/^\d+\/\d+$/).default("4/4"),
   keySignature: KeySignature.default("C"),
   measures: z.number().int().min(1).max(200).default(8),
-  staves: z.array(StaffSchema).min(1),
+  // Allow zero staves for chord-chart-only songs (the chord chart view doesn't
+  // need a staff). Notation views guard against empty staves.
+  staves: z.array(StaffSchema).default([]),
   chordSymbols: z.array(ChordSymbolSchema).default([]),
   rehearsalMarks: z.array(RehearsalMarkSchema).default([]),
   repeats: z.array(RepeatSchema).default([]),
+  // Songbook / chord-chart structure. When `form` is non-empty, the app
+  // renders a chord chart instead of staff notation. `form` is the ordered
+  // sequence of section IDs that play (e.g. ["intro","V","V","C","V","C","B","V","C","C"]);
+  // each ID must reference a section in `sections`.
+  sections: z.array(ChordChartSectionSchema).default([]),
+  form: z.array(z.string()).default([]),
   metadata: z.record(z.string(), z.string()).default({}),
 });
 export type Score = z.infer<typeof ScoreSchema>;
@@ -198,6 +233,8 @@ export const ScoreIntentSchema = z.object({
   chordSymbols: z.array(ChordSymbolSchema).optional(),
   rehearsalMarks: z.array(RehearsalMarkSchema).optional(),
   repeats: z.array(RepeatSchema).optional(),
+  sections: z.array(ChordChartSectionSchema).optional(),
+  form: z.array(z.string()).optional(),
 });
 export type ScoreIntent = z.infer<typeof ScoreIntentSchema>;
 

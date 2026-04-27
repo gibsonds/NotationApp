@@ -70,6 +70,8 @@ export default function NewScoreDialog({ onClose }: { onClose: () => void }) {
       chordSymbols: [],
       rehearsalMarks: [],
       repeats: [],
+      sections: [],
+      form: [],
       metadata: {},
     };
     setScore(score);

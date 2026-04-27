@@ -38,6 +38,8 @@ export default function Toolbar({ zoom, onZoomChange, onPrint }: ToolbarProps) {
       chordSymbols: [],
       rehearsalMarks: [],
       repeats: [],
+      sections: [],
+      form: [],
       metadata: {},
     });
   };

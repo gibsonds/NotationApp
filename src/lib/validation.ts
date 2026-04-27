@@ -140,11 +140,19 @@ export function validateCapability(score: Score): ValidationResult {
 
 export function expandIntentToScore(intent: ScoreIntent): Score {
   const id = uuidv4();
-  const measures = intent.measures ?? 8;
   const timeSignature = intent.timeSignature ?? "4/4";
   const keySignature = intent.keySignature ?? "C";
 
-  const staves = (intent.staves ?? [{ name: "Staff 1", clef: "treble" as const }]).map(
+  const isChordChart = !!(intent.sections && intent.sections.length > 0);
+
+  // Chord-chart mode no longer has a meaningful "measure count" — it's text,
+  // not bars. Default to 1 just to satisfy the schema's measures>=1 invariant.
+  const measures = intent.measures ?? (isChordChart ? 1 : 8);
+
+  // Chord-chart mode: skip the default placeholder staff. Notation mode: keep
+  // the existing default of one treble staff.
+  const intentStaves = intent.staves ?? (isChordChart ? [] : [{ name: "Staff 1", clef: "treble" as const }]);
+  const staves = intentStaves.map(
     (s, i) => ({
       id: `staff_${i + 1}`,
       name: s.name,
@@ -181,6 +189,8 @@ export function expandIntentToScore(intent: ScoreIntent): Score {
     chordSymbols: intent.chordSymbols ?? [],
     rehearsalMarks: intent.rehearsalMarks ?? [],
     repeats: intent.repeats ?? [],
+    sections: intent.sections ?? [],
+    form: intent.form ?? [],
     metadata: {},
   };
 }

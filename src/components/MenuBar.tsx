@@ -148,6 +148,8 @@ export default function MenuBar({
       chordSymbols: [],
       rehearsalMarks: [],
       repeats: [],
+      sections: [],
+      form: [],
       metadata: {},
     });
   };

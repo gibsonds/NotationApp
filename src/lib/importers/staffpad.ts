@@ -285,6 +285,8 @@ class SNTParser {
       chordSymbols: allChordSymbols,
       rehearsalMarks: [],
       repeats: [],
+      sections: [],
+      form: [],
       metadata: { source: "staffpad", originalFormat: "snt" },
     };
   }

@@ -225,6 +225,8 @@ export function parseMusicXML(xmlString: string): Score {
     chordSymbols,
     rehearsalMarks: [],
     repeats: [],
+    sections: [],
+    form: [],
     metadata: { source: "musicxml" },
   };
 }

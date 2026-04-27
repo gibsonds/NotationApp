@@ -358,6 +358,8 @@ export function parseMidi(
     chordSymbols: [],
     rehearsalMarks: [],
     repeats: [],
+    sections: [],
+    form: [],
     metadata: { source: "midi-import" },
   };
 }
