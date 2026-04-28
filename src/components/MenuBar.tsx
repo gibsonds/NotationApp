@@ -362,7 +362,7 @@ export default function MenuBar({
     { label: "Select All", shortcut: "Cmd+A", action: () => { if (score) setSelection({ startMeasure: 1, endMeasure: score.measures }); }, enabled: !!score },
     { label: "Clear Selection", shortcut: "Esc", action: () => setSelection(null), enabled: !!selection },
     { separator: true },
-    { label: "Paste Lyrics / Chords\u2026", action: () => onPasteLyrics?.(), enabled: !!score && score.staves.length > 0 },
+    { label: "Paste Lyrics / Chords\u2026", action: () => onPasteLyrics?.(), enabled: !!score },
   ];
 
   const viewMenu: MenuItem[] = [
