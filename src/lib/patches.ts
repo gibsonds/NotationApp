@@ -216,6 +216,101 @@ export function applyPatch(score: Score, patch: ScorePatch): Score {
     case "set_chord_symbols":
       return { ...score, chordSymbols: patch.chordSymbols };
 
+    // ── Chord-chart (songbook) patches ─────────────────────────────────────
+
+    case "set_section_label": {
+      return {
+        ...score,
+        sections: score.sections.map((s) =>
+          s.id === patch.sectionId ? { ...s, label: patch.label } : s,
+        ),
+      };
+    }
+
+    case "add_section": {
+      const sections = [...score.sections];
+      const idx = patch.index ?? sections.length;
+      sections.splice(Math.max(0, Math.min(idx, sections.length)), 0, patch.section);
+      return { ...score, sections };
+    }
+
+    case "remove_section": {
+      return {
+        ...score,
+        sections: score.sections.filter((s) => s.id !== patch.sectionId),
+        // Keep `form` consistent — drop any references to the removed section.
+        form: score.form.filter((id) => id !== patch.sectionId),
+      };
+    }
+
+    case "update_section_line": {
+      return {
+        ...score,
+        sections: score.sections.map((s) => {
+          if (s.id !== patch.sectionId) return s;
+          return {
+            ...s,
+            lines: s.lines.map((l, i) => {
+              if (i !== patch.lineIdx) return l;
+              return {
+                chords: patch.chords !== undefined ? patch.chords : l.chords,
+                lyrics: patch.lyrics !== undefined ? patch.lyrics : l.lyrics,
+              };
+            }),
+          };
+        }),
+      };
+    }
+
+    case "add_section_line": {
+      return {
+        ...score,
+        sections: score.sections.map((s) => {
+          if (s.id !== patch.sectionId) return s;
+          const lines = [...s.lines];
+          const idx = patch.index ?? lines.length;
+          lines.splice(Math.max(0, Math.min(idx, lines.length)), 0, patch.line);
+          return { ...s, lines };
+        }),
+      };
+    }
+
+    case "remove_section_line": {
+      return {
+        ...score,
+        sections: score.sections.map((s) => {
+          if (s.id !== patch.sectionId) return s;
+          return { ...s, lines: s.lines.filter((_, i) => i !== patch.lineIdx) };
+        }),
+      };
+    }
+
+    case "set_form": {
+      return { ...score, form: patch.form };
+    }
+
+    case "split_section": {
+      const idx = score.sections.findIndex(s => s.id === patch.sectionId);
+      if (idx < 0) return score;
+      const target = score.sections[idx];
+      const before = target.lines.slice(0, patch.atLineIdx);
+      const after = target.lines.slice(patch.atLineIdx);
+      // Always leave each section with at least one line so neither side
+      // collapses to an empty section that the UI can't render meaningfully.
+      const trimmed = {
+        ...target,
+        lines: before.length > 0 ? before : [{ chords: "", lyrics: "" }],
+      };
+      const fresh = {
+        id: patch.newSection.id,
+        label: patch.newSection.label,
+        lines: after.length > 0 ? after : [{ chords: "", lyrics: "" }],
+      };
+      const sections = [...score.sections];
+      sections.splice(idx, 1, trimmed, fresh);
+      return { ...score, sections };
+    }
+
     case "replace_score": {
       const expanded = expandIntentToScore(patch.score);
       return { ...expanded, id: score.id };

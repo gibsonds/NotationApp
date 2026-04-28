@@ -121,9 +121,20 @@ Available patch operations:
 - { "op": "set_notes", "staffId": string, "voiceId": string, "notes": [...note objects] }  (MERGES by measure — only measures present in notes array are replaced; other measures are preserved)
 - { "op": "update_note", "staffId": string, "voiceId": string, "measure": number, "beat": number, "pitch": string, "updates": { ...fields to change } }  (modifies a single existing note in place — use for ties, accidentals, dots, articulations, lyrics, beam overrides)
 - { "op": "set_chord_symbols", "chordSymbols": [...] }
-- { "op": "replace_score", "score": { full score intent object } }
 
-CHORD CHART EDITS: If the score has \`sections\` populated (chord-chart / songbook mode), use \`replace_score\` to update sections. The format is:
+Chord-chart (songbook) patches — prefer these over \`replace_score\` when the score has \`sections\` populated. They're targeted, fast, and round-trip cleanly through undo/redo:
+- { "op": "set_section_label", "sectionId": string, "label": string }  (rename a section)
+- { "op": "add_section", "section": { id, label, lines: [...] }, "index"?: number }
+- { "op": "remove_section", "sectionId": string }
+- { "op": "update_section_line", "sectionId": string, "lineIdx": number, "chords"?: string, "lyrics"?: string }  (edit chord overlay or lyrics in place)
+- { "op": "add_section_line", "sectionId": string, "index"?: number, "line": { "chords": string, "lyrics": string } }
+- { "op": "remove_section_line", "sectionId": string, "lineIdx": number }
+- { "op": "set_form", "form": [section ids in order] }
+- { "op": "split_section", "sectionId": string, "atLineIdx": number, "newSection": { "id": string, "label": string } }  (split a section into two — lines from atLineIdx onward move to the new section)
+
+- { "op": "replace_score", "score": { full score intent object } }  (only if you're rewriting most of the song)
+
+CHORD CHART EDITS: If the score has \`sections\` populated (chord-chart / songbook mode), prefer the targeted section patches above. Only fall back to \`replace_score\` when the change is structural (rewriting most sections at once). The chord-chart format is:
   sections: [{ id, label, lines: [{ chords: string, lyrics: string }, ...] }]
 - The \`chords\` line is a free-form string with chord names and "|" bar markers, space-padded so each chord sits above the syllable in the \`lyrics\` line below it (monospace alignment).
 - Common edits:

@@ -82,9 +82,19 @@ body {
 
 /* Print styles — show only the score */
 @media print {
-  /* Reset page margins to minimum */
+  /* Reset page margins to minimum, and explicitly clear browser-added
+     header/footer boxes (timestamp, page title, URL, page number). Some
+     browsers also expose a checkbox in the print dialog ("Headers and
+     footers") — clearing the @page margin boxes here removes them when
+     the browser respects CSS Paged Media. */
   @page {
     margin: 0.4in 0.5in;
+    @top-left { content: ""; }
+    @top-center { content: ""; }
+    @top-right { content: ""; }
+    @bottom-left { content: ""; }
+    @bottom-center { content: ""; }
+    @bottom-right { content: ""; }
   }
 
   body {
@@ -134,6 +144,96 @@ body {
   .score-container > div.relative {
     border-radius: 0 !important;
   }
+
+  /* ── Chord chart print styles ──────────────────────────────────────── */
+  /*
+   * Print rendering driven by CSS custom properties set on the .chord-chart
+   * wrapper from React state, so the user has live-tuneable control over
+   * font size, line height (leading), letter spacing (kerning), section
+   * gap, and column count (1 or 2). Default values are sensible for a
+   * typical pop song — should fit ~5–8 sections on one US-letter page in
+   * two columns.
+   */
+  .chord-chart {
+    background: white !important;
+    color: black !important;
+    overflow: visible !important;
+    height: auto !important;
+    padding: 0 !important;
+    font-size: var(--print-font-size, 10pt) !important;
+    line-height: var(--print-line-height, 1.15) !important;
+    letter-spacing: var(--print-letter-spacing, 0) !important;
+    column-count: var(--print-cols, 1);
+    column-gap: 0.4in;
+    column-fill: balance;
+  }
+  /* Header spans both columns so title/meta sits across the top of the page. */
+  .chord-chart > header {
+    column-span: all;
+    -webkit-column-span: all;
+  }
+  .chord-chart h1 {
+    color: black !important;
+    font-size: 1.5em !important;
+    font-weight: 700;
+    margin: 0 0 2pt 0 !important;
+    line-height: 1.1 !important;
+  }
+  .chord-chart h3 {
+    color: black !important;
+    font-size: 1em !important;
+    border-bottom: none;
+    padding: 0 !important;
+    margin: 0 0 2pt 0 !important;
+    line-height: 1.1 !important;
+  }
+  .chord-chart .text-yellow-300,
+  .chord-chart .text-pink-200,
+  .chord-chart .text-pink-300,
+  .chord-chart .text-gray-100,
+  .chord-chart .text-gray-300,
+  .chord-chart .text-gray-400,
+  .chord-chart .text-gray-500,
+  .chord-chart .text-white { color: black !important; }
+  /* Bold the chord overlay so it stands apart from lyrics on paper. */
+  .chord-chart .text-yellow-300,
+  .chord-chart .text-pink-200 {
+    font-weight: 700;
+  }
+  /* Header block — kill the dark border, light grey divider, compact spacing. */
+  .chord-chart header {
+    padding: 0 0 4pt 0 !important;
+    margin: 0 0 8pt 0 !important;
+    border-bottom: 1px solid #aaa !important;
+  }
+  .chord-chart header > p:last-child { display: none !important; } /* on-screen help */
+  .chord-chart header > p { font-size: 0.9em !important; margin: 0 !important; }
+  .chord-chart header > div { font-size: 0.75em !important; margin-top: 1pt !important; gap: 8px !important; }
+  /* Section blocks: configurable bottom gap, never split across columns/pages. */
+  .chord-chart section {
+    border-bottom-color: #ccc !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+    margin: 0 0 var(--print-section-gap, 12pt) 0 !important;
+    padding: 0 !important;
+  }
+  .chord-chart section > div > div {
+    margin-bottom: 1pt !important;
+  }
+  .chord-chart .leading-tight { line-height: var(--print-line-height, 1.15) !important; }
+  /* Hide editing affordances. */
+  .chord-chart button { display: none !important; }
+  .chord-chart input,
+  .chord-chart textarea { display: none !important; }
+  /* Hide the on-screen options toolbar (already .print-hide but be defensive). */
+  .chord-chart .print-hide { display: none !important; }
+
+  /* No-meta mode: hide composer/tempo/key/form line entirely. */
+  .chord-chart-print-no-meta header > div,
+  .chord-chart-print-no-meta header > p:first-of-type { display: none !important; }
+
+  /* No-title mode: drop the entire header. */
+  .chord-chart-print-no-title header { display: none !important; }
 
   /* Prevent OSMD systems (staff groups) from being split across pages */
   .score-container svg > g {

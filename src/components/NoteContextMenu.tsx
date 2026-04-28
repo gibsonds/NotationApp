@@ -159,7 +159,7 @@ export default function NoteContextMenu({ x, y, note, onClose, onLyricEdit, onAI
   };
 
   return (
-    <div ref={menuRef} style={menuStyle} className="bg-white rounded-lg shadow-xl border border-gray-200 py-1 min-w-[180px] text-sm">
+    <div ref={menuRef} style={menuStyle} className="bg-white rounded-lg shadow-xl border border-gray-200 py-1 min-w-[180px] text-sm text-gray-800">
       {/* Note info header */}
       <div className="px-3 py-1.5 text-xs text-gray-400 border-b border-gray-100">
         {note.pitch} &middot; M{note.measure} B{note.beat} &middot; {scoreNote?.duration || "?"}

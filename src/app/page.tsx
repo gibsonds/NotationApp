@@ -56,7 +56,29 @@ export default function Home() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [inlineAI, setInlineAI] = useState<{ note: { measure: number; beat: number; pitch: string; staffIndex: number }; position: { x: number; y: number } } | null>(null);
   const printFnRef = useRef<(() => Promise<void>) | null>(null);
-  const handlePrint = useCallback(() => { printFnRef.current?.(); }, []);
+  const handlePrint = useCallback(() => {
+    const isChordChart = !!(score?.sections && score.sections.length > 0);
+    if (!isChordChart && printFnRef.current) {
+      printFnRef.current();
+      return;
+    }
+    // Chord-chart mode: native window.print() with @media print CSS doing
+    // the heavy lifting. We blank document.title for the duration of the
+    // print so Chrome's auto-added top-center header (which shows the tab
+    // title) prints empty. CSS @page margin-box rules clear the rest.
+    const prevTitle = document.title;
+    document.title = "";
+    window.print();
+    // The print dialog is modal and blocks until dismissed; afterprint fires
+    // once. Use it to restore the title cleanly. Fallback timeout in case
+    // the event doesn't land (some browsers).
+    const restore = () => {
+      document.title = prevTitle;
+      window.removeEventListener("afterprint", restore);
+    };
+    window.addEventListener("afterprint", restore);
+    setTimeout(restore, 30000);
+  }, [score]);
 
   // Compute cursor position from stepEntry
   const cursorPosition = stepEntry ? {

@@ -318,6 +318,62 @@ export const ScorePatchSchema = z.discriminatedUnion("op", [
     op: z.literal("set_chord_symbols"),
     chordSymbols: z.array(ChordSymbolSchema),
   }),
+  // Chord-chart (songbook) patches. Each op is fine-grained so callers (LLM,
+  // GUI, CLI) can target a specific section/line without round-tripping the
+  // whole score through `replace_score`.
+  z.object({
+    op: z.literal("set_section_label"),
+    sectionId: z.string(),
+    label: z.string(),
+  }),
+  z.object({
+    op: z.literal("add_section"),
+    section: ChordChartSectionSchema,
+    /** 0-based insertion index. Omit/undefined to append. */
+    index: z.number().int().min(0).optional(),
+  }),
+  z.object({
+    op: z.literal("remove_section"),
+    sectionId: z.string(),
+  }),
+  z.object({
+    op: z.literal("update_section_line"),
+    sectionId: z.string(),
+    lineIdx: z.number().int().min(0),
+    chords: z.string().optional(),
+    lyrics: z.string().optional(),
+  }),
+  z.object({
+    op: z.literal("add_section_line"),
+    sectionId: z.string(),
+    /** 0-based insertion index in section.lines. Omit to append. */
+    index: z.number().int().min(0).optional(),
+    line: ChordChartLineSchema,
+  }),
+  z.object({
+    op: z.literal("remove_section_line"),
+    sectionId: z.string(),
+    lineIdx: z.number().int().min(0),
+  }),
+  z.object({
+    op: z.literal("set_form"),
+    form: z.array(z.string()),
+  }),
+  /**
+   * Split a section into two at a line index. Lines from `atLineIdx` (inclusive)
+   * move into a brand-new section inserted immediately after; the original
+   * section keeps the lines before that. Used when the user realizes some
+   * lines they've been editing are conceptually a separate section.
+   */
+  z.object({
+    op: z.literal("split_section"),
+    sectionId: z.string(),
+    atLineIdx: z.number().int().min(0),
+    newSection: z.object({
+      id: z.string(),
+      label: z.string(),
+    }),
+  }),
   z.object({
     op: z.literal("replace_score"),
     score: z.lazy(() => ScoreIntentSchema),

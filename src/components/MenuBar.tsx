@@ -66,10 +66,10 @@ function MenuDropdown({ label, items, isOpen, onToggle, onClose }: {
         {label}
       </button>
       {isOpen && (
-        <div className="absolute top-full left-0 mt-0.5 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[220px] z-50">
+        <div className="absolute top-full left-0 mt-0.5 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[220px] z-50 text-gray-800">
           {items.map((item, i) =>
             item.separator ? (
-              <div key={i} className="border-t border-gray-100 my-1" />
+              <div key={i} className="border-t border-gray-200 my-1" />
             ) : (
               <button
                 key={i}
@@ -79,7 +79,7 @@ function MenuDropdown({ label, items, isOpen, onToggle, onClose }: {
                   onClose();
                 }}
                 disabled={item.enabled === false}
-                className="w-full px-3 py-1.5 text-sm text-left flex items-center justify-between gap-4 hover:bg-blue-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className="w-full px-3 py-1.5 text-sm text-left flex items-center justify-between gap-4 text-gray-800 hover:bg-blue-50 hover:text-gray-900 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 <span className="flex items-center gap-2">
                   {item.checked !== undefined && (
@@ -90,7 +90,7 @@ function MenuDropdown({ label, items, isOpen, onToggle, onClose }: {
                   {item.label}
                 </span>
                 {item.shortcut && (
-                  <span className="text-xs text-gray-400 ml-4">{item.shortcut}</span>
+                  <span className="text-xs text-gray-500 ml-4">{item.shortcut}</span>
                 )}
               </button>
             )
