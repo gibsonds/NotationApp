@@ -15,6 +15,7 @@ interface MenuBarProps {
   sidebarOpen: boolean;
   onOpenAutosave?: () => void;
   onPasteLyrics?: () => void;
+  onMySongs?: () => void;
 }
 
 type MenuItem = {
@@ -105,7 +106,7 @@ function MenuDropdown({ label, items, isOpen, onToggle, onClose }: {
 }
 
 export default function MenuBar({
-  zoom, onZoomChange, onPrint, onOpenAutosave, onPasteLyrics,
+  zoom, onZoomChange, onPrint, onOpenAutosave, onPasteLyrics, onMySongs,
   onToggleSidebar, sidebarOpen,
 }: MenuBarProps) {
   const {
@@ -336,6 +337,8 @@ export default function MenuBar({
   const fileMenu: MenuItem[] = [
     { label: "New Score", action: handleNew },
     { label: "New Chord Chart", action: handleNewChordChart },
+    { separator: true },
+    { label: "My Songs\u2026", action: () => onMySongs?.() },
     { separator: true },
     { label: "Open Project...", shortcut: "", action: () => projectInputRef.current?.click() },
     { label: "Recover from Auto-save...", action: () => onOpenAutosave?.() },

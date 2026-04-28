@@ -17,6 +17,7 @@ import InlineAIPrompt from "@/components/InlineAIPrompt";
 import ChordChartView from "@/components/ChordChartView";
 import AutosaveRecoveryDialog from "@/components/AutosaveRecoveryDialog";
 import PasteLyricsModal from "@/components/PasteLyricsModal";
+import MySongsModal from "@/components/MySongsModal";
 import { cleanScoreOverflow } from "@/lib/score-cleanup";
 
 // Dynamic import to prevent SSR for OSMD (uses browser APIs)
@@ -62,6 +63,7 @@ export default function Home() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [autosaveDialogOpen, setAutosaveDialogOpen] = useState(false);
   const [pasteLyricsOpen, setPasteLyricsOpen] = useState(false);
+  const [mySongsOpen, setMySongsOpen] = useState(false);
   const [inlineAI, setInlineAI] = useState<{ note: { measure: number; beat: number; pitch: string; staffIndex: number }; position: { x: number; y: number } } | null>(null);
   const printFnRef = useRef<(() => Promise<void>) | null>(null);
   const handlePrint = useCallback(() => {
@@ -472,6 +474,7 @@ export default function Home() {
           sidebarOpen={leftPanelOpen}
           onOpenAutosave={() => setAutosaveDialogOpen(true)}
           onPasteLyrics={() => setPasteLyricsOpen(true)}
+          onMySongs={() => setMySongsOpen(true)}
         />
       </div>
 
@@ -496,14 +499,14 @@ export default function Home() {
                 </svg>
               </button>
             </div>
-            {/* AI Chat drawer */}
-            <DrawerSection title="AI Assistant" open={uiState.aiDrawerOpen} onToggle={(v) => setUIState({ aiDrawerOpen: v })} flex>
-              <PromptPanel />
-            </DrawerSection>
-
             {/* Properties drawer */}
             <DrawerSection title="Properties" open={uiState.propsDrawerOpen} onToggle={(v) => setUIState({ propsDrawerOpen: v })}>
               <PropertiesPanel embedded />
+            </DrawerSection>
+
+            {/* AI Chat drawer */}
+            <DrawerSection title="AI Assistant" open={uiState.aiDrawerOpen} onToggle={(v) => setUIState({ aiDrawerOpen: v })} flex>
+              <PromptPanel />
             </DrawerSection>
           </div>
         </div>
@@ -927,6 +930,11 @@ export default function Home() {
       {/* Paste Lyrics / Chords modal */}
       {pasteLyricsOpen && (
         <PasteLyricsModal onClose={() => setPasteLyricsOpen(false)} />
+      )}
+
+      {/* My Songs modal */}
+      {mySongsOpen && (
+        <MySongsModal onClose={() => setMySongsOpen(false)} />
       )}
 
       {/* Autosave recovery dialog */}
