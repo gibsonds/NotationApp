@@ -1,5 +1,7 @@
 // ── Inline chord / lyric parser ──────────────────────────────────────────────
 
+import type { ChordChartLine } from "@/lib/schema";
+
 export interface WordChordPair {
   word: string;
   chord?: string;
@@ -88,4 +90,87 @@ export function parseLyricsWithChords(text: string): WordChordPair[] {
   if (!trimmed) return [];
   if (/\[[A-G][^\]]*\]/.test(trimmed)) return parseBracketed(trimmed);
   return parseAboveLine(trimmed);
+}
+
+/** Convert a list of word/chord pairs into a ChordChartLine. Chords are placed
+ *  at the column offset of their associated word in the lyrics string. */
+function pairsToChordChartLine(pairs: WordChordPair[]): ChordChartLine {
+  const words = pairs.map(p => p.word);
+  const lyrics = words.join(" ");
+
+  // Track the start column of each word
+  const wordCols: number[] = [];
+  let col = 0;
+  for (let i = 0; i < words.length; i++) {
+    wordCols.push(col);
+    col += words[i].length + 1; // +1 for space separator
+  }
+
+  // Build chords string by writing each chord at its word's column
+  let chords = "";
+  for (let i = 0; i < pairs.length; i++) {
+    const chord = pairs[i].chord;
+    if (!chord) continue;
+    const targetCol = wordCols[i];
+    if (targetCol >= chords.length) {
+      chords = chords.padEnd(targetCol) + chord;
+    } else {
+      chords = chords.slice(0, targetCol) + chord + chords.slice(targetCol + chord.length);
+    }
+  }
+
+  return { chords: chords.trimEnd(), lyrics };
+}
+
+/**
+ * Parse pasted text into ChordChartLine[] for the chord-chart view.
+ * - Bracketed format: each input line becomes one ChordChartLine.
+ * - Above-the-line format: chord row + lyric row pairs are preserved as-is.
+ * - Pure lyrics: each line becomes a ChordChartLine with empty chords.
+ * Blank lines produce { chords: "", lyrics: "" } for visual spacing.
+ */
+export function parseToChordChartLines(text: string): ChordChartLine[] {
+  const trimmed = text.trim();
+  if (!trimmed) return [];
+
+  // Bracketed format: process line by line
+  if (/\[[A-G][^\]]*\]/.test(trimmed)) {
+    return trimmed.split("\n").map(line => {
+      if (!line.trim()) return { chords: "", lyrics: "" };
+      const pairs = parseBracketed(line);
+      return pairsToChordChartLine(pairs);
+    });
+  }
+
+  // Above-the-line format or pure lyrics — preserve line structure
+  const lines = trimmed.split("\n");
+  const result: ChordChartLine[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    const tokens = line.trim().split(/\s+/).filter(Boolean);
+
+    if (tokens.length === 0) {
+      result.push({ chords: "", lyrics: "" });
+      i++;
+      continue;
+    }
+
+    const isChordLine = tokens.every(isChordToken);
+    const nextLine = i + 1 < lines.length ? lines[i + 1] : null;
+    const nextTokens = nextLine?.trim().split(/\s+/).filter(Boolean) ?? [];
+    const nextIsLyric = nextTokens.length > 0 && !nextTokens.every(isChordToken);
+
+    if (isChordLine && nextIsLyric) {
+      result.push({ chords: line, lyrics: nextLine! });
+      i += 2;
+    } else if (isChordLine) {
+      result.push({ chords: line, lyrics: "" });
+      i++;
+    } else {
+      result.push({ chords: "", lyrics: line });
+      i++;
+    }
+  }
+  return result;
 }

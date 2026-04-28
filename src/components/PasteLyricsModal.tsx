@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useScoreStore } from "@/store/score-store";
 import { ChordSymbol, Note, ScorePatch } from "@/lib/schema";
-import { parseLyricsWithChords } from "@/lib/lyric-parser";
+import { parseLyricsWithChords, parseToChordChartLines } from "@/lib/lyric-parser";
 
 export default function PasteLyricsModal({ onClose }: { onClose: () => void }) {
   const score = useScoreStore(s => s.score);
@@ -44,10 +44,33 @@ export default function PasteLyricsModal({ onClose }: { onClose: () => void }) {
     return { staffId: staff.id, voiceId: voice.id, notes: sorted, startIdx: idx };
   }, [score, stepEntry]);
 
+  const isChordChartMode = !!score && score.sections.length > 0 && score.staves.length === 0;
+
   // Keep a ref to the apply handler so the keyboard effect never goes stale
   const applyRef = useRef<() => void>(() => {});
 
+  const handleApplyChordChart = () => {
+    if (!score || !isChordChartMode) return;
+    const section = score.sections[0];
+    const newLines = parseToChordChartLines(text);
+    if (newLines.length === 0) { onClose(); return; }
+
+    const patches: ScorePatch[] = [];
+    // Remove existing lines in reverse order to keep indices stable
+    for (let i = section.lines.length - 1; i >= 0; i--) {
+      patches.push({ op: "remove_section_line", sectionId: section.id, lineIdx: i });
+    }
+    // Append new lines
+    for (const line of newLines) {
+      patches.push({ op: "add_section_line", sectionId: section.id, line });
+    }
+    applyPatches(patches);
+    onClose();
+  };
+
   const handleApply = () => {
+    if (isChordChartMode) { handleApplyChordChart(); return; }
+
     const pairs = parseLyricsWithChords(text);
     if (pairs.length === 0 || !score) { onClose(); return; }
 
@@ -97,7 +120,7 @@ export default function PasteLyricsModal({ onClose }: { onClose: () => void }) {
     return () => document.removeEventListener("keydown", handler);
   }, [onClose]);
 
-  const canApply = !!text.trim() && notes.length > 0 && !!score;
+  const canApply = !!text.trim() && !!score && (isChordChartMode || notes.length > 0);
 
   return (
     <div
@@ -113,8 +136,10 @@ export default function PasteLyricsModal({ onClose }: { onClose: () => void }) {
           <div>
             <h2 className="font-semibold text-gray-900 text-base">Paste Lyrics / Chords</h2>
             <p className="text-xs text-gray-500 mt-0.5">
-              Words are assigned to notes in order from the cursor position.
-              Supports <code className="bg-gray-100 px-1 rounded font-mono">[G]chord</code> and chord-above-lyric formats.
+              {isChordChartMode
+                ? <>Replaces the first section&rsquo;s content. Supports <code className="bg-gray-100 px-1 rounded font-mono">[G]chord</code> and chord-above-lyric formats.</>
+                : <>Words assigned to notes from the cursor. Supports <code className="bg-gray-100 px-1 rounded font-mono">[G]chord</code> and chord-above-lyric formats.</>
+              }
             </p>
           </div>
           <button
@@ -143,14 +168,19 @@ export default function PasteLyricsModal({ onClose }: { onClose: () => void }) {
             className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y font-mono"
           />
 
-          {score && !stepEntry && notes.length > 0 && (
+          {!isChordChartMode && score && !stepEntry && notes.length > 0 && (
             <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
               No note selected — pasting from the beginning. Tap a note first to set the start position.
             </p>
           )}
-          {score && notes.length === 0 && (
+          {!isChordChartMode && score && notes.length === 0 && (
             <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
               No pitched notes found. Add notes to the score before pasting lyrics.
+            </p>
+          )}
+          {isChordChartMode && score && score.sections.length > 0 && (
+            <p className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+              Chord chart mode — content will replace the &ldquo;{score.sections[0].label}&rdquo; section.
             </p>
           )}
         </div>
