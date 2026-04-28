@@ -155,6 +155,33 @@ export default function MenuBar({
     });
   };
 
+  /** Start a blank chord chart (songbook mode). One Verse section, one
+   *  empty line — the user fills in lyrics and chords from there. No
+   *  staves, so the renderer switches to ChordChartView. */
+  const handleNewChordChart = () => {
+    reset();
+    setScore({
+      id: uuidv4(),
+      title: "Untitled Song",
+      composer: "",
+      tempo: 120,
+      timeSignature: "4/4",
+      keySignature: "C",
+      measures: 1,
+      staves: [],
+      chordSymbols: [],
+      rehearsalMarks: [],
+      repeats: [],
+      sections: [{
+        id: "v1",
+        label: "Verse 1",
+        lines: [{ chords: "", lyrics: "" }],
+      }],
+      form: [],
+      metadata: {},
+    });
+  };
+
   const handleExportMusicXML = () => {
     if (!score) return;
     const xml = scoreToMusicXML(score);
@@ -306,6 +333,7 @@ export default function MenuBar({
 
   const fileMenu: MenuItem[] = [
     { label: "New Score", action: handleNew },
+    { label: "New Chord Chart", action: handleNewChordChart },
     { separator: true },
     { label: "Open Project...", shortcut: "", action: () => projectInputRef.current?.click() },
     { label: "Import...", shortcut: "", action: () => fileInputRef.current?.click() },

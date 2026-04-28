@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { useScoreStore } from "@/store/score-store";
+import { v4 as uuidv4 } from "uuid";
 import { playScore, stopPlayback, isPlaying } from "@/lib/playback";
 import PromptPanel from "@/components/PromptPanel";
 import PropertiesPanel from "@/components/PropertiesPanel";
@@ -27,6 +28,8 @@ const ScoreRenderer = dynamic(() => import("@/components/ScoreRenderer"), {
 
 export default function Home() {
   const { score, undo, redo, layout } = useScoreStore();
+  const setScore = useScoreStore((s) => s.setScore);
+  const resetStore = useScoreStore((s) => s.reset);
   const stepEntry = useScoreStore((s) => s.stepEntry);
   const setStepEntry = useScoreStore((s) => s.setStepEntry);
   const applyPatches = useScoreStore((s) => s.applyPatches);
@@ -504,11 +507,73 @@ export default function Home() {
               </div>
             )
           ) : (
-            <div className="flex flex-col items-center justify-center h-full text-gray-400 space-y-3 print-hide">
+            <div className="flex flex-col items-center justify-center h-full text-gray-400 space-y-4 print-hide">
               <div className="text-7xl opacity-20">&#119070;</div>
               <p className="text-lg font-light tracking-wide">No score yet</p>
-              <p className="text-sm text-gray-400">
-                Type a description in the prompt panel to generate a score
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    resetStore();
+                    setScore({
+                      id: uuidv4(),
+                      title: "Untitled Score",
+                      composer: "",
+                      tempo: 120,
+                      timeSignature: "4/4",
+                      keySignature: "C",
+                      measures: 16,
+                      staves: [{
+                        id: uuidv4(),
+                        name: "Staff 1",
+                        clef: "treble",
+                        lyricsMode: "none",
+                        voices: [{ id: uuidv4(), role: "general", notes: [] }],
+                      }],
+                      chordSymbols: [],
+                      rehearsalMarks: [],
+                      repeats: [],
+                      sections: [],
+                      form: [],
+                      metadata: {},
+                    });
+                  }}
+                  className="px-4 py-2 text-sm rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  New Score (Notation)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    resetStore();
+                    setScore({
+                      id: uuidv4(),
+                      title: "Untitled Song",
+                      composer: "",
+                      tempo: 120,
+                      timeSignature: "4/4",
+                      keySignature: "C",
+                      measures: 1,
+                      staves: [],
+                      chordSymbols: [],
+                      rehearsalMarks: [],
+                      repeats: [],
+                      sections: [{
+                        id: "v1",
+                        label: "Verse 1",
+                        lines: [{ chords: "", lyrics: "" }],
+                      }],
+                      form: [],
+                      metadata: {},
+                    });
+                  }}
+                  className="px-4 py-2 text-sm rounded-md border border-pink-400 bg-pink-50 text-pink-700 hover:bg-pink-100 transition-colors"
+                >
+                  New Chord Chart
+                </button>
+              </div>
+              <p className="text-xs text-gray-500">
+                Or describe a song in the AI panel on the left to generate one.
               </p>
             </div>
           )}
