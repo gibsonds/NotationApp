@@ -13,6 +13,7 @@ interface MenuBarProps {
   onPrint?: () => void;
   onToggleSidebar: () => void;
   sidebarOpen: boolean;
+  onOpenAutosave?: () => void;
 }
 
 type MenuItem = {
@@ -103,7 +104,7 @@ function MenuDropdown({ label, items, isOpen, onToggle, onClose }: {
 }
 
 export default function MenuBar({
-  zoom, onZoomChange, onPrint,
+  zoom, onZoomChange, onPrint, onOpenAutosave,
   onToggleSidebar, sidebarOpen,
 }: MenuBarProps) {
   const {
@@ -336,6 +337,7 @@ export default function MenuBar({
     { label: "New Chord Chart", action: handleNewChordChart },
     { separator: true },
     { label: "Open Project...", shortcut: "", action: () => projectInputRef.current?.click() },
+    { label: "Recover from Auto-save...", action: () => onOpenAutosave?.() },
     { label: "Import...", shortcut: "", action: () => fileInputRef.current?.click() },
     { separator: true },
     { label: "Save Revision", shortcut: "Cmd+S", action: handleSave, enabled: !!score },

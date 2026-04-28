@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { useScoreStore } from "@/store/score-store";
 import { v4 as uuidv4 } from "uuid";
+import { saveSnapshot } from "@/lib/autosave";
 import { playScore, stopPlayback, isPlaying } from "@/lib/playback";
 import PromptPanel from "@/components/PromptPanel";
 import PropertiesPanel from "@/components/PropertiesPanel";
@@ -14,6 +15,7 @@ import NoteContextMenu from "@/components/NoteContextMenu";
 import CommandPalette, { PaletteCommand } from "@/components/CommandPalette";
 import InlineAIPrompt from "@/components/InlineAIPrompt";
 import ChordChartView from "@/components/ChordChartView";
+import AutosaveRecoveryDialog from "@/components/AutosaveRecoveryDialog";
 import { cleanScoreOverflow } from "@/lib/score-cleanup";
 
 // Dynamic import to prevent SSR for OSMD (uses browser APIs)
@@ -57,6 +59,7 @@ export default function Home() {
     setUIState({ sidebarOpen: typeof v === "function" ? v(uiState.sidebarOpen) : v });
   }, [setUIState, uiState.sidebarOpen]);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [autosaveDialogOpen, setAutosaveDialogOpen] = useState(false);
   const [inlineAI, setInlineAI] = useState<{ note: { measure: number; beat: number; pitch: string; staffIndex: number }; position: { x: number; y: number } } | null>(null);
   const printFnRef = useRef<(() => Promise<void>) | null>(null);
   const handlePrint = useCallback(() => {
@@ -197,6 +200,35 @@ export default function Home() {
       beat: Math.max(1, info.beat),
     });
   }, [stepEntry, score, setStepEntry, selectedNote, selection, setSelection, lyricMode]);
+
+  // ── Autosave ──────────────────────────────────────────────────────────
+  // Persist a timestamped snapshot of the score to IndexedDB once activity
+  // settles (30s after the last applyPatches/setScore). Independent of the
+  // existing localStorage persist — IndexedDB has way more headroom and
+  // gives us a HISTORY of recovery points (last 20) instead of one current
+  // value. File menu has a "Recover from Auto-save..." command that opens
+  // the snapshots list.
+  useEffect(() => {
+    if (!score) return;
+    const id = setTimeout(() => {
+      saveSnapshot(score).catch((err) => {
+        console.warn("[autosave] snapshot failed:", err);
+      });
+    }, 30_000);
+    return () => clearTimeout(id);
+  }, [score]);
+
+  // Best-effort snapshot on tab close / refresh. IndexedDB writes started
+  // here may not complete before unload, but in practice they often do for
+  // small payloads; cheaper than nothing for crash recovery.
+  useEffect(() => {
+    if (!score) return;
+    const handler = () => {
+      saveSnapshot(score).catch(() => {});
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [score]);
 
   // Arrow keys to move cursor + Delete to remove selected note
   useEffect(() => {
@@ -436,6 +468,7 @@ export default function Home() {
           onPrint={handlePrint}
           onToggleSidebar={() => setLeftPanelOpen(p => !p)}
           sidebarOpen={leftPanelOpen}
+          onOpenAutosave={() => setAutosaveDialogOpen(true)}
         />
       </div>
 
@@ -887,6 +920,11 @@ export default function Home() {
         isOpen={commandPaletteOpen}
         onClose={() => setCommandPaletteOpen(false)}
       />
+
+      {/* Autosave recovery dialog */}
+      {autosaveDialogOpen && (
+        <AutosaveRecoveryDialog onClose={() => setAutosaveDialogOpen(false)} />
+      )}
     </div>
   );
 }
