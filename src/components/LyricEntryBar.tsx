@@ -29,7 +29,10 @@ export default function LyricEntryBar({ staffId, voiceId, startMeasure, startBea
   const applyPatches = useScoreStore((s) => s.applyPatches);
   const [text, setText] = useState("");
   const [noteIndex, setNoteIndex] = useState(0);
+  const [pasteMode, setPasteMode] = useState(false);
+  const [pasteText, setPasteText] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const pasteRef = useRef<HTMLTextAreaElement>(null);
   const onCurrentNoteRef = useRef(onCurrentNote);
   onCurrentNoteRef.current = onCurrentNote;
 
@@ -152,6 +155,32 @@ export default function LyricEntryBar({ staffId, voiceId, startMeasure, startBea
     }
   }, [noteIndex, notes]);
 
+  const handlePasteSubmit = useCallback(() => {
+    const words = pasteText.split(/\s+/).map(w => w.trim()).filter(Boolean);
+    if (words.length > 0) {
+      const patches = words.flatMap((word, i) => {
+        const note = notes[noteIndex + i];
+        if (!note) return [];
+        return [{
+          op: "update_note" as const,
+          staffId,
+          voiceId,
+          measure: note.measure,
+          beat: note.beat,
+          pitch: note.pitch,
+          updates: { lyric: word },
+        }];
+      });
+      if (patches.length > 0) applyPatches(patches);
+      const newIdx = Math.min(noteIndex + words.length, notes.length - 1);
+      setNoteIndex(newIdx);
+      setText(notes[newIdx]?.lyric || "");
+    }
+    setPasteMode(false);
+    setPasteText("");
+    setTimeout(() => inputRef.current?.focus(), 50);
+  }, [pasteText, notes, noteIndex, staffId, voiceId, applyPatches]);
+
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === "Escape" || e.key === "Enter") {
       e.preventDefault();
@@ -212,51 +241,111 @@ export default function LyricEntryBar({ staffId, voiceId, startMeasure, startBea
   if (!score) return null;
 
   return (
-    <div className="print-hide flex items-center gap-3 px-4 py-2 bg-[#1a1a2e] text-white text-xs border-t border-pink-500/30">
-      <span className="text-pink-300 font-bold text-sm">LYRIC</span>
-
-      {currentNote ? (
-        <span className="text-pink-200">
-          {currentNote.pitch} M{currentNote.measure}:B{currentNote.beat}
-          <span className="text-pink-400 ml-1">({noteIndex + 1}/{notes.length})</span>
-        </span>
-      ) : (
-        <span className="text-pink-400">No notes to add lyrics to</span>
+    <div className="print-hide bg-[#1a1a2e] text-white text-xs border-t border-pink-500/30">
+      {/* Paste block panel */}
+      {pasteMode && (
+        <div className="flex items-start gap-3 px-4 pt-3 pb-2">
+          <span className="text-pink-300 font-bold text-sm shrink-0 mt-1">PASTE</span>
+          <textarea
+            ref={pasteRef}
+            value={pasteText}
+            onChange={(e) => setPasteText(e.target.value)}
+            placeholder="Paste lyrics here — words are assigned to notes in order. ⌘↩ to apply, Esc to cancel."
+            rows={4}
+            className="flex-1 px-2 py-1 text-sm bg-white/5 text-white border border-pink-500/30 rounded-lg focus:outline-none focus:border-pink-400 placeholder-pink-500/50 resize-y"
+            autoFocus
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                e.preventDefault();
+                setPasteMode(false);
+                setPasteText("");
+                setTimeout(() => inputRef.current?.focus(), 50);
+              }
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault();
+                handlePasteSubmit();
+              }
+            }}
+          />
+          <div className="flex flex-col gap-1 shrink-0">
+            <button
+              onClick={handlePasteSubmit}
+              className="px-2 py-1 text-[10px] bg-pink-600 hover:bg-pink-500 rounded-lg text-white transition-colors"
+            >
+              Apply (⌘↩)
+            </button>
+            <button
+              onClick={() => {
+                setPasteMode(false);
+                setPasteText("");
+                setTimeout(() => inputRef.current?.focus(), 50);
+              }}
+              className="px-2 py-1 text-[10px] bg-gray-700 hover:bg-gray-600 rounded-lg text-pink-300 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
       )}
 
-      <input
-        ref={inputRef}
-        type="text"
-        value={text}
-        onChange={handleChange}
-        onKeyDown={handleKeyDown}
-        placeholder="Type lyric, Space=next, hyphen=syllable, arrows=navigate, Esc=done"
-        className="flex-1 px-2 py-1 text-sm bg-white/5 text-white border border-pink-500/30 rounded-lg focus:outline-none focus:border-pink-400 placeholder-pink-500/50"
-        autoFocus
-      />
+      {/* Normal lyric entry bar */}
+      <div className="flex items-center gap-3 px-4 py-2">
+        <span className="text-pink-300 font-bold text-sm">LYRIC</span>
 
-      {/* Preview strip */}
-      <div className="flex items-center gap-1 text-[10px] text-pink-400 max-w-xs overflow-hidden">
-        {notes.slice(Math.max(0, noteIndex - 2), noteIndex + 5).map((n, i) => {
-          const absIdx = Math.max(0, noteIndex - 2) + i;
-          const isCurrent = absIdx === noteIndex;
-          return (
-            <span
-              key={`${n.measure}-${n.beat}`}
-              className={isCurrent ? "text-white font-bold underline" : n.lyric ? "text-pink-300" : "text-pink-600"}
-            >
-              {isCurrent ? (text || "_") : (n.lyric || "\u00B7")}
-            </span>
-          );
-        })}
+        {currentNote ? (
+          <span className="text-pink-200">
+            {currentNote.pitch} M{currentNote.measure}:B{currentNote.beat}
+            <span className="text-pink-400 ml-1">({noteIndex + 1}/{notes.length})</span>
+          </span>
+        ) : (
+          <span className="text-pink-400">No notes to add lyrics to</span>
+        )}
+
+        <input
+          ref={inputRef}
+          type="text"
+          value={text}
+          onChange={handleChange}
+          onKeyDown={handleKeyDown}
+          placeholder="Type lyric, Space=next, hyphen=syllable, arrows=navigate, Esc=done"
+          className="flex-1 px-2 py-1 text-sm bg-white/5 text-white border border-pink-500/30 rounded-lg focus:outline-none focus:border-pink-400 placeholder-pink-500/50"
+          autoFocus
+        />
+
+        {/* Preview strip */}
+        <div className="flex items-center gap-1 text-[10px] text-pink-400 max-w-xs overflow-hidden">
+          {notes.slice(Math.max(0, noteIndex - 2), noteIndex + 5).map((n, i) => {
+            const absIdx = Math.max(0, noteIndex - 2) + i;
+            const isCurrent = absIdx === noteIndex;
+            return (
+              <span
+                key={`${n.measure}-${n.beat}`}
+                className={isCurrent ? "text-white font-bold underline" : n.lyric ? "text-pink-300" : "text-pink-600"}
+              >
+                {isCurrent ? (text || "_") : (n.lyric || "\u00B7")}
+              </span>
+            );
+          })}
+        </div>
+
+        <button
+          onClick={() => {
+            setPasteMode(true);
+            setTimeout(() => pasteRef.current?.focus(), 50);
+          }}
+          className="px-2 py-0.5 text-[10px] bg-pink-800/40 hover:bg-pink-800/60 rounded-lg text-pink-300 transition-colors"
+          title="Paste a block of lyrics and auto-assign to notes"
+        >
+          Paste Block
+        </button>
+
+        <button
+          onClick={() => { commitLyric(text.trim(), false); onClose(); }}
+          className="px-2 py-0.5 text-[10px] bg-pink-600/30 hover:bg-pink-600/50 rounded-lg text-pink-300 transition-colors"
+        >
+          Done (Esc)
+        </button>
       </div>
-
-      <button
-        onClick={() => { commitLyric(text.trim(), false); onClose(); }}
-        className="px-2 py-0.5 text-[10px] bg-pink-600/30 hover:bg-pink-600/50 rounded-lg text-pink-300 transition-colors"
-      >
-        Done (Esc)
-      </button>
     </div>
   );
 }
