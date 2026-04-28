@@ -368,9 +368,9 @@ export default function LyricEntryBar({ staffId, voiceId, startMeasure, startBea
             ref={pasteRef}
             value={pasteText}
             onChange={(e) => setPasteText(e.target.value)}
-            placeholder="Paste lyrics here — words are assigned to notes in order. ⌘↩ to apply, Esc to cancel."
+            placeholder="Paste lyrics here — words are assigned to notes in order. Supports [G]chord or chord-above-lyric formats."
             rows={4}
-            className="flex-1 px-2 py-1 text-sm bg-white/5 text-white border border-pink-500/30 rounded-lg focus:outline-none focus:border-pink-400 placeholder-pink-500/50 resize-y"
+            className="flex-1 px-3 py-2 text-sm bg-white/5 text-white border border-pink-500/30 rounded-lg focus:outline-none focus:border-pink-400 placeholder-pink-500/50 resize-y"
             autoFocus
             onKeyDown={(e) => {
               if (e.key === "Escape") {
@@ -385,12 +385,12 @@ export default function LyricEntryBar({ staffId, voiceId, startMeasure, startBea
               }
             }}
           />
-          <div className="flex flex-col gap-1 shrink-0">
+          <div className="flex flex-col gap-2 shrink-0">
             <button
               onClick={handlePasteSubmit}
-              className="px-2 py-1 text-[10px] bg-pink-600 hover:bg-pink-500 rounded-lg text-white transition-colors"
+              className="px-4 py-2.5 text-sm font-medium bg-pink-600 hover:bg-pink-500 active:bg-pink-700 rounded-lg text-white transition-colors min-w-[80px]"
             >
-              Apply (⌘↩)
+              Apply
             </button>
             <button
               onClick={() => {
@@ -398,7 +398,7 @@ export default function LyricEntryBar({ staffId, voiceId, startMeasure, startBea
                 setPasteText("");
                 setTimeout(() => inputRef.current?.focus(), 50);
               }}
-              className="px-2 py-1 text-[10px] bg-gray-700 hover:bg-gray-600 rounded-lg text-pink-300 transition-colors"
+              className="px-4 py-2.5 text-sm bg-gray-700 hover:bg-gray-600 active:bg-gray-800 rounded-lg text-pink-300 transition-colors min-w-[80px]"
             >
               Cancel
             </button>
@@ -451,7 +451,7 @@ export default function LyricEntryBar({ staffId, voiceId, startMeasure, startBea
             setPasteMode(true);
             setTimeout(() => pasteRef.current?.focus(), 50);
           }}
-          className="px-2 py-0.5 text-[10px] bg-pink-800/40 hover:bg-pink-800/60 rounded-lg text-pink-300 transition-colors"
+          className="px-3 py-1.5 text-xs font-medium bg-pink-700 hover:bg-pink-600 active:bg-pink-800 rounded-lg text-white transition-colors shrink-0"
           title="Paste a block of lyrics and auto-assign to notes"
         >
           Paste Block
@@ -459,9 +459,9 @@ export default function LyricEntryBar({ staffId, voiceId, startMeasure, startBea
 
         <button
           onClick={() => { commitLyric(text.trim(), false); onClose(); }}
-          className="px-2 py-0.5 text-[10px] bg-pink-600/30 hover:bg-pink-600/50 rounded-lg text-pink-300 transition-colors"
+          className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 active:bg-gray-800 rounded-lg text-pink-300 transition-colors shrink-0"
         >
-          Done (Esc)
+          Done
         </button>
       </div>
     </div>
