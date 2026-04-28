@@ -5,6 +5,7 @@ import { useScoreStore } from "@/store/score-store";
 import { scoreToMusicXML } from "@/lib/musicxml";
 import { ScoreSchema } from "@/lib/schema";
 import { ChatMessage } from "@/store/score-store";
+import { IS_STATIC_EXPORT, STATIC_FEATURE_DISABLED_MESSAGE } from "@/lib/api-availability";
 import { v4 as uuidv4 } from "uuid";
 import MidiKeyboard from "./MidiKeyboard";
 
@@ -102,6 +103,11 @@ export default function Toolbar({ zoom, onZoomChange, onPrint }: ToolbarProps) {
       return;
     }
 
+    if (IS_STATIC_EXPORT) {
+      addMessage({ id: uuidv4(), role: "assistant", content: STATIC_FEATURE_DISABLED_MESSAGE, timestamp: Date.now() });
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
     setIsGenerating(true);
     addMessage({
       id: uuidv4(),
@@ -263,6 +269,11 @@ export default function Toolbar({ zoom, onZoomChange, onPrint }: ToolbarProps) {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    if (IS_STATIC_EXPORT) {
+      addMessage({ id: uuidv4(), role: "assistant", content: STATIC_FEATURE_DISABLED_MESSAGE, timestamp: Date.now() });
+      if (audioInputRef.current) audioInputRef.current.value = "";
+      return;
+    }
     setIsGenerating(true);
     addMessage({
       id: uuidv4(),

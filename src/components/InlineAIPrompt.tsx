@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useScoreStore } from "@/store/score-store";
+import { IS_STATIC_EXPORT, STATIC_FEATURE_DISABLED_MESSAGE } from "@/lib/api-availability";
 import { v4 as uuidv4 } from "uuid";
 
 interface InlineAIPromptProps {
@@ -36,6 +37,11 @@ export default function InlineAIPrompt({ note, position, onClose }: InlineAIProm
     if (!input.trim() || !score || loading) return;
 
     const prompt = input.trim();
+    if (IS_STATIC_EXPORT) {
+      addMessage({ id: uuidv4(), role: "assistant", content: STATIC_FEATURE_DISABLED_MESSAGE, timestamp: Date.now() });
+      onClose();
+      return;
+    }
     setLoading(true);
 
     try {

@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useScoreStore, ChatMessage, RecordedOperation } from "@/store/score-store";
 import { matchBuiltinCommand, BUILTIN_COMMANDS } from "@/lib/transforms";
+import { IS_STATIC_EXPORT, STATIC_FEATURE_DISABLED_MESSAGE } from "@/lib/api-availability";
 import { v4 as uuidv4 } from "uuid";
 
 export default function PromptPanel() {
@@ -84,6 +85,15 @@ export default function PromptPanel() {
     }
 
     // AI request
+    if (IS_STATIC_EXPORT) {
+      addMessage({
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: STATIC_FEATURE_DISABLED_MESSAGE,
+        timestamp: Date.now(),
+      });
+      return;
+    }
     setIsGenerating(true);
     try {
       const endpoint = score ? "/api/score/revise" : "/api/score/create";
@@ -198,6 +208,10 @@ export default function PromptPanel() {
     }
 
     // Replay AI operation with new selection
+    if (IS_STATIC_EXPORT) {
+      addMessage({ id: uuidv4(), role: "assistant", content: STATIC_FEATURE_DISABLED_MESSAGE, timestamp: Date.now() });
+      return;
+    }
     setIsGenerating(true);
     try {
       const res = await fetch("/api/score/revise", {

@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useScoreStore } from "@/store/score-store";
 import { scoreToMusicXML } from "@/lib/musicxml";
 import { ScoreSchema } from "@/lib/schema";
+import { IS_STATIC_EXPORT, STATIC_FEATURE_DISABLED_MESSAGE } from "@/lib/api-availability";
 import { v4 as uuidv4 } from "uuid";
 
 interface MenuBarProps {
@@ -226,6 +227,10 @@ export default function MenuBar({
       return;
     }
 
+    if (IS_STATIC_EXPORT) {
+      addMessage({ id: uuidv4(), role: "assistant", content: STATIC_FEATURE_DISABLED_MESSAGE, timestamp: Date.now() });
+      return;
+    }
     setIsGenerating(true);
     addMessage({ id: uuidv4(), role: "assistant", content: `Importing ${file.name}...`, timestamp: Date.now() });
     try {
@@ -275,6 +280,10 @@ export default function MenuBar({
   const handleTranscribe = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (IS_STATIC_EXPORT) {
+      addMessage({ id: uuidv4(), role: "assistant", content: STATIC_FEATURE_DISABLED_MESSAGE, timestamp: Date.now() });
+      return;
+    }
     setIsGenerating(true);
     addMessage({ id: uuidv4(), role: "assistant", content: `Transcribing ${file.name}... This may take a minute.`, timestamp: Date.now() });
     try {
