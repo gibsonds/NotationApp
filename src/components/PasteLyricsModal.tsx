@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useScoreStore } from "@/store/score-store";
 import { ChordSymbol, Note, ScorePatch } from "@/lib/schema";
-import { parseLyricsWithChords, parseToChordChartLines } from "@/lib/lyric-parser";
+import { parseLyricsWithChords, parseToSections } from "@/lib/lyric-parser";
 
 export default function PasteLyricsModal({ onClose }: { onClose: () => void }) {
   const score = useScoreStore(s => s.score);
@@ -51,20 +51,45 @@ export default function PasteLyricsModal({ onClose }: { onClose: () => void }) {
 
   const handleApplyChordChart = () => {
     if (!score || !isChordChartMode) return;
-    const section = score.sections[0];
-    const newLines = parseToChordChartLines(text);
-    if (newLines.length === 0) { onClose(); return; }
+    const parsedSections = parseToSections(text);
+    if (parsedSections.length === 0) { onClose(); return; }
 
-    const patches: ScorePatch[] = [];
-    // Remove existing lines in reverse order to keep indices stable
-    for (let i = section.lines.length - 1; i >= 0; i--) {
-      patches.push({ op: "remove_section_line", sectionId: section.id, lineIdx: i });
+    const hasHeaders = parsedSections.length > 1 || parsedSections[0].label !== "";
+
+    if (!hasHeaders) {
+      // No section headers — old behaviour: replace lines in section[0] only
+      const section = score.sections[0];
+      const newLines = parsedSections[0].lines;
+      if (newLines.length === 0) { onClose(); return; }
+      const patches: ScorePatch[] = [];
+      for (let i = section.lines.length - 1; i >= 0; i--) {
+        patches.push({ op: "remove_section_line", sectionId: section.id, lineIdx: i });
+      }
+      for (const line of newLines) {
+        patches.push({ op: "add_section_line", sectionId: section.id, line });
+      }
+      applyPatches(patches);
+    } else {
+      // Section headers detected — replace ALL sections with the parsed result
+      const ts = Date.now();
+      const patches: ScorePatch[] = [];
+      for (const section of score.sections) {
+        patches.push({ op: "remove_section", sectionId: section.id });
+      }
+      for (let i = 0; i < parsedSections.length; i++) {
+        const parsed = parsedSections[i];
+        const label = parsed.label || score.sections[0]?.label || "Verse 1";
+        patches.push({
+          op: "add_section",
+          section: {
+            id: `section-${ts}-${i}`,
+            label,
+            lines: parsed.lines.length > 0 ? parsed.lines : [{ chords: "", lyrics: "" }],
+          },
+        });
+      }
+      applyPatches(patches);
     }
-    // Append new lines
-    for (const line of newLines) {
-      patches.push({ op: "add_section_line", sectionId: section.id, line });
-    }
-    applyPatches(patches);
     onClose();
   };
 
@@ -137,7 +162,7 @@ export default function PasteLyricsModal({ onClose }: { onClose: () => void }) {
             <h2 className="font-semibold text-gray-900 text-base">Paste Lyrics / Chords</h2>
             <p className="text-xs text-gray-500 mt-0.5">
               {isChordChartMode
-                ? <>Replaces the first section&rsquo;s content. Supports <code className="bg-gray-100 px-1 rounded font-mono">[G]chord</code> and chord-above-lyric formats.</>
+                ? <>Replaces section content. Section headers (<code className="bg-gray-100 px-1 rounded font-mono">Verse 1:</code>, <code className="bg-gray-100 px-1 rounded font-mono">Chorus:</code>, etc.) create multiple sections. Supports <code className="bg-gray-100 px-1 rounded font-mono">[G]chord</code> and chord-above-lyric formats.</>
                 : <>Words assigned to notes from the cursor. Supports <code className="bg-gray-100 px-1 rounded font-mono">[G]chord</code> and chord-above-lyric formats.</>
               }
             </p>
@@ -161,8 +186,8 @@ export default function PasteLyricsModal({ onClose }: { onClose: () => void }) {
             rows={8}
             autoFocus
             placeholder={
-              "Plain lyrics:\nAmazing grace how sweet the sound\n\n" +
-              "Bracketed chords:\n[G]Amazing [C]grace how [G]sweet\n\n" +
+              "Section headers split into multiple sections:\nVerse 1:\n[G]Amazing [C]grace how [G]sweet\n\nChorus:\nHow great thou art\n\n" +
+              "Or plain lyrics (no headers):\nAmazing grace how sweet the sound\n\n" +
               "Chord-above-lyric:\nG         C    G\nAmazing grace how sweet"
             }
             className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y font-mono"
@@ -180,7 +205,8 @@ export default function PasteLyricsModal({ onClose }: { onClose: () => void }) {
           )}
           {isChordChartMode && score && score.sections.length > 0 && (
             <p className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
-              Chord chart mode — content will replace the &ldquo;{score.sections[0].label}&rdquo; section.
+              Chord chart mode. Without headers: replaces &ldquo;{score.sections[0].label}&rdquo; lines.
+              With headers (Verse:, Chorus:, Bridge:, …): replaces all {score.sections.length} section{score.sections.length !== 1 ? "s" : ""}.
             </p>
           )}
         </div>
