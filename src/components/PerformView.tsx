@@ -12,12 +12,14 @@ interface PerformPrefs {
   fontSize: number;       // rem
   lineHeight: number;     // unitless multiplier
   letterSpacing: number;  // em
+  columns: 1 | 2;
 }
 
 const DEFAULT_PREFS: PerformPrefs = {
   fontSize: 1.5,
   lineHeight: 1.4,
   letterSpacing: 0.02,
+  columns: 1,
 };
 
 function loadPrefs(): PerformPrefs {
@@ -57,6 +59,7 @@ export default function PerformView({ score, onExit }: PerformViewProps) {
   const currentSongId = useScoreStore(s => s.uiState.currentSongId);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [overflows, setOverflows] = useState(false);
 
   // Snapshot the song list on mount — performance shouldn't be interrupted
   // by sync updates. Newest first matches the My Songs modal ordering.
@@ -86,6 +89,29 @@ export default function PerformView({ score, onExit }: PerformViewProps) {
   };
 
   useEffect(() => savePrefs(prefs), [prefs]);
+
+  // Detect whether the current layout overflows the scroll container's
+  // viewport — used as a hint for 2-col mode where vertical scrolling
+  // forces awkward column-1-then-column-2 reading. Re-runs on prefs/score
+  // changes and on resize.
+  useEffect(() => {
+    const measure = () => {
+      const el = scrollRef.current;
+      if (!el) return;
+      setOverflows(el.scrollHeight > el.clientHeight + 2);
+    };
+    measure();
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
+    if (ro && scrollRef.current) ro.observe(scrollRef.current);
+    window.addEventListener("resize", measure);
+    // Re-measure after fonts/layout settle.
+    const t = setTimeout(measure, 100);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener("resize", measure);
+      clearTimeout(t);
+    };
+  }, [prefs, score]);
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -139,7 +165,7 @@ export default function PerformView({ score, onExit }: PerformViewProps) {
         ref={scrollRef}
         className="absolute inset-0 overflow-auto pt-[10vh] pb-[14vh]"
       >
-        <ChordChartView score={score} performMode />
+        <ChordChartView score={score} performMode performColumns={prefs.columns} />
       </div>
 
       {/* Top tap zone — page up */}
@@ -312,12 +338,39 @@ export default function PerformView({ score, onExit }: PerformViewProps) {
         </div>
         <button
           type="button"
+          onClick={() => setPrefs(p => ({ ...p, columns: p.columns === 1 ? 2 : 1 }))}
+          className={`${btn} ${prefs.columns === 2 ? "bg-blue-700 hover:bg-blue-700" : ""}`}
+          aria-label="Toggle columns"
+          title={prefs.columns === 1 ? "Two columns" : "One column"}
+        >
+          {prefs.columns === 1 ? (
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <rect x="4" y="4" width="7" height="16" rx="1" />
+              <rect x="13" y="4" width="7" height="16" rx="1" />
+            </svg>
+          ) : (
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <rect x="5" y="4" width="14" height="16" rx="1" />
+            </svg>
+          )}
+        </button>
+        <button
+          type="button"
           onClick={onExit}
           className="px-4 h-11 rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-sm font-medium shadow"
         >
           Done
         </button>
       </div>
+
+      {/* Overflow hint — shown only when layout requires scrolling. In 2-col
+          mode this means awkward read order; in 1-col it just means the
+          tap zones are needed (no warning). */}
+      {prefs.columns === 2 && overflows && (
+        <div className="absolute top-[68px] right-3 z-30 bg-amber-500/90 text-amber-50 text-xs px-3 py-1.5 rounded-lg shadow border border-amber-300/30 max-w-[260px]">
+          Doesn't fit on one screen. Try a smaller font or 1 column.
+        </div>
+      )}
     </div>
   );
 }

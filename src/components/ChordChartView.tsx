@@ -36,6 +36,9 @@ interface ChordChartViewProps {
    *  context menus) and disables click-to-edit. PerformView uses this to
    *  render a read-only, full-bleed view of the chart. */
   performMode?: boolean;
+  /** On-screen column count (1 or 2). Only consulted when performMode is on;
+   *  defaults to 1. PerformView toggles this for landscape layouts. */
+  performColumns?: 1 | 2;
 }
 
 interface EditState {
@@ -685,7 +688,7 @@ interface HeaderContextMenuState {
   y: number;
 }
 
-export default function ChordChartView({ score, performMode = false }: ChordChartViewProps) {
+export default function ChordChartView({ score, performMode = false, performColumns = 1 }: ChordChartViewProps) {
   const applyPatches = useScoreStore((s) => s.applyPatches);
   const [editing, setEditing] = useState<EditState | null>(null);
   const [textEditing, setTextEditing] = useState<TextEditState | null>(null);
@@ -1090,8 +1093,9 @@ export default function ChordChartView({ score, performMode = false }: ChordChar
 
   // In perform mode, the parent (PerformView) owns scrolling — drop the
   // inner overflow-auto and h-full so its scrollBy() actually moves content.
+  const performColsClass = performMode && performColumns === 2 ? "perform-cols-2" : "";
   const wrapperClass = performMode
-    ? `${printClass} w-full bg-[#0f0f1f] text-gray-100 px-8 pt-4 pb-12 font-sans`
+    ? `${printClass} ${performColsClass} w-full bg-[#0f0f1f] text-gray-100 px-8 pt-4 pb-12 font-sans`
     : `${printClass} w-full h-full overflow-auto bg-[#0f0f1f] text-gray-100 p-8 font-sans`;
 
   return (
