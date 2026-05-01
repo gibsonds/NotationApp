@@ -1088,9 +1088,15 @@ export default function ChordChartView({ score, performMode = false }: ChordChar
     ["--print-section-gap" as never]: `${printSectionGap}pt`,
   };
 
+  // In perform mode, the parent (PerformView) owns scrolling — drop the
+  // inner overflow-auto and h-full so its scrollBy() actually moves content.
+  const wrapperClass = performMode
+    ? `${printClass} w-full bg-[#0f0f1f] text-gray-100 px-8 pt-4 pb-12 font-sans`
+    : `${printClass} w-full h-full overflow-auto bg-[#0f0f1f] text-gray-100 p-8 font-sans`;
+
   return (
     <div
-      className={`${printClass} w-full h-full overflow-auto bg-[#0f0f1f] text-gray-100 p-8 font-sans`}
+      className={wrapperClass}
       style={printVars}
     >
       {/* Style + print controls — on-screen only (hidden via .print-hide). */}
