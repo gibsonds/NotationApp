@@ -140,6 +140,10 @@ export interface UIState {
   aiDrawerOpen: boolean;
   propsDrawerOpen: boolean;
   performMode: boolean;
+  /** Song-bank entry id of the currently loaded score, or null if the
+   *  score isn't from the bank (e.g. fresh creation, AI-generated). Used
+   *  by PerformView to find prev/next songs in the user's list. */
+  currentSongId: string | null;
 }
 
 export const DEFAULT_UI_STATE: UIState = {
@@ -147,6 +151,7 @@ export const DEFAULT_UI_STATE: UIState = {
   aiDrawerOpen: false,
   propsDrawerOpen: true,
   performMode: false,
+  currentSongId: null,
 };
 
 export interface SavedRevision {

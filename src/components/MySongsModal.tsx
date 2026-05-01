@@ -27,6 +27,7 @@ type SyncStatus = "idle" | CloudSyncStatus;
 export default function MySongsModal({ onClose }: { onClose: () => void }) {
   const score = useScoreStore(s => s.score);
   const setScore = useScoreStore(s => s.setScore);
+  const setUIState = useScoreStore(s => s.setUIState);
   const [songs, setSongsState] = useState<SongBankEntry[]>(() =>
     getSongs().slice().reverse()
   );
@@ -105,9 +106,11 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
     setJustSaved(true);
     setTimeout(() => setJustSaved(false), 2000);
 
-    if (!CLOUD_ENABLED) return;
     const fresh = getSongs();
     const entry = fresh[fresh.length - 1];
+    if (entry) setUIState({ currentSongId: entry.id });
+
+    if (!CLOUD_ENABLED) return;
     if (!entry) return;
     setSyncStatus("syncing");
     try {
@@ -137,6 +140,7 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
 
   const handleLoad = (entry: SongBankEntry) => {
     setScore(entry.score);
+    setUIState({ currentSongId: entry.id });
     onClose();
   };
 
