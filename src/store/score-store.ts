@@ -139,12 +139,14 @@ export interface UIState {
   sidebarOpen: boolean;
   aiDrawerOpen: boolean;
   propsDrawerOpen: boolean;
+  performMode: boolean;
 }
 
 export const DEFAULT_UI_STATE: UIState = {
   sidebarOpen: true,
   aiDrawerOpen: false,
   propsDrawerOpen: true,
+  performMode: false,
 };
 
 export interface SavedRevision {

@@ -32,6 +32,10 @@ import ChordChartContextMenu, { ChordChartContextMenuItem } from "@/components/C
 
 interface ChordChartViewProps {
   score: Score;
+  /** When true, hides editor chrome (style/print controls, "+ Add Section",
+   *  context menus) and disables click-to-edit. PerformView uses this to
+   *  render a read-only, full-bleed view of the chart. */
+  performMode?: boolean;
 }
 
 interface EditState {
@@ -127,8 +131,13 @@ function SectionBlock({
       {labelPosition === "above" && header}
       {labelPosition === "left" && header}
       <div
-        className={`text-sm leading-tight whitespace-pre ${isSide ? "flex-1 min-w-0" : ""}`}
-        style={{ fontFamily: CHART_FONT_STACKS[chartFont] }}
+        className={`whitespace-pre ${isSide ? "flex-1 min-w-0" : ""}`}
+        style={{
+          fontFamily: CHART_FONT_STACKS[chartFont],
+          fontSize: "var(--perf-font-size, 0.875rem)",
+          lineHeight: "var(--perf-line-height, 1.25)",
+          letterSpacing: "var(--perf-letter-spacing, normal)",
+        }}
       >
         {section.lines.map((line, i) => {
           const isEditingThisLine =
@@ -242,9 +251,9 @@ function EditableSectionHeader({
 
   const labelStyle: React.CSSProperties = {
     fontFamily: TEXT_FONT_STACKS[font],
-    fontSize: "1.35rem",
-    lineHeight: 1.05,
-    letterSpacing: "0.02em",
+    fontSize: "var(--perf-label-font-size, 1.35rem)",
+    lineHeight: "var(--perf-line-height, 1.05)",
+    letterSpacing: "var(--perf-letter-spacing, 0.02em)",
     ...(isVertical
       ? {
           writingMode: "vertical-rl" as const,
@@ -676,7 +685,7 @@ interface HeaderContextMenuState {
   y: number;
 }
 
-export default function ChordChartView({ score }: ChordChartViewProps) {
+export default function ChordChartView({ score, performMode = false }: ChordChartViewProps) {
   const applyPatches = useScoreStore((s) => s.applyPatches);
   const [editing, setEditing] = useState<EditState | null>(null);
   const [textEditing, setTextEditing] = useState<TextEditState | null>(null);
@@ -720,6 +729,7 @@ export default function ChordChartView({ score }: ChordChartViewProps) {
   })();
 
   const handleLineClick = (sectionId: string, lineIdx: number, col: number) => {
+    if (performMode) return;
     const section = sectionMap.get(sectionId);
     if (!section) return;
     const line = section.lines[lineIdx];
@@ -739,6 +749,7 @@ export default function ChordChartView({ score }: ChordChartViewProps) {
   };
 
   const handleLineDoubleClick = (sectionId: string, lineIdx: number) => {
+    if (performMode) return;
     // Cancel any chord-edit in progress before switching to text-edit so the
     // input doesn't write a stale chord on blur.
     setEditing(null);
@@ -802,6 +813,7 @@ export default function ChordChartView({ score }: ChordChartViewProps) {
   const handleTextCancel = () => setTextEditing(null);
 
   const handleAddLine = (sectionId: string) => {
+    if (performMode) return;
     const section = sectionMap.get(sectionId);
     if (!section) return;
     const newIdx = section.lines.length;
@@ -815,6 +827,7 @@ export default function ChordChartView({ score }: ChordChartViewProps) {
   };
 
   const handleLabelCommit = (sectionId: string, label: string) => {
+    if (performMode) return;
     applyPatches([{ op: "set_section_label", sectionId, label }]);
   };
 
@@ -825,6 +838,7 @@ export default function ChordChartView({ score }: ChordChartViewProps) {
     clientX: number,
     clientY: number,
   ) => {
+    if (performMode) return;
     setEditing(null);
     setTextEditing(null);
     setContextMenu({ sectionId, lineIdx, col, x: clientX, y: clientY });
@@ -868,6 +882,7 @@ export default function ChordChartView({ score }: ChordChartViewProps) {
   };
 
   const handleHeaderContextMenu = (sectionId: string, x: number, y: number) => {
+    if (performMode) return;
     setEditing(null);
     setTextEditing(null);
     setContextMenu(null);
@@ -1079,6 +1094,7 @@ export default function ChordChartView({ score }: ChordChartViewProps) {
       style={printVars}
     >
       {/* Style + print controls — on-screen only (hidden via .print-hide). */}
+      {!performMode && (
       <div className="print-hide flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-400 mb-3 select-none">
         <span className="font-semibold uppercase tracking-wider">Style:</span>
 
@@ -1200,6 +1216,7 @@ export default function ChordChartView({ score }: ChordChartViewProps) {
           <span>Hide title</span>
         </label>
       </div>
+      )}
       <header className="mb-6 pb-4 border-b border-gray-700">
         <h1 className="text-3xl font-bold text-white">{score.title || "Untitled"}</h1>
         {score.composer && <p className="text-gray-400 mt-1">{score.composer}</p>}
@@ -1209,6 +1226,7 @@ export default function ChordChartView({ score }: ChordChartViewProps) {
           <span>Key of {score.keySignature}</span>
           {formDisplay && <span>Form: {formDisplay}</span>}
         </div>
+        {!performMode && (
         <p className="text-xs text-gray-500 mt-2 italic">
           <strong>Click</strong>: add/edit a chord ({" "}
           <code className="text-pink-300">D</code>,{" "}
@@ -1224,6 +1242,7 @@ export default function ChordChartView({ score }: ChordChartViewProps) {
           <strong>Right-click</strong> a line for the line menu.{" "}
           <strong>Click</strong> a section header to rename.
         </p>
+        )}
       </header>
 
       {displayOrder.length === 0 ? (
@@ -1267,6 +1286,7 @@ export default function ChordChartView({ score }: ChordChartViewProps) {
               chartFont={chartFont}
             />
           ))}
+          {!performMode && (
           <div className="mt-6 pt-4 border-t border-gray-800">
             <button
               type="button"
@@ -1276,6 +1296,7 @@ export default function ChordChartView({ score }: ChordChartViewProps) {
               + Add Section
             </button>
           </div>
+          )}
         </>
       )}
       {contextMenu && (

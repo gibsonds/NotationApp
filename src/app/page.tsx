@@ -19,6 +19,7 @@ import AutosaveRecoveryDialog from "@/components/AutosaveRecoveryDialog";
 import PasteLyricsModal from "@/components/PasteLyricsModal";
 import MySongsModal from "@/components/MySongsModal";
 import JoinSongbookModal from "@/components/JoinSongbookModal";
+import PerformView from "@/components/PerformView";
 import { CLOUD_ENABLED, getDeviceId } from "@/lib/song-cloud";
 import { cleanScoreOverflow } from "@/lib/score-cleanup";
 
@@ -502,6 +503,7 @@ export default function Home() {
           onOpenAutosave={() => setAutosaveDialogOpen(true)}
           onPasteLyrics={() => setPasteLyricsOpen(true)}
           onMySongs={() => setMySongsOpen(true)}
+          onTogglePerform={() => setUIState({ performMode: true })}
         />
       </div>
 
@@ -981,6 +983,14 @@ export default function Home() {
             stripJoinParam();
             setJoinCode(null);
           }}
+        />
+      )}
+
+      {/* Perform view — full-screen overlay, chord-chart only */}
+      {uiState.performMode && score?.sections && score.sections.length > 0 && (
+        <PerformView
+          score={score}
+          onExit={() => setUIState({ performMode: false })}
         />
       )}
     </div>
