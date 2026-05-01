@@ -80,16 +80,22 @@ body {
   display: none;
 }
 
-/* Perform-view 2-column layout (screen-only). Header spans both columns
- * so title/meta sits across the top; sections avoid breaking mid-section. */
+/* Perform-view 2-column layout (screen-only). Pages horizontally so each
+ * tap turns the page (cols 1+2 → cols 3+4 → …) instead of scrolling
+ * vertically, which would force read-col-1-then-back-up-to-col-2.
+ * column-fill: auto + fixed height + overflow-x make this work. */
 .perform-cols-2 {
   column-count: 2;
   column-gap: 2rem;
-  column-fill: balance;
+  column-fill: auto;
+  height: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* Snap each scroll to a clean page boundary so flicks land cleanly. */
+  scroll-snap-type: x mandatory;
 }
-.perform-cols-2 > header {
-  column-span: all;
-  -webkit-column-span: all;
+.perform-cols-2 > * {
+  scroll-snap-align: start;
 }
 .perform-cols-2 section {
   break-inside: avoid;

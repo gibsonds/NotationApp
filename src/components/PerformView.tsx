@@ -100,10 +100,27 @@ export default function PerformView({ score, onExit }: PerformViewProps) {
     return () => window.removeEventListener("keydown", handleKey);
   }, [onExit, pickerOpen]);
 
-  // Page-snap navigation: each tap moves to the next/prev page boundary.
-  // Always lands at an integer multiple of clientHeight so 2-col mode reads
-  // cleanly (both columns advance by exactly one page at a time).
+  // Page-snap navigation. In 1-col we scroll the outer container vertically
+  // by one viewport. In 2-col the chart's own wrapper is the horizontal
+  // scroller (CSS multicolumn with column-fill: auto), so we scroll IT by
+  // one client-width — which is a "page turn" of two columns.
   const pageBy = (direction: 1 | -1) => {
+    if (prefs.columns === 2) {
+      const el = scrollRef.current?.querySelector(".perform-cols-2") as
+        | HTMLElement
+        | null;
+      if (el && el.clientWidth > 0) {
+        const pageW = el.clientWidth;
+        const currentPage = Math.round(el.scrollLeft / pageW);
+        const maxPage = Math.max(0, Math.ceil((el.scrollWidth - pageW) / pageW));
+        const targetPage = Math.max(
+          0,
+          Math.min(maxPage, currentPage + direction)
+        );
+        el.scrollTo({ left: targetPage * pageW, behavior: "smooth" });
+        return;
+      }
+    }
     const el = scrollRef.current;
     if (!el) return;
     const pageH = el.clientHeight;
@@ -144,10 +161,14 @@ export default function PerformView({ score, onExit }: PerformViewProps) {
       style={wrapperVars}
     >
       {/* Scrollable content. Padded so the first/last lines aren't behind
-          the tap zones. */}
+          the tap zones. In 2-col mode, the chord chart's wrapper owns
+          horizontal scrolling (CSS multicolumn pagination) and this outer
+          stays clipped — otherwise we'd get nested vertical+horizontal scroll. */}
       <div
         ref={scrollRef}
-        className="absolute inset-0 overflow-auto pt-[10vh] pb-[14vh]"
+        className={`absolute inset-0 ${
+          prefs.columns === 2 ? "overflow-hidden" : "overflow-auto"
+        } pt-[10vh] pb-[14vh]`}
       >
         <ChordChartView score={score} performMode performColumns={prefs.columns} />
       </div>
