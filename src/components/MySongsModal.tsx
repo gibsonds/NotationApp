@@ -12,18 +12,17 @@ import {
 import {
   CLOUD_ENABLED,
   cloudDeleteSong,
-  cloudGetSong,
-  cloudListSongs,
   cloudPutSong,
   enqueueOffline,
-  flushQueue,
+  extractJoinCode,
   getDeviceId,
-  hasPendingOps,
   isTransient,
   setDeviceId,
+  syncSongbook,
+  type SyncStatus as CloudSyncStatus,
 } from "@/lib/song-cloud";
 
-type SyncStatus = "idle" | "syncing" | "ok" | "offline";
+type SyncStatus = "idle" | CloudSyncStatus;
 
 export default function MySongsModal({ onClose }: { onClose: () => void }) {
   const score = useScoreStore(s => s.score);
@@ -41,104 +40,52 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
   );
   const [pasteCode, setPasteCode] = useState("");
   const [showSync, setShowSync] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [showRawCode, setShowRawCode] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
+  const [codeCopied, setCodeCopied] = useState(false);
 
   const refreshLocal = () => setSongsState(getSongs().slice().reverse());
 
-  // Pull cloud list, hydrate cloud-only songs, push local-only songs
-  // (auto-migrate from old localStorage-only setup). Returns when finished.
-  const syncWithCloud = async (): Promise<void> => {
-    if (!CLOUD_ENABLED) return;
-    setSyncStatus("syncing");
-    try {
-      if (hasPendingOps()) await flushQueue();
-
-      const local = getSongs();
-      const summaries = await cloudListSongs();
-      const localById = new Map(local.map(e => [e.id, e]));
-      const cloudIds = new Set(summaries.map(s => s.id));
-      const merged: SongBankEntry[] = [];
-
-      for (const summary of summaries) {
-        const localEntry = localById.get(summary.id);
-        if (localEntry && localEntry.savedAt >= summary.updatedAt) {
-          try {
-            await cloudPutSong({
-              id: summary.id,
-              title: localEntry.title,
-              score: localEntry.score,
-              savedAt: localEntry.savedAt,
-            });
-          } catch {
-            /* keep local; retry next time */
-          }
-          merged.push(localEntry);
-        } else {
-          try {
-            const dto = await cloudGetSong(summary.id);
-            merged.push({
-              id: dto.id,
-              title: dto.title,
-              savedAt: dto.savedAt,
-              score: dto.score,
-            });
-          } catch {
-            if (localEntry) merged.push(localEntry);
-          }
-        }
-      }
-
-      for (const entry of local) {
-        if (cloudIds.has(entry.id)) continue;
-        try {
-          await cloudPutSong({
-            id: entry.id,
-            title: entry.title,
-            score: entry.score,
-            savedAt: entry.savedAt,
-          });
-          merged.push(entry);
-        } catch (err) {
-          merged.push(entry);
-          if (isTransient(err)) {
-            enqueueOffline({
-              type: "put",
-              id: entry.id,
-              title: entry.title,
-              score: entry.score,
-              savedAt: entry.savedAt,
-            });
-          }
-        }
-      }
-
-      merged.sort((a, b) => a.savedAt - b.savedAt);
-      writeLocalSongs(merged);
-      setSongsState(merged.slice().reverse());
-      setSyncStatus("ok");
-    } catch (err) {
-      setSyncStatus("offline");
-      console.warn("[my-songs] sync failed", err);
-    }
+  const runSync = async (): Promise<void> => {
+    const merged = await syncSongbook({ onStatus: setSyncStatus });
+    setSongsState(merged.slice().reverse());
   };
 
   useEffect(() => {
-    void syncWithCloud();
+    void runSync();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const buildShareLink = (id: string): string => {
+    if (typeof window === "undefined") return "";
+    const path = window.location.pathname.endsWith("/")
+      ? window.location.pathname
+      : `${window.location.pathname}/`;
+    return `${window.location.origin}${path}?join=${encodeURIComponent(id)}`;
+  };
+
+  const handleCopyShareLink = async () => {
+    try {
+      await navigator.clipboard.writeText(buildShareLink(deviceId));
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 1500);
+    } catch {
+      /* clipboard blocked — the input below shows the link as a fallback */
+    }
+  };
 
   const handleCopyDeviceId = async () => {
     try {
       await navigator.clipboard.writeText(deviceId);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      setCodeCopied(true);
+      setTimeout(() => setCodeCopied(false), 1500);
     } catch {
-      /* clipboard API blocked — user can still read the value */
+      /* clipboard blocked */
     }
   };
 
   const handleApplyPastedCode = async () => {
-    const next = pasteCode.trim();
+    const next = extractJoinCode(pasteCode);
     if (!next || next === deviceId) return;
     setDeviceId(next);
     setDeviceIdState(next);
@@ -147,7 +94,7 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
     // it so we don't push old songs into the new songbook.
     writeLocalSongs([]);
     setSongsState([]);
-    await syncWithCloud();
+    await runSync();
   };
 
   const handleSave = async () => {
@@ -342,41 +289,64 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
             {showSync && (
               <div className="mt-3 space-y-3">
                 <div>
-                  <div className="text-xs text-gray-500 mb-1">This device's sync code</div>
+                  <div className="text-xs text-gray-500 mb-1">
+                    Share this songbook with another device
+                  </div>
                   <div className="flex items-center gap-2">
-                    <code className="flex-1 px-2 py-1.5 text-xs font-mono bg-white border border-gray-200 rounded text-gray-700 truncate">
-                      {deviceId}
+                    <code className="flex-1 px-2 py-1.5 text-xs bg-white border border-gray-200 rounded text-gray-700 truncate">
+                      {buildShareLink(deviceId)}
                     </code>
                     <button
-                      onClick={handleCopyDeviceId}
-                      className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-200 hover:bg-gray-100 active:bg-gray-200 rounded transition-colors shrink-0"
+                      onClick={handleCopyShareLink}
+                      className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded transition-colors shrink-0"
                     >
-                      {copied ? "Copied!" : "Copy"}
+                      {linkCopied ? "Copied!" : "Copy link"}
                     </button>
                   </div>
+                  <button
+                    onClick={() => setShowRawCode(s => !s)}
+                    className="text-xs text-gray-500 hover:text-gray-700 mt-2"
+                  >
+                    {showRawCode ? "Hide raw code" : "Show raw code"}
+                  </button>
+                  {showRawCode && (
+                    <div className="flex items-center gap-2 mt-2">
+                      <code className="flex-1 px-2 py-1.5 text-xs font-mono bg-white border border-gray-200 rounded text-gray-700 truncate">
+                        {deviceId}
+                      </code>
+                      <button
+                        onClick={handleCopyDeviceId}
+                        className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-200 hover:bg-gray-100 active:bg-gray-200 rounded transition-colors shrink-0"
+                      >
+                        {codeCopied ? "Copied!" : "Copy"}
+                      </button>
+                    </div>
+                  )}
                 </div>
-                <div>
+                <div className="pt-2 border-t border-gray-200">
                   <div className="text-xs text-gray-500 mb-1">
-                    Paste another device's code to share its songbook
+                    Or paste a share link / code from another device
                   </div>
                   <div className="flex items-center gap-2">
                     <input
                       type="text"
                       value={pasteCode}
                       onChange={e => setPasteCode(e.target.value)}
-                      placeholder="paste sync code"
-                      className="flex-1 px-2 py-1.5 text-xs font-mono bg-white border border-gray-200 rounded text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="paste link or code"
+                      className="flex-1 px-2 py-1.5 text-xs bg-white border border-gray-200 rounded text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                     <button
                       onClick={handleApplyPastedCode}
-                      disabled={!pasteCode.trim() || pasteCode.trim() === deviceId}
+                      disabled={
+                        !pasteCode.trim() || extractJoinCode(pasteCode) === deviceId
+                      }
                       className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:bg-gray-300 disabled:cursor-not-allowed rounded transition-colors shrink-0"
                     >
                       Apply
                     </button>
                   </div>
                   <div className="text-xs text-amber-600 mt-1">
-                    Switching codes replaces the local song list with the new device's.
+                    Replaces the local song list with the linked device's.
                   </div>
                 </div>
               </div>

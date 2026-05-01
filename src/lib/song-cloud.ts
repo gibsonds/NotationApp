@@ -1,5 +1,6 @@
 import type { Score } from "@/lib/schema";
 import type { SongDTO, SongSummary } from "@/lib/song-cloud-types";
+import { getSongs, setSongs as writeLocalSongs, type SongBankEntry } from "@/lib/song-bank";
 
 const DEVICE_ID_KEY = "notation-app-device-id";
 const QUEUE_KEY = "notation-app-cloud-queue";
@@ -163,4 +164,113 @@ export async function flushQueue(): Promise<{ ok: number; failed: number }> {
 
 export function isTransient(err: unknown): boolean {
   return err instanceof TransientCloudError;
+}
+
+// ── Songbook sync ──────────────────────────────────────────────────────────
+// One-shot reconcile: pull cloud list, hydrate cloud-only entries, push
+// local-only entries, write merged result to localStorage. Returns the
+// merged list (newest-first ordering is the caller's job).
+//
+// If cloud is unreachable, returns the current local list and signals
+// "offline" via the optional onStatus callback so the UI can render a badge
+// without throwing.
+
+export type SyncStatus = "syncing" | "ok" | "offline";
+
+export async function syncSongbook(opts?: {
+  onStatus?: (status: SyncStatus) => void;
+}): Promise<SongBankEntry[]> {
+  const onStatus = opts?.onStatus ?? (() => {});
+  if (!CLOUD_ENABLED) return getSongs();
+  onStatus("syncing");
+  try {
+    if (hasPendingOps()) await flushQueue();
+
+    const local = getSongs();
+    const summaries = await cloudListSongs();
+    const localById = new Map(local.map((e) => [e.id, e]));
+    const cloudIds = new Set(summaries.map((s) => s.id));
+    const merged: SongBankEntry[] = [];
+
+    for (const summary of summaries) {
+      const localEntry = localById.get(summary.id);
+      if (localEntry && localEntry.savedAt >= summary.updatedAt) {
+        // Local has newer save — push it up.
+        try {
+          await cloudPutSong({
+            id: summary.id,
+            title: localEntry.title,
+            score: localEntry.score,
+            savedAt: localEntry.savedAt,
+          });
+        } catch {
+          /* keep local; retry next time */
+        }
+        merged.push(localEntry);
+      } else {
+        try {
+          const dto = await cloudGetSong(summary.id);
+          merged.push({
+            id: dto.id,
+            title: dto.title,
+            savedAt: dto.savedAt,
+            score: dto.score,
+          });
+        } catch {
+          if (localEntry) merged.push(localEntry);
+        }
+      }
+    }
+
+    // Local-only entries → push to cloud.
+    for (const entry of local) {
+      if (cloudIds.has(entry.id)) continue;
+      try {
+        await cloudPutSong({
+          id: entry.id,
+          title: entry.title,
+          score: entry.score,
+          savedAt: entry.savedAt,
+        });
+        merged.push(entry);
+      } catch (err) {
+        merged.push(entry);
+        if (isTransient(err)) {
+          enqueueOffline({
+            type: "put",
+            id: entry.id,
+            title: entry.title,
+            score: entry.score,
+            savedAt: entry.savedAt,
+          });
+        }
+      }
+    }
+
+    merged.sort((a, b) => a.savedAt - b.savedAt);
+    writeLocalSongs(merged);
+    onStatus("ok");
+    return merged;
+  } catch (err) {
+    console.warn("[song-cloud] sync failed", err);
+    onStatus("offline");
+    return getSongs();
+  }
+}
+
+// Parse a pasted value as either a share URL (?join=<id>) or a raw device
+// code. Returns the device id, or null if nothing usable is found.
+export function extractJoinCode(input: string): string | null {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+  if (trimmed.includes("?") || trimmed.startsWith("http")) {
+    try {
+      const url = new URL(trimmed);
+      const join = url.searchParams.get("join");
+      if (join) return join;
+    } catch {
+      /* not a URL — fall through to raw */
+    }
+  }
+  return trimmed;
 }

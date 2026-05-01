@@ -18,6 +18,8 @@ import ChordChartView from "@/components/ChordChartView";
 import AutosaveRecoveryDialog from "@/components/AutosaveRecoveryDialog";
 import PasteLyricsModal from "@/components/PasteLyricsModal";
 import MySongsModal from "@/components/MySongsModal";
+import JoinSongbookModal from "@/components/JoinSongbookModal";
+import { CLOUD_ENABLED, getDeviceId } from "@/lib/song-cloud";
 import { cleanScoreOverflow } from "@/lib/score-cleanup";
 
 // Dynamic import to prevent SSR for OSMD (uses browser APIs)
@@ -29,6 +31,15 @@ const ScoreRenderer = dynamic(() => import("@/components/ScoreRenderer"), {
     </div>
   ),
 });
+
+// Remove `?join=<id>` from the URL bar without a navigation. Used after the
+// user resolves (or skips) the join-songbook prompt so a reload won't re-fire.
+function stripJoinParam(): void {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  url.searchParams.delete("join");
+  window.history.replaceState({}, "", url.toString());
+}
 
 export default function Home() {
   const { score, undo, redo, layout } = useScoreStore();
@@ -64,6 +75,7 @@ export default function Home() {
   const [autosaveDialogOpen, setAutosaveDialogOpen] = useState(false);
   const [pasteLyricsOpen, setPasteLyricsOpen] = useState(false);
   const [mySongsOpen, setMySongsOpen] = useState(false);
+  const [joinCode, setJoinCode] = useState<string | null>(null);
   const [inlineAI, setInlineAI] = useState<{ note: { measure: number; beat: number; pitch: string; staffIndex: number }; position: { x: number; y: number } } | null>(null);
   const printFnRef = useRef<(() => Promise<void>) | null>(null);
   const handlePrint = useCallback(() => {
@@ -221,6 +233,21 @@ export default function Home() {
     }, 30_000);
     return () => clearTimeout(id);
   }, [score]);
+
+  // Songbook share-link: visiting `?join=<deviceId>` prompts to take over
+  // that device's songbook. The param is stripped after the user decides
+  // (Join or Cancel) so a refresh doesn't re-prompt.
+  useEffect(() => {
+    if (!CLOUD_ENABLED) return;
+    const params = new URLSearchParams(window.location.search);
+    const join = params.get("join");
+    if (!join) return;
+    if (join === getDeviceId()) {
+      stripJoinParam();
+      return;
+    }
+    setJoinCode(join);
+  }, []);
 
   // Best-effort snapshot on tab close / refresh. IndexedDB writes started
   // here may not complete before unload, but in practice they often do for
@@ -940,6 +967,21 @@ export default function Home() {
       {/* Autosave recovery dialog */}
       {autosaveDialogOpen && (
         <AutosaveRecoveryDialog onClose={() => setAutosaveDialogOpen(false)} />
+      )}
+
+      {/* Join shared songbook prompt (from ?join=<deviceId> link) */}
+      {joinCode && (
+        <JoinSongbookModal
+          code={joinCode}
+          onCancel={() => {
+            stripJoinParam();
+            setJoinCode(null);
+          }}
+          onJoined={() => {
+            stripJoinParam();
+            setJoinCode(null);
+          }}
+        />
       )}
     </div>
   );
