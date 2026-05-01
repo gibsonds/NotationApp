@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { setSongs as writeLocalSongs } from "@/lib/song-bank";
 import { setDeviceId, syncSongbook } from "@/lib/song-cloud";
 
 interface JoinSongbookModalProps {
@@ -12,8 +11,9 @@ interface JoinSongbookModalProps {
 
 /**
  * Shown when the URL contains `?join=<deviceId>` and the encoded id differs
- * from this browser's. Joining replaces the local song list with the
- * shared songbook's contents.
+ * from this browser's. Joining points this browser at the linked device's
+ * songbook AND merges this browser's existing local songs in (they get
+ * pushed up under the new id during the next sync).
  */
 export default function JoinSongbookModal({
   code,
@@ -25,13 +25,15 @@ export default function JoinSongbookModal({
   const handleJoin = async () => {
     if (busy) return;
     setBusy(true);
+    // Switch identity first; syncSongbook() then pulls the linked device's
+    // songs AND auto-pushes any local-only songs (this browser's existing
+    // songs) up under the new id, so neither side loses content.
     setDeviceId(code);
-    writeLocalSongs([]);
     try {
       await syncSongbook();
     } catch {
-      /* syncSongbook is best-effort; if it returned offline the join still
-         took effect locally and will reconcile next time. */
+      /* best-effort; if offline the new id is set locally and will
+         reconcile on the next sync */
     }
     onJoined();
   };
@@ -50,11 +52,12 @@ export default function JoinSongbookModal({
         </div>
         <div className="px-5 py-4 text-sm text-gray-700 space-y-3">
           <p>
-            You followed a share link from another device. Joining will load that
-            device's songs onto this browser.
+            You followed a share link from another device. Joining links this
+            browser to that device's songbook.
           </p>
-          <p className="text-amber-700">
-            Songs currently saved on this browser will be replaced.
+          <p>
+            Songs currently saved on this browser are kept and shared into the
+            joined songbook so neither side loses anything.
           </p>
         </div>
         <div className="px-5 py-3 border-t border-gray-200 bg-gray-50 flex justify-end gap-2">
