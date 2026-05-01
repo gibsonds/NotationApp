@@ -48,3 +48,9 @@ next-env.d.ts
 *.swp
 *.swp
 /.venv
+
+# AWS CDK
+/infra/node_modules
+/infra/cdk.out
+/infra/dist
+/cdk-outputs.json

@@ -44,6 +44,12 @@ jobs:
         run: rm -rf src/app/api
 
       - name: Build static export
+        env:
+          # Public-facing API URL — baked into the static bundle. Set this
+          # as a repository variable (Settings → Secrets and variables →
+          # Actions → Variables). Empty value disables cloud sync and the
+          # app falls back to localStorage-only mode.
+          NEXT_PUBLIC_API_BASE: ${{ vars.NEXT_PUBLIC_API_BASE }}
         run: STATIC_EXPORT=1 npm run build
 
       # Next.js writes static export output to ./out

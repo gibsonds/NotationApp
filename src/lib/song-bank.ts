@@ -41,3 +41,11 @@ export function deleteSong(id: string): void {
     console.warn("[song-bank] failed to delete song");
   }
 }
+
+export function setSongs(songs: SongBankEntry[]): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(songs));
+  } catch {
+    console.warn("[song-bank] localStorage quota exceeded");
+  }
+}
