@@ -57,13 +57,13 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const buildShareLink = (id: string): string => {
-    if (typeof window === "undefined") return "";
-    const path = window.location.pathname.endsWith("/")
-      ? window.location.pathname
-      : `${window.location.pathname}/`;
-    return `${window.location.origin}${path}?join=${encodeURIComponent(id)}`;
-  };
+  // Share links always point at the deployed Pages site so they're
+  // resolvable from any device. (Using window.location would emit
+  // http://localhost:3000/... when generated during local dev, which
+  // the iPad can't reach.)
+  const SHARE_BASE = "https://gibsonds.github.io/NotationApp/";
+  const buildShareLink = (id: string): string =>
+    `${SHARE_BASE}?join=${encodeURIComponent(id)}`;
 
   const handleCopyShareLink = async () => {
     try {
