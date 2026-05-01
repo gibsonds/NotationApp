@@ -59,7 +59,6 @@ export default function PerformView({ score, onExit }: PerformViewProps) {
   const currentSongId = useScoreStore(s => s.uiState.currentSongId);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [overflows, setOverflows] = useState(false);
 
   // Snapshot the song list on mount — performance shouldn't be interrupted
   // by sync updates. Newest first matches the My Songs modal ordering.
@@ -90,29 +89,6 @@ export default function PerformView({ score, onExit }: PerformViewProps) {
 
   useEffect(() => savePrefs(prefs), [prefs]);
 
-  // Detect whether the current layout overflows the scroll container's
-  // viewport — used as a hint for 2-col mode where vertical scrolling
-  // forces awkward column-1-then-column-2 reading. Re-runs on prefs/score
-  // changes and on resize.
-  useEffect(() => {
-    const measure = () => {
-      const el = scrollRef.current;
-      if (!el) return;
-      setOverflows(el.scrollHeight > el.clientHeight + 2);
-    };
-    measure();
-    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
-    if (ro && scrollRef.current) ro.observe(scrollRef.current);
-    window.addEventListener("resize", measure);
-    // Re-measure after fonts/layout settle.
-    const t = setTimeout(measure, 100);
-    return () => {
-      ro?.disconnect();
-      window.removeEventListener("resize", measure);
-      clearTimeout(t);
-    };
-  }, [prefs, score]);
-
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -124,10 +100,18 @@ export default function PerformView({ score, onExit }: PerformViewProps) {
     return () => window.removeEventListener("keydown", handleKey);
   }, [onExit, pickerOpen]);
 
-  const pageBy = (frac: number) => {
+  // Page-snap navigation: each tap moves to the next/prev page boundary.
+  // Always lands at an integer multiple of clientHeight so 2-col mode reads
+  // cleanly (both columns advance by exactly one page at a time).
+  const pageBy = (direction: 1 | -1) => {
     const el = scrollRef.current;
     if (!el) return;
-    el.scrollBy({ top: el.clientHeight * frac, behavior: "smooth" });
+    const pageH = el.clientHeight;
+    if (pageH === 0) return;
+    const currentPage = Math.round(el.scrollTop / pageH);
+    const maxPage = Math.max(0, Math.ceil((el.scrollHeight - pageH) / pageH));
+    const targetPage = Math.max(0, Math.min(maxPage, currentPage + direction));
+    el.scrollTo({ top: targetPage * pageH, behavior: "smooth" });
   };
 
   const adjust = (
@@ -171,7 +155,7 @@ export default function PerformView({ score, onExit }: PerformViewProps) {
       {/* Top tap zone — page up */}
       <button
         type="button"
-        onClick={() => pageBy(-0.8)}
+        onClick={() => pageBy(-1)}
         className="absolute top-0 left-0 right-0 h-[10vh] flex items-start justify-center pt-2 text-gray-400 hover:bg-white/5 active:bg-white/10 transition-colors"
         aria-label="Scroll up"
       >
@@ -189,7 +173,7 @@ export default function PerformView({ score, onExit }: PerformViewProps) {
       {/* Bottom tap zone — page down */}
       <button
         type="button"
-        onClick={() => pageBy(0.8)}
+        onClick={() => pageBy(1)}
         className="absolute bottom-0 left-0 right-0 h-[14vh] flex items-end justify-center pb-3 text-gray-400 hover:bg-white/5 active:bg-white/10 transition-colors"
         aria-label="Scroll down"
       >
@@ -363,14 +347,6 @@ export default function PerformView({ score, onExit }: PerformViewProps) {
         </button>
       </div>
 
-      {/* Overflow hint — shown only when layout requires scrolling. In 2-col
-          mode this means awkward read order; in 1-col it just means the
-          tap zones are needed (no warning). */}
-      {prefs.columns === 2 && overflows && (
-        <div className="absolute top-[68px] right-3 z-30 bg-amber-500/90 text-amber-50 text-xs px-3 py-1.5 rounded-lg shadow border border-amber-300/30 max-w-[260px]">
-          Doesn't fit on one screen. Try a smaller font or 1 column.
-        </div>
-      )}
     </div>
   );
 }
