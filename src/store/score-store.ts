@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { Score, ScorePatch, NoteDuration } from "@/lib/schema";
 import { applyPatch } from "@/lib/patches";
+import { expandTabs } from "@/lib/chord-line";
 import { NoteSelection, noteInSelection } from "@/lib/transforms";
 import { debugLog } from "@/lib/debug-log";
 
@@ -262,6 +263,24 @@ export const useScoreStore = create<ProjectState>()(
   uiState: DEFAULT_UI_STATE,
 
   setScore: (score) => {
+    // Normalize chord/lyric tabs to spaces. AI-generated chord lines
+    // sometimes use tabs for spacing; tabs render at variable widths but
+    // string.length counts each as 1 char, so click-to-column math breaks.
+    // Expanding here covers cloud loads, AI insertions, undo, song-bank
+    // loads — every entry point that calls setScore.
+    if (score.sections && score.sections.length > 0) {
+      score = {
+        ...score,
+        sections: score.sections.map((sec) => ({
+          ...sec,
+          lines: sec.lines.map((l) => ({
+            ...l,
+            chords: expandTabs(l.chords ?? ""),
+            lyrics: expandTabs(l.lyrics ?? ""),
+          })),
+        })),
+      };
+    }
     const state = get();
     let newHistory = [
       ...state.history.slice(0, state.historyIndex + 1),

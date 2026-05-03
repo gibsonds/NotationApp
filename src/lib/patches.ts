@@ -1,6 +1,7 @@
 import { Score, ScorePatch } from "./schema";
 import { expandIntentToScore } from "./validation";
 import { debugLog } from "./debug-log";
+import { expandTabs } from "./chord-line";
 
 const DURATION_BEATS: Record<string, number> = {
   whole: 4, half: 2, quarter: 1, eighth: 0.5, sixteenth: 0.25,
@@ -256,8 +257,10 @@ export function applyPatch(score: Score, patch: ScorePatch): Score {
               // omits it; undefined means "leave unchanged".
               const next: typeof l = {
                 ...l,
-                chords: patch.chords !== undefined ? patch.chords : l.chords,
-                lyrics: patch.lyrics !== undefined ? patch.lyrics : l.lyrics,
+                chords:
+                  patch.chords !== undefined ? expandTabs(patch.chords) : l.chords,
+                lyrics:
+                  patch.lyrics !== undefined ? expandTabs(patch.lyrics) : l.lyrics,
               };
               if (patch.highlight !== undefined) {
                 if (patch.highlight) next.highlight = true;
@@ -281,7 +284,12 @@ export function applyPatch(score: Score, patch: ScorePatch): Score {
           if (s.id !== patch.sectionId) return s;
           const lines = [...s.lines];
           const idx = patch.index ?? lines.length;
-          lines.splice(Math.max(0, Math.min(idx, lines.length)), 0, patch.line);
+          const cleanLine = {
+            ...patch.line,
+            chords: expandTabs(patch.line.chords ?? ""),
+            lyrics: expandTabs(patch.line.lyrics ?? ""),
+          };
+          lines.splice(Math.max(0, Math.min(idx, lines.length)), 0, cleanLine);
           return { ...s, lines };
         }),
       };

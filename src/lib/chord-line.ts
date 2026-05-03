@@ -12,6 +12,34 @@
 const isSpace = (ch: string): boolean => ch === " " || ch === "\t";
 
 /**
+ * Expand tabs to spaces using 8-column tab stops. Applied to chord/lyric
+ * lines on load and on every patch — chord positioning relies on column N
+ * of the chord line visually sitting above column N of the lyric, which
+ * requires equal-width characters. Tabs render at variable widths in the
+ * browser but `string.length` counts each tab as 1 character, so click-
+ * to-column math goes haywire when the AI emits tabs.
+ */
+export function expandTabs(s: string, tabStop = 8): string {
+  if (!s.includes("\t")) return s;
+  let out = "";
+  let col = 0;
+  for (const ch of s) {
+    if (ch === "\t") {
+      const spaces = tabStop - (col % tabStop) || tabStop;
+      out += " ".repeat(spaces);
+      col += spaces;
+    } else if (ch === "\n") {
+      out += ch;
+      col = 0;
+    } else {
+      out += ch;
+      col++;
+    }
+  }
+  return out;
+}
+
+/**
  * Find the start column of the next word (run of non-whitespace) in `lyrics`
  * after `fromCol`. Used for Tab-style advance from one chord position to the
  * next syllable/word so chord entry stays hands-on-keyboard.
