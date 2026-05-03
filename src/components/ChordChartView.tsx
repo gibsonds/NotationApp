@@ -136,7 +136,13 @@ function SectionBlock({
       <div
         className={`whitespace-pre ${isSide ? "flex-1 min-w-0" : ""}`}
         style={{
-          fontFamily: CHART_FONT_STACKS[chartFont],
+          // Chord/lyric lines MUST be monospace — column N of the chord line
+          // is meant to visually sit above column N of the lyric line, and
+          // that's only true when both lines have equal-width characters.
+          // The chartFont selector was historically applied here, which is
+          // why proportional fonts made chords appear far from the syllable
+          // they were stored against.
+          fontFamily: CHART_FONT_STACKS.mono,
           fontSize: "var(--perf-font-size, 0.875rem)",
           lineHeight: "var(--perf-line-height, 1.25)",
           letterSpacing: "var(--perf-letter-spacing, normal)",
@@ -1156,20 +1162,6 @@ export default function ChordChartView({ score, performMode = false, performColu
             className="bg-[#1a1a2e] border border-gray-700 rounded px-1.5 py-0.5 text-xs text-gray-200"
           >
             {(Object.entries(TEXT_FONT_STACKS) as [TextFont, string][]).map(([key]) => (
-              <option key={key} value={key}>{CHART_FONT_LABELS[key]}</option>
-            ))}
-          </select>
-        </label>
-
-        <label className="inline-flex items-center gap-1">
-          <span>Chart font</span>
-          <select
-            value={chartFont}
-            onChange={(e) => setChartFont(e.target.value as ChartFont)}
-            className="bg-[#1a1a2e] border border-gray-700 rounded px-1.5 py-0.5 text-xs text-gray-200"
-            title="Font for chord overlays and lyrics. Monospace is required for precise chord-over-syllable alignment; other fonts are stylistic."
-          >
-            {(Object.keys(CHART_FONT_STACKS) as ChartFont[]).map((key) => (
               <option key={key} value={key}>{CHART_FONT_LABELS[key]}</option>
             ))}
           </select>
