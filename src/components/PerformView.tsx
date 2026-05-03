@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Score } from "@/lib/schema";
 import ChordChartView from "@/components/ChordChartView";
+import PaginatedPerformChart from "@/components/PaginatedPerformChart";
 import { useScoreStore } from "@/store/score-store";
 import { getSongs, type SongBankEntry } from "@/lib/song-bank";
 
@@ -57,7 +58,11 @@ export default function PerformView({ score, onExit }: PerformViewProps) {
   const setScore = useScoreStore(s => s.setScore);
   const setUIState = useScoreStore(s => s.setUIState);
   const currentSongId = useScoreStore(s => s.uiState.currentSongId);
+  // 1-col scrolls the outer container vertically; 2-col scrolls the
+  // PaginatedPerformChart's inner pages strip horizontally. They live in
+  // different DOM nodes so we need separate refs.
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const horizScrollRef = useRef<HTMLDivElement | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
 
   // Snapshot the song list on mount — performance shouldn't be interrupted
@@ -100,10 +105,22 @@ export default function PerformView({ score, onExit }: PerformViewProps) {
     return () => window.removeEventListener("keydown", handleKey);
   }, [onExit, pickerOpen]);
 
-  // Page-snap navigation: each tap moves to the next/prev page boundary.
-  // Always lands at an integer multiple of clientHeight so 2-col mode reads
-  // cleanly (both columns advance by exactly one page at a time).
+  // Page-snap navigation. In 1-col we vertically scroll the outer container
+  // by one viewport. In 2-col we horizontally scroll the PaginatedPerform-
+  // Chart's pages strip by one client-width — which is one full
+  // book-page-turn (both columns advance together to a new page).
   const pageBy = (direction: 1 | -1) => {
+    if (prefs.columns === 2) {
+      const el = horizScrollRef.current;
+      if (el && el.clientWidth > 0) {
+        const pageW = el.clientWidth;
+        const currentPage = Math.round(el.scrollLeft / pageW);
+        const maxPage = Math.max(0, Math.ceil((el.scrollWidth - pageW) / pageW));
+        const targetPage = Math.max(0, Math.min(maxPage, currentPage + direction));
+        el.scrollTo({ left: targetPage * pageW, behavior: "smooth" });
+        return;
+      }
+    }
     const el = scrollRef.current;
     if (!el) return;
     const pageH = el.clientHeight;
@@ -143,14 +160,22 @@ export default function PerformView({ score, onExit }: PerformViewProps) {
       className="fixed inset-0 z-50 bg-[#0f0f1f] text-gray-100"
       style={wrapperVars}
     >
-      {/* Scrollable content. Padded so the first/last lines aren't behind
-          the tap zones. Padding values match the tap-zone heights below. */}
-      <div
-        ref={scrollRef}
-        className="absolute inset-0 overflow-auto pt-[7vh] pb-[9vh]"
-      >
-        <ChordChartView score={score} performMode performColumns={prefs.columns} />
-      </div>
+      {/* 1-col: vertical scroll, ChordChartView reused.
+          2-col: PaginatedPerformChart owns layout (Quark-style pages). */}
+      {prefs.columns === 1 ? (
+        <div
+          ref={scrollRef}
+          className="absolute inset-0 overflow-auto pt-[7vh] pb-[9vh]"
+        >
+          <ChordChartView score={score} performMode performColumns={1} />
+        </div>
+      ) : (
+        <PaginatedPerformChart
+          score={score}
+          prefs={prefs}
+          scrollRef={horizScrollRef}
+        />
+      )}
 
       {/* Top tap zone — page up. Shrunk to free vertical real estate;
           still well above Apple HIG's 44pt minimum on iPad. */}
