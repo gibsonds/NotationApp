@@ -80,6 +80,18 @@ body {
   display: none;
 }
 
+/* Perform-view chrome trim — applies to both 1- and 2-col modes. */
+.chord-chart-perform section {
+  /* Was mb-8 (32px). Tighten to recover vertical real estate without
+   * touching the chord/lyric rows themselves. */
+  margin-bottom: 0.75rem;
+}
+.chord-chart-perform section > div + button {
+  /* "+ Add line" buttons are hidden in perform mode anyway; pre-empt their
+   * margin in case CSS specificity changes. */
+  display: none;
+}
+
 /* Perform-view 2-column layout (screen-only). Header spans both columns;
  * sections never split mid-section. Vertical scrolling — page-snap on the
  * tap zones turns one screen at a time. */

@@ -144,23 +144,24 @@ export default function PerformView({ score, onExit }: PerformViewProps) {
       style={wrapperVars}
     >
       {/* Scrollable content. Padded so the first/last lines aren't behind
-          the tap zones. */}
+          the tap zones. Padding values match the tap-zone heights below. */}
       <div
         ref={scrollRef}
-        className="absolute inset-0 overflow-auto pt-[10vh] pb-[14vh]"
+        className="absolute inset-0 overflow-auto pt-[7vh] pb-[9vh]"
       >
         <ChordChartView score={score} performMode performColumns={prefs.columns} />
       </div>
 
-      {/* Top tap zone — page up */}
+      {/* Top tap zone — page up. Shrunk to free vertical real estate;
+          still well above Apple HIG's 44pt minimum on iPad. */}
       <button
         type="button"
         onClick={() => pageBy(-1)}
-        className="absolute top-0 left-0 right-0 h-[10vh] flex items-start justify-center pt-2 text-gray-400 hover:bg-white/5 active:bg-white/10 transition-colors"
+        className="absolute top-0 left-0 right-0 h-[7vh] flex items-start justify-center pt-1 text-gray-400 hover:bg-white/5 active:bg-white/10 transition-colors"
         aria-label="Scroll up"
       >
         <svg
-          className="w-8 h-8 opacity-40"
+          className="w-7 h-7 opacity-40"
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -170,15 +171,16 @@ export default function PerformView({ score, onExit }: PerformViewProps) {
         </svg>
       </button>
 
-      {/* Bottom tap zone — page down */}
+      {/* Bottom tap zone — page down. Slightly larger than the top zone
+          since it gets the most use during performance. */}
       <button
         type="button"
         onClick={() => pageBy(1)}
-        className="absolute bottom-0 left-0 right-0 h-[14vh] flex items-end justify-center pb-3 text-gray-400 hover:bg-white/5 active:bg-white/10 transition-colors"
+        className="absolute bottom-0 left-0 right-0 h-[9vh] flex items-end justify-center pb-2 text-gray-400 hover:bg-white/5 active:bg-white/10 transition-colors"
         aria-label="Scroll down"
       >
         <svg
-          className="w-10 h-10 opacity-40"
+          className="w-8 h-8 opacity-40"
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"

@@ -1093,9 +1093,10 @@ export default function ChordChartView({ score, performMode = false, performColu
 
   // In perform mode, the parent (PerformView) owns scrolling — drop the
   // inner overflow-auto and h-full so its scrollBy() actually moves content.
+  // chord-chart-perform tightens section gaps in the perform CSS layer.
   const performColsClass = performMode && performColumns === 2 ? "perform-cols-2" : "";
   const wrapperClass = performMode
-    ? `${printClass} ${performColsClass} w-full bg-[#0f0f1f] text-gray-100 px-8 pt-4 pb-12 font-sans`
+    ? `${printClass} chord-chart-perform ${performColsClass} w-full bg-[#0f0f1f] text-gray-100 px-6 pt-2 pb-4 font-sans`
     : `${printClass} w-full h-full overflow-auto bg-[#0f0f1f] text-gray-100 p-8 font-sans`;
 
   return (
@@ -1227,6 +1228,7 @@ export default function ChordChartView({ score, performMode = false, performColu
         </label>
       </div>
       )}
+      {!performMode && (
       <header className="mb-6 pb-4 border-b border-gray-700">
         <h1 className="text-3xl font-bold text-white">{score.title || "Untitled"}</h1>
         {score.composer && <p className="text-gray-400 mt-1">{score.composer}</p>}
@@ -1236,7 +1238,6 @@ export default function ChordChartView({ score, performMode = false, performColu
           <span>Key of {score.keySignature}</span>
           {formDisplay && <span>Form: {formDisplay}</span>}
         </div>
-        {!performMode && (
         <p className="text-xs text-gray-500 mt-2 italic">
           <strong>Click</strong>: add/edit a chord ({" "}
           <code className="text-pink-300">D</code>,{" "}
@@ -1252,8 +1253,8 @@ export default function ChordChartView({ score, performMode = false, performColu
           <strong>Right-click</strong> a line for the line menu.{" "}
           <strong>Click</strong> a section header to rename.
         </p>
-        )}
       </header>
+      )}
 
       {displayOrder.length === 0 ? (
         <div className="space-y-3">
