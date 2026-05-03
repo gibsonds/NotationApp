@@ -148,8 +148,12 @@ function SectionBlock({
           const isTextEditingThisLine =
             !!textEditing && textEditing.sectionId === section.id && textEditing.lineIdx === i;
           const highlightCol = isEditingThisLine ? editing!.col : null;
+          const markerClasses = [
+            line.highlight ? "bg-yellow-300/20 -mx-2 px-2 rounded" : "",
+            line.underline ? "border-b-2 border-yellow-400/80" : "",
+          ].filter(Boolean).join(" ");
           return (
-            <div key={i} className="mb-2 relative">
+            <div key={i} className={`mb-2 relative ${markerClasses}`}>
               {isEditingThisLine && (
                 <div
                   className="absolute top-0 bottom-0 w-px bg-pink-400 pointer-events-none z-0"
@@ -917,6 +921,7 @@ export default function ChordChartView({ score, performMode = false, performColu
   const buildMenuItems = (ctx: ContextMenuState): ChordChartContextMenuItem[] => {
     const section = sectionMap.get(ctx.sectionId);
     const lineCount = section?.lines.length ?? 0;
+    const line = section?.lines[ctx.lineIdx];
     return [
       {
         label: "Insert chord here",
@@ -925,6 +930,27 @@ export default function ChordChartView({ score, performMode = false, performColu
       {
         label: "Edit lyric text",
         onClick: () => handleLineDoubleClick(ctx.sectionId, ctx.lineIdx),
+      },
+      {
+        divider: true,
+        label: line?.highlight ? "Remove highlight" : "Highlight line",
+        onClick: () =>
+          applyPatches([{
+            op: "update_section_line",
+            sectionId: ctx.sectionId,
+            lineIdx: ctx.lineIdx,
+            highlight: !line?.highlight,
+          }]),
+      },
+      {
+        label: line?.underline ? "Remove underline" : "Underline line",
+        onClick: () =>
+          applyPatches([{
+            op: "update_section_line",
+            sectionId: ctx.sectionId,
+            lineIdx: ctx.lineIdx,
+            underline: !line?.underline,
+          }]),
       },
       { divider: true, label: "Add line above", onClick: () => handleAddLineAt(ctx.sectionId, ctx.lineIdx, true) },
       { label: "Add line below", onClick: () => handleAddLineAt(ctx.sectionId, ctx.lineIdx + 1, true) },

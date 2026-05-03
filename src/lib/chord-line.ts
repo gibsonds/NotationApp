@@ -87,10 +87,17 @@ export function tokenizeChordLine(chords: string): ChordToken[] {
  * a token if it falls inside the token's character span OR within one column
  * to either side (so clicking the space immediately before/after a chord still
  * targets it — easier hit area).
+ *
+ * Bar markers ("|") deliberately get NO slack: they're 1-column-wide precise
+ * markers, and a forgiving hit area would cause the empty column next to a
+ * bar to "select" the bar, then editing replaces it and the bar disappears.
  */
 export function findTokenAtColumn(chords: string, col: number, slack = 1): ChordToken | undefined {
   const tokens = tokenizeChordLine(chords);
-  return tokens.find(t => col >= t.start - slack && col < t.start + t.len + slack);
+  return tokens.find(t => {
+    const s = t.text === "|" ? 0 : slack;
+    return col >= t.start - s && col < t.start + t.len + s;
+  });
 }
 
 /**

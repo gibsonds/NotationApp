@@ -252,10 +252,22 @@ export function applyPatch(score: Score, patch: ScorePatch): Score {
             ...s,
             lines: s.lines.map((l, i) => {
               if (i !== patch.lineIdx) return l;
-              return {
+              // null in a marking field means "clear it" so the schema
+              // omits it; undefined means "leave unchanged".
+              const next: typeof l = {
+                ...l,
                 chords: patch.chords !== undefined ? patch.chords : l.chords,
                 lyrics: patch.lyrics !== undefined ? patch.lyrics : l.lyrics,
               };
+              if (patch.highlight !== undefined) {
+                if (patch.highlight) next.highlight = true;
+                else delete next.highlight;
+              }
+              if (patch.underline !== undefined) {
+                if (patch.underline) next.underline = true;
+                else delete next.underline;
+              }
+              return next;
             }),
           };
         }),

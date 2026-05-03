@@ -160,6 +160,11 @@ export type Repeat = z.infer<typeof RepeatSchema>;
 export const ChordChartLineSchema = z.object({
   chords: z.string().default(""),
   lyrics: z.string().default(""),
+  /** Performance markings — independent toggles. Used to flag a line in
+   *  perform mode (e.g. highlight = "sing harmony here", underline =
+   *  "important"). Default off; missing field is treated as off. */
+  highlight: z.boolean().optional(),
+  underline: z.boolean().optional(),
 });
 export type ChordChartLine = z.infer<typeof ChordChartLineSchema>;
 
@@ -342,6 +347,8 @@ export const ScorePatchSchema = z.discriminatedUnion("op", [
     lineIdx: z.number().int().min(0),
     chords: z.string().optional(),
     lyrics: z.string().optional(),
+    highlight: z.boolean().nullable().optional(),
+    underline: z.boolean().nullable().optional(),
   }),
   z.object({
     op: z.literal("add_section_line"),
