@@ -80,6 +80,17 @@ body {
   display: none;
 }
 
+/* Force monospace on the chord/lyric body, no matter what selector or
+ * inline style some other path might apply. Column N of the chord line
+ * MUST visually sit above column N of the lyric line; that only works
+ * with equal-width characters. Defense-in-depth so any future regression
+ * (or stale cache) can't break alignment. */
+.chord-chart-line-body,
+.chord-chart-line-body * {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace !important;
+}
+
 /* Perform-view chrome trim — applies to both 1- and 2-col modes. */
 .chord-chart-perform section {
   /* Was mb-8 (32px). Tighten to recover vertical real estate without

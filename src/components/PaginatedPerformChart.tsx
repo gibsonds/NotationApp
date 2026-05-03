@@ -220,7 +220,7 @@ function PerformSection({ section }: { section: ChordChartSection }) {
         {section.label}
       </h3>
       <div
-        className="whitespace-pre"
+        className="chord-chart-line-body whitespace-pre"
         style={{
           fontFamily: MONO_FONT_STACK,
           fontSize: "var(--perf-font-size, 0.875rem)",

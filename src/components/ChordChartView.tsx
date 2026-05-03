@@ -134,14 +134,14 @@ function SectionBlock({
       {labelPosition === "above" && header}
       {labelPosition === "left" && header}
       <div
-        className={`whitespace-pre ${isSide ? "flex-1 min-w-0" : ""}`}
+        className={`chord-chart-line-body whitespace-pre ${isSide ? "flex-1 min-w-0" : ""}`}
         style={{
           // Chord/lyric lines MUST be monospace — column N of the chord line
           // is meant to visually sit above column N of the lyric line, and
           // that's only true when both lines have equal-width characters.
-          // The chartFont selector was historically applied here, which is
-          // why proportional fonts made chords appear far from the syllable
-          // they were stored against.
+          // The .chord-chart-line-body class in globals.css enforces this
+          // with !important as belt-and-suspenders against any inherited
+          // font-family from a wrapper.
           fontFamily: CHART_FONT_STACKS.mono,
           fontSize: "var(--perf-font-size, 0.875rem)",
           lineHeight: "var(--perf-line-height, 1.25)",
