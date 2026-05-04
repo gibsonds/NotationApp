@@ -491,6 +491,13 @@ function emitVoiceNotes(
     if (note.tieStart) lines.push('        <tie type="start"/>');
     if (note.tieEnd) lines.push('        <tie type="stop"/>');
 
+    // Stem direction override. MusicXML element <stem> goes BEFORE <beam>
+    // per the MusicXML schema. Skip "auto" (the default) so we don't
+    // override OSMD's auto-derivation when the user hasn't asked for one.
+    if (note.stemDirection === "up" || note.stemDirection === "down") {
+      lines.push(`        <stem>${note.stemDirection}</stem>`);
+    }
+
     // Beam
     const beam = beamStatus.get(ni);
     if (beam && !isChordNote) lines.push(`        <beam number="1">${beam}</beam>`);
