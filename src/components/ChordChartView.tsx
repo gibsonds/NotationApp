@@ -29,6 +29,7 @@ import {
   findWordAt,
   rangeCovers,
   toggleRange,
+  toggleBarAtColumn,
   ChordToken,
 } from "@/lib/chord-line";
 import ChordChartContextMenu, { ChordChartContextMenuItem } from "@/components/ChordChartContextMenu";
@@ -781,6 +782,10 @@ export default function ChordChartView({ score, performMode = false, performColu
   const [textEditing, setTextEditing] = useState<TextEditState | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [headerContextMenu, setHeaderContextMenu] = useState<HeaderContextMenuState | null>(null);
+  // Bars mode: when on, clicks place/remove a "|" at the target column
+  // without opening the chord input. Faster than typing "|" + Enter for
+  // every bar in songs with many bars.
+  const [barMode, setBarMode] = useState(false);
   // Print density toggles. Each adds a CSS class that's only consulted by
   // @media print rules — no on-screen effect. Persisted in component state
   // (not the score) so toggling them doesn't show as a revision.
@@ -824,6 +829,23 @@ export default function ChordChartView({ score, performMode = false, performColu
     if (!section) return;
     const line = section.lines[lineIdx];
     if (!line) return;
+
+    // Bar mode: click → toggle bar at this column. Never opens the chord
+    // input. The placeBarAtColumn helper guarantees no surrounding tokens
+    // are shifted.
+    if (barMode) {
+      const result = toggleBarAtColumn(line.chords, col);
+      if (result.changed) {
+        applyPatches([{
+          op: "update_section_line",
+          sectionId,
+          lineIdx,
+          chords: result.chords,
+        }]);
+      }
+      return;
+    }
+
     const existing = findTokenAtColumn(line.chords, col);
     setEditing({
       sectionId,
@@ -1252,6 +1274,20 @@ export default function ChordChartView({ score, performMode = false, performColu
       {/* Style + print controls — on-screen only (hidden via .print-hide). */}
       {!performMode && (
       <div className="print-hide flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-400 mb-3 select-none">
+        <button
+          type="button"
+          onClick={() => setBarMode(b => !b)}
+          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border transition-colors ${
+            barMode
+              ? "bg-pink-500/30 border-pink-400 text-pink-100"
+              : "bg-[#1a1a2e] border-gray-700 text-gray-300 hover:bg-[#22223a]"
+          }`}
+          title="When on, clicking a column places or removes a bar (|) without opening the chord input"
+        >
+          <span className="font-mono font-bold">|</span>
+          <span>Bars{barMode ? " on" : ""}</span>
+        </button>
+
         <span className="font-semibold uppercase tracking-wider">Style:</span>
 
         <label className="inline-flex items-center gap-1">

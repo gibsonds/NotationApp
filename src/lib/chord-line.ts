@@ -175,6 +175,59 @@ export function findTokenAtColumn(chords: string, col: number, slack = 1): Chord
 }
 
 /**
+ * Place a single bar (`|`) at exactly `col`, without consuming or padding
+ * any surrounding spaces. Designed for Bar mode where the user is rapidly
+ * adding bars and any column shift in neighboring tokens would be a bug.
+ *
+ * - If column `col` is already a `|`, this is a no-op.
+ * - If column `col` is part of a non-bar chord token, it's a no-op (bar
+ *   mode shouldn't overwrite chord text). Use the chord-edit dialog to
+ *   change a chord; bar mode only places bars in empty slots.
+ * - If column `col` is past the end of the chord line, pad with spaces
+ *   to reach it and append `|`.
+ * - Otherwise overwrite the single character at `col` with `|`.
+ */
+export function placeBarAtColumn(chords: string, col: number): string {
+  if (col < 0) return chords;
+  if (col < chords.length) {
+    const ch = chords[col];
+    if (ch === "|") return chords;
+    if (ch !== " " && ch !== "\t") return chords; // protect chord text
+    return chords.slice(0, col) + "|" + chords.slice(col + 1);
+  }
+  // Past the end — pad and append.
+  return chords + " ".repeat(col - chords.length) + "|";
+}
+
+/**
+ * Remove the bar at exactly `col`, replacing it with a single space so
+ * subsequent tokens stay at their original columns. No-op if there's no
+ * bar at that column. Companion to placeBarAtColumn.
+ */
+export function removeBarAtColumn(chords: string, col: number): string {
+  if (col < 0 || col >= chords.length) return chords;
+  if (chords[col] !== "|") return chords;
+  return chords.slice(0, col) + " " + chords.slice(col + 1);
+}
+
+/**
+ * Toggle a bar at `col`: place if empty, remove if already a bar. Used
+ * by Bar mode where each tap on a column is a single binary action.
+ * Returns the new chord line and a boolean indicating whether a change
+ * was made (no-op if col is over chord text).
+ */
+export function toggleBarAtColumn(chords: string, col: number): { chords: string; changed: boolean } {
+  if (col >= 0 && col < chords.length && chords[col] === "|") {
+    return { chords: removeBarAtColumn(chords, col), changed: true };
+  }
+  if (col >= 0 && col < chords.length) {
+    const ch = chords[col];
+    if (ch !== " " && ch !== "\t") return { chords, changed: false };
+  }
+  return { chords: placeBarAtColumn(chords, col), changed: true };
+}
+
+/**
  * Write `newChord` into the chord line at `col`. If `newChord` is empty, the
  * existing chord (if any) at that column is removed. Other tokens are
  * preserved at their original columns whenever possible — replacing a chord
