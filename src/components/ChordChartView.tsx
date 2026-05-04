@@ -26,6 +26,9 @@ import {
   setChordAtColumn,
   findNextWordStartCol,
   findPrevWordStartCol,
+  findWordAt,
+  rangeCovers,
+  toggleRange,
   ChordToken,
 } from "@/lib/chord-line";
 import ChordChartContextMenu, { ChordChartContextMenuItem } from "@/components/ChordChartContextMenu";
@@ -192,6 +195,8 @@ function SectionBlock({
                 <ClickableLyricLine
                   text={line.lyrics}
                   highlightCol={highlightCol}
+                  highlightRanges={line.highlightRanges}
+                  underlineRanges={line.underlineRanges}
                   onColumnClick={(col) => onLineClick(section.id, i, col)}
                   onDoubleClick={() => onLineDoubleClick(section.id, i)}
                   onContextMenu={(col, x, y) => onLineContextMenu(section.id, i, col, x, y)}
@@ -434,6 +439,69 @@ function HighlightedText({
   );
 }
 
+/** Render a lyric line with per-character marker spans. Each character's
+ *  state combines: optional cursor highlight, optional in-highlight-range,
+ *  optional in-underline-range. Adjacent chars with identical state are
+ *  grouped into one <span> so the DOM stays small. */
+function MarkedLyricText({
+  text,
+  highlightCol,
+  highlightRanges,
+  underlineRanges,
+}: {
+  text: string;
+  highlightCol: number | null;
+  highlightRanges?: ReadonlyArray<readonly [number, number]>;
+  underlineRanges?: ReadonlyArray<readonly [number, number]>;
+}) {
+  if (text.length === 0) return <>{" "}</>;
+  const inRange = (
+    ranges: ReadonlyArray<readonly [number, number]> | undefined,
+    col: number,
+  ) => !!ranges && ranges.some(([s, e]) => col >= s && col < e);
+
+  // Build per-char state, then group runs.
+  type State = { hl: boolean; ul: boolean; cursor: boolean };
+  const stateAt = (i: number): State => ({
+    hl: inRange(highlightRanges, i),
+    ul: inRange(underlineRanges, i),
+    cursor: i === highlightCol,
+  });
+  const sameState = (a: State, b: State) =>
+    a.hl === b.hl && a.ul === b.ul && a.cursor === b.cursor;
+
+  const segments: Array<{ start: number; end: number; state: State }> = [];
+  let curState = stateAt(0);
+  let curStart = 0;
+  for (let i = 1; i <= text.length; i++) {
+    const next = i < text.length ? stateAt(i) : null;
+    if (next === null || !sameState(next, curState)) {
+      segments.push({ start: curStart, end: i, state: curState });
+      if (next) {
+        curState = next;
+        curStart = i;
+      }
+    }
+  }
+
+  return (
+    <>
+      {segments.map(({ start, end, state }, idx) => {
+        const cls: string[] = [];
+        if (state.hl) cls.push("bg-yellow-300/30 rounded-[2px]");
+        if (state.ul) cls.push("border-b-2 border-yellow-400/80");
+        if (state.cursor) cls.push("text-pink-200 font-bold bg-pink-500/30");
+        const segText = text.slice(start, end);
+        return cls.length === 0 ? (
+          <span key={idx}>{segText}</span>
+        ) : (
+          <span key={idx} className={cls.join(" ")}>{segText}</span>
+        );
+      })}
+    </>
+  );
+}
+
 /**
  * Compute the click column from clientX. Measures the inline `<span>` that
  * contains the text — NOT the outer block `<div>`, which stretches to the
@@ -499,12 +567,16 @@ function ClickableChordLine({
 function ClickableLyricLine({
   text,
   highlightCol,
+  highlightRanges,
+  underlineRanges,
   onColumnClick,
   onDoubleClick,
   onContextMenu,
 }: {
   text: string;
   highlightCol: number | null;
+  highlightRanges?: ReadonlyArray<readonly [number, number]>;
+  underlineRanges?: ReadonlyArray<readonly [number, number]>;
   onColumnClick: (col: number) => void;
   onDoubleClick: () => void;
   onContextMenu: (col: number, clientX: number, clientY: number) => void;
@@ -531,7 +603,12 @@ function ClickableLyricLine({
       title="Click: chord. Double-click: edit text. Right-click: line menu."
     >
       <span ref={spanRef}>
-        <HighlightedText text={text} highlightCol={highlightCol} baseClass="text-white" />
+        <MarkedLyricText
+          text={text}
+          highlightCol={highlightCol}
+          highlightRanges={highlightRanges}
+          underlineRanges={underlineRanges}
+        />
       </span>
     </div>
   );
@@ -928,7 +1005,15 @@ export default function ChordChartView({ score, performMode = false, performColu
     const section = sectionMap.get(ctx.sectionId);
     const lineCount = section?.lines.length ?? 0;
     const line = section?.lines[ctx.lineIdx];
-    return [
+    const word = line ? findWordAt(line.lyrics || "", ctx.col) : null;
+    const wordHighlighted = word
+      ? line?.highlightRanges?.some(([s, e]) => s === word[0] && e === word[1])
+      : false;
+    const wordUnderlined = word
+      ? line?.underlineRanges?.some(([s, e]) => s === word[0] && e === word[1])
+      : false;
+
+    const items: ChordChartContextMenuItem[] = [
       {
         label: "Insert chord here",
         onClick: () => handleLineClick(ctx.sectionId, ctx.lineIdx, ctx.col),
@@ -937,44 +1022,72 @@ export default function ChordChartView({ score, performMode = false, performColu
         label: "Edit lyric text",
         onClick: () => handleLineDoubleClick(ctx.sectionId, ctx.lineIdx),
       },
-      {
-        divider: true,
-        label: line?.highlight ? "Remove highlight" : "Highlight line",
-        onClick: () =>
-          applyPatches([{
-            op: "update_section_line",
-            sectionId: ctx.sectionId,
-            lineIdx: ctx.lineIdx,
-            highlight: !line?.highlight,
-          }]),
-      },
-      {
-        label: line?.underline ? "Remove underline" : "Underline line",
-        onClick: () =>
-          applyPatches([{
-            op: "update_section_line",
-            sectionId: ctx.sectionId,
-            lineIdx: ctx.lineIdx,
-            underline: !line?.underline,
-          }]),
-      },
-      { divider: true, label: "Add line above", onClick: () => handleAddLineAt(ctx.sectionId, ctx.lineIdx, true) },
-      { label: "Add line below", onClick: () => handleAddLineAt(ctx.sectionId, ctx.lineIdx + 1, true) },
-      {
-        divider: true,
-        label: "Split section here (new section starts at this line)",
-        // Splitting at line 0 is degenerate (empty original section); the
-        // header right-click "Add section above" is the right gesture there.
-        disabled: ctx.lineIdx === 0,
-        onClick: () => handleSplitSection(ctx.sectionId, ctx.lineIdx),
-      },
-      {
-        label: "Delete line",
-        destructive: true,
-        disabled: lineCount <= 1,
-        onClick: () => handleRemoveLine(ctx.sectionId, ctx.lineIdx),
-      },
     ];
+
+    if (word && line) {
+      items.push({
+        divider: true,
+        label: wordHighlighted ? "Remove highlight from word" : "Highlight word",
+        onClick: () =>
+          applyPatches([{
+            op: "update_section_line",
+            sectionId: ctx.sectionId,
+            lineIdx: ctx.lineIdx,
+            highlightRanges: toggleRange(line.highlightRanges, word),
+          }]),
+      });
+      items.push({
+        label: wordUnderlined ? "Remove underline from word" : "Underline word",
+        onClick: () =>
+          applyPatches([{
+            op: "update_section_line",
+            sectionId: ctx.sectionId,
+            lineIdx: ctx.lineIdx,
+            underlineRanges: toggleRange(line.underlineRanges, word),
+          }]),
+      });
+    }
+
+    items.push({
+      divider: true,
+      label: line?.highlight ? "Un-highlight whole line" : "Highlight whole line",
+      onClick: () =>
+        applyPatches([{
+          op: "update_section_line",
+          sectionId: ctx.sectionId,
+          lineIdx: ctx.lineIdx,
+          highlight: !line?.highlight,
+        }]),
+    });
+    items.push({
+      label: line?.underline ? "Un-underline whole line" : "Underline whole line",
+      onClick: () =>
+        applyPatches([{
+          op: "update_section_line",
+          sectionId: ctx.sectionId,
+          lineIdx: ctx.lineIdx,
+          underline: !line?.underline,
+        }]),
+    });
+
+    items.push({ divider: true, label: "Add line above", onClick: () => handleAddLineAt(ctx.sectionId, ctx.lineIdx, true) });
+    items.push({ label: "Add line below", onClick: () => handleAddLineAt(ctx.sectionId, ctx.lineIdx + 1, true) });
+    items.push({
+      divider: true,
+      label: "Split section here (new section starts at this line)",
+      // Splitting at line 0 is degenerate (empty original section); the
+      // header right-click "Add section above" is the right gesture there.
+      disabled: ctx.lineIdx === 0,
+      onClick: () => handleSplitSection(ctx.sectionId, ctx.lineIdx),
+    });
+    items.push({
+      label: "Delete line",
+      destructive: true,
+      disabled: lineCount <= 1,
+      onClick: () => handleRemoveLine(ctx.sectionId, ctx.lineIdx),
+    });
+
+    return items;
   };
 
   const handleSplitSection = (sectionId: string, atLineIdx: number) => {

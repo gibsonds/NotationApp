@@ -270,6 +270,20 @@ export function applyPatch(score: Score, patch: ScorePatch): Score {
                 if (patch.underline) next.underline = true;
                 else delete next.underline;
               }
+              if (patch.highlightRanges !== undefined) {
+                if (patch.highlightRanges && patch.highlightRanges.length > 0) {
+                  next.highlightRanges = patch.highlightRanges;
+                } else {
+                  delete next.highlightRanges;
+                }
+              }
+              if (patch.underlineRanges !== undefined) {
+                if (patch.underlineRanges && patch.underlineRanges.length > 0) {
+                  next.underlineRanges = patch.underlineRanges;
+                } else {
+                  delete next.underlineRanges;
+                }
+              }
               return next;
             }),
           };

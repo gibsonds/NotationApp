@@ -19,6 +19,52 @@ const isSpace = (ch: string): boolean => ch === " " || ch === "\t";
  * browser but `string.length` counts each tab as 1 character, so click-
  * to-column math goes haywire when the AI emits tabs.
  */
+export type Range = [number, number]; // [start, endExclusive]
+
+/** Find the run of non-whitespace characters in `text` covering `col`.
+ *  Returns the [start, endExclusive] of that word, or null if `col` is
+ *  on a space (or out of bounds). */
+export function findWordAt(text: string, col: number): Range | null {
+  if (col < 0 || col >= text.length) return null;
+  if (text[col] === " " || text[col] === "\t") return null;
+  let start = col;
+  while (start > 0 && text[start - 1] !== " " && text[start - 1] !== "\t") start--;
+  let end = col + 1;
+  while (end < text.length && text[end] !== " " && text[end] !== "\t") end++;
+  return [start, end];
+}
+
+/** Test whether any range in `ranges` covers column `col`. */
+export function rangeCovers(ranges: Range[] | undefined, col: number): boolean {
+  if (!ranges) return false;
+  return ranges.some(([s, e]) => col >= s && col < e);
+}
+
+/** Toggle a [start, end) range in the list. If an existing range exactly
+ *  matches, remove it. Otherwise add it (and merge overlapping/adjacent
+ *  ranges so the resulting list stays canonical). */
+export function toggleRange(ranges: Range[] | undefined, range: Range): Range[] {
+  const list = ranges ? [...ranges] : [];
+  const exactIdx = list.findIndex(([s, e]) => s === range[0] && e === range[1]);
+  if (exactIdx !== -1) {
+    list.splice(exactIdx, 1);
+    return list;
+  }
+  list.push(range);
+  // Sort, merge overlapping/adjacent.
+  list.sort((a, b) => a[0] - b[0]);
+  const merged: Range[] = [];
+  for (const r of list) {
+    const last = merged[merged.length - 1];
+    if (last && r[0] <= last[1]) {
+      last[1] = Math.max(last[1], r[1]);
+    } else {
+      merged.push([r[0], r[1]]);
+    }
+  }
+  return merged;
+}
+
 export function expandTabs(s: string, tabStop = 8): string {
   if (!s.includes("\t")) return s;
   let out = "";

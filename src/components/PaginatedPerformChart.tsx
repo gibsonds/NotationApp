@@ -213,6 +213,50 @@ export default function PaginatedPerformChart({
  * or "Add line" affordance — and crucially each section is structurally
  * isolated so the bin-packer can measure it as one unit.
  */
+/** Read-only renderer for a lyric line with per-character highlight/
+ *  underline ranges. Mirrors MarkedLyricText in ChordChartView. */
+function PerformMarkedLyric({
+  text,
+  highlightRanges,
+  underlineRanges,
+}: {
+  text: string;
+  highlightRanges?: ReadonlyArray<readonly [number, number]>;
+  underlineRanges?: ReadonlyArray<readonly [number, number]>;
+}) {
+  if (!highlightRanges?.length && !underlineRanges?.length) return <>{text}</>;
+  const inRange = (rs: ReadonlyArray<readonly [number, number]> | undefined, c: number) =>
+    !!rs && rs.some(([s, e]) => c >= s && c < e);
+  type State = { hl: boolean; ul: boolean };
+  const stateAt = (i: number): State => ({
+    hl: inRange(highlightRanges, i),
+    ul: inRange(underlineRanges, i),
+  });
+  const same = (a: State, b: State) => a.hl === b.hl && a.ul === b.ul;
+  const segs: Array<{ s: number; e: number; st: State }> = [];
+  let cur = stateAt(0);
+  let cs = 0;
+  for (let i = 1; i <= text.length; i++) {
+    const next = i < text.length ? stateAt(i) : null;
+    if (next === null || !same(next, cur)) {
+      segs.push({ s: cs, e: i, st: cur });
+      if (next) { cur = next; cs = i; }
+    }
+  }
+  return (
+    <>
+      {segs.map(({ s, e, st }, idx) => {
+        const cls: string[] = [];
+        if (st.hl) cls.push("bg-yellow-300/30 rounded-[2px]");
+        if (st.ul) cls.push("border-b-2 border-yellow-400/80");
+        return cls.length === 0
+          ? <span key={idx}>{text.slice(s, e)}</span>
+          : <span key={idx} className={cls.join(" ")}>{text.slice(s, e)}</span>;
+      })}
+    </>
+  );
+}
+
 function PerformSection({ section }: { section: ChordChartSection }) {
   return (
     <section className="mb-3">
@@ -241,7 +285,13 @@ function PerformSection({ section }: { section: ChordChartSection }) {
                 </div>
               )}
               {line.lyrics && (
-                <div className="text-gray-100 whitespace-pre">{line.lyrics}</div>
+                <div className="text-gray-100 whitespace-pre">
+                  <PerformMarkedLyric
+                    text={line.lyrics}
+                    highlightRanges={line.highlightRanges}
+                    underlineRanges={line.underlineRanges}
+                  />
+                </div>
               )}
               {!line.chords && !line.lyrics && (
                 <div className="text-gray-500 whitespace-pre min-h-[1em]">&nbsp;</div>

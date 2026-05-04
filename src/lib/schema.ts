@@ -160,11 +160,16 @@ export type Repeat = z.infer<typeof RepeatSchema>;
 export const ChordChartLineSchema = z.object({
   chords: z.string().default(""),
   lyrics: z.string().default(""),
-  /** Performance markings — independent toggles. Used to flag a line in
-   *  perform mode (e.g. highlight = "sing harmony here", underline =
-   *  "important"). Default off; missing field is treated as off. */
+  /** Whole-line performance markings (legacy). When true, the entire
+   *  line is highlighted/underlined. Per-word markers below take
+   *  precedence in the UI but `highlight: true` still renders correctly
+   *  for older saved scores. */
   highlight: z.boolean().optional(),
   underline: z.boolean().optional(),
+  /** Per-word highlight ranges as [startCol, endColExclusive] pairs into
+   *  the lyric string. e.g. [[5, 10], [16, 21]] highlights two words. */
+  highlightRanges: z.array(z.tuple([z.number().int(), z.number().int()])).optional(),
+  underlineRanges: z.array(z.tuple([z.number().int(), z.number().int()])).optional(),
 });
 export type ChordChartLine = z.infer<typeof ChordChartLineSchema>;
 
@@ -349,6 +354,8 @@ export const ScorePatchSchema = z.discriminatedUnion("op", [
     lyrics: z.string().optional(),
     highlight: z.boolean().nullable().optional(),
     underline: z.boolean().nullable().optional(),
+    highlightRanges: z.array(z.tuple([z.number().int(), z.number().int()])).nullable().optional(),
+    underlineRanges: z.array(z.tuple([z.number().int(), z.number().int()])).nullable().optional(),
   }),
   z.object({
     op: z.literal("add_section_line"),
