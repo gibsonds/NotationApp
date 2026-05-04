@@ -52,7 +52,16 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+  const [folderPickerId, setFolderPickerId] = useState<string | null>(null);
   const [historyForTitle, setHistoryForTitle] = useState<string | null>(null);
+
+  // All distinct folder names across the bank, sorted — used by the
+  // folder picker so the user doesn't have to remember/retype names.
+  const folderNames = useMemo(() => {
+    const set = new Set<string>();
+    for (const s of songs) if (s.folder) set.add(s.folder);
+    return Array.from(set).sort();
+  }, [songs]);
 
   // Group entries by folder. Sorted: "(Unfiled)" first, then named folders
   // alphabetically; songs within a folder by savedAt newest-first.
@@ -216,14 +225,22 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
 
   const handleMoveToFolder = (entry: SongBankEntry) => {
     setMenuOpenId(null);
-    const next = window.prompt(
-      `Folder for "${entry.title}" (blank for Unfiled):`,
-      entry.folder || ""
-    );
-    if (next === null) return;
-    setSongFolder(entry.id, next.trim() || null);
+    setFolderPickerId(entry.id);
+  };
+
+  const applyFolder = (entry: SongBankEntry, folder: string | null) => {
+    setFolderPickerId(null);
+    setSongFolder(entry.id, folder);
     refreshLocal();
-    // Folder is local-only — not synced to cloud. (No cloudPutSong call.)
+    // Folder is local-only — not synced to cloud.
+  };
+
+  const applyNewFolder = (entry: SongBankEntry) => {
+    setFolderPickerId(null);
+    const next = window.prompt(`New folder name:`, "");
+    if (!next || !next.trim()) return;
+    setSongFolder(entry.id, next.trim());
+    refreshLocal();
   };
 
   const handleViewHistory = (entry: SongBankEntry) => {
@@ -420,6 +437,40 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
                                   className="w-full text-left px-3 py-1.5 hover:bg-red-50 text-red-600"
                                 >
                                   Delete
+                                </button>
+                              </div>
+                            </>
+                          )}
+                          {folderPickerId === entry.id && (
+                            <>
+                              <div className="fixed inset-0 z-10" onClick={() => setFolderPickerId(null)} />
+                              <div className="absolute right-0 mt-1 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20 text-sm max-h-[60vh] overflow-y-auto">
+                                <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-gray-400">Move to…</div>
+                                <button
+                                  onClick={() => applyFolder(entry, null)}
+                                  className={`w-full text-left px-3 py-1.5 hover:bg-blue-50 ${
+                                    !entry.folder ? "text-blue-700 font-medium" : "text-gray-700"
+                                  }`}
+                                >
+                                  {!entry.folder && "✓ "}(Unfiled)
+                                </button>
+                                {folderNames.map(f => (
+                                  <button
+                                    key={f}
+                                    onClick={() => applyFolder(entry, f)}
+                                    className={`w-full text-left px-3 py-1.5 hover:bg-blue-50 ${
+                                      entry.folder === f ? "text-blue-700 font-medium" : "text-gray-700"
+                                    }`}
+                                  >
+                                    {entry.folder === f && "✓ "}{f}
+                                  </button>
+                                ))}
+                                <div className="border-t border-gray-100 my-1" />
+                                <button
+                                  onClick={() => applyNewFolder(entry)}
+                                  className="w-full text-left px-3 py-1.5 hover:bg-blue-50 text-blue-700"
+                                >
+                                  + New folder…
                                 </button>
                               </div>
                             </>
