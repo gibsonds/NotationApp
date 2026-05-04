@@ -228,6 +228,30 @@ export function applyPatch(score: Score, patch: ScorePatch): Score {
       };
     }
 
+    case "update_section": {
+      return {
+        ...score,
+        sections: score.sections.map((s) => {
+          if (s.id !== patch.sectionId) return s;
+          const next = { ...s };
+          // null clears, true/value sets, undefined leaves alone
+          const apply = <K extends keyof typeof next>(
+            key: K,
+            val: typeof next[K] | null | undefined,
+          ) => {
+            if (val === undefined) return;
+            if (val === null || val === false) delete next[key];
+            else next[key] = val;
+          };
+          apply("repeatStart", patch.repeatStart);
+          apply("repeatEnd", patch.repeatEnd);
+          apply("endingNumber", patch.endingNumber);
+          apply("navMark", patch.navMark);
+          return next;
+        }),
+      };
+    }
+
     case "add_section": {
       const sections = [...score.sections];
       const idx = patch.index ?? sections.length;

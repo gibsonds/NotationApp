@@ -2,6 +2,21 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Score, ChordChartSection, ScorePatch } from "@/lib/schema";
+
+/** Display labels for the section navMark enum. Keep concise so they fit
+ *  in a badge next to the section header. */
+const NAV_MARK_LABELS: Record<string, string> = {
+  segno: "Segno 𝄋",
+  coda: "Coda 𝄌",
+  "to-coda": "To Coda",
+  fine: "Fine",
+  "d.c.": "D.C.",
+  "d.s.": "D.S.",
+  "d.c. al fine": "D.C. al Fine",
+  "d.s. al fine": "D.S. al Fine",
+  "d.c. al coda": "D.C. al Coda",
+  "d.s. al coda": "D.S. al Coda",
+};
 import { useScoreStore, TEXT_FONT_STACKS, TextFont } from "@/store/score-store";
 
 type ChartFont = "mono" | TextFont;
@@ -123,14 +138,39 @@ function SectionBlock({
     showDivider ? "pb-3 border-b border-gray-800/60" : "",
   ].filter(Boolean).join(" ");
 
+  const navLabel = NAV_MARK_LABELS[section.navMark ?? ""] ?? "";
+  const headerBadges = (
+    <span className="inline-flex flex-wrap items-baseline gap-2 ml-2 align-baseline text-base">
+      {section.endingNumber && (
+        <span className="text-xs font-mono text-amber-300 border-2 border-b-0 border-amber-300/80 px-1.5 pt-0.5 leading-tight">
+          {section.endingNumber}.
+        </span>
+      )}
+      {section.repeatStart && (
+        <span className="text-pink-300" title="Open repeat">𝄆</span>
+      )}
+      {section.repeatEnd && (
+        <span className="text-pink-300" title="End repeat">𝄇</span>
+      )}
+      {section.navMark && (
+        <span className="text-xs font-medium uppercase tracking-wider px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-200" title={section.navMark}>
+          {navLabel}
+        </span>
+      )}
+    </span>
+  );
+
   const header = (
-    <EditableSectionHeader
-      label={section.label}
-      onCommit={(newLabel) => onLabelCommit(section.id, newLabel)}
-      onContextMenu={(x, y) => onHeaderContextMenu(section.id, x, y)}
-      position={labelPosition}
-      font={headerFont}
-    />
+    <span className="inline-flex items-baseline">
+      <EditableSectionHeader
+        label={section.label}
+        onCommit={(newLabel) => onLabelCommit(section.id, newLabel)}
+        onContextMenu={(x, y) => onHeaderContextMenu(section.id, x, y)}
+        position={labelPosition}
+        font={headerFont}
+      />
+      {headerBadges}
+    </span>
   );
 
   return (
@@ -1003,6 +1043,17 @@ export default function ChordChartView({ score, performMode = false, performColu
 
   const buildHeaderMenuItems = (ctx: HeaderContextMenuState): ChordChartContextMenuItem[] => {
     const idx = score.sections.findIndex(s => s.id === ctx.sectionId);
+    const section = sectionMap.get(ctx.sectionId);
+    const setSectionField = (
+      field: "repeatStart" | "repeatEnd" | "endingNumber" | "navMark",
+      value: boolean | number | string | null,
+    ) => {
+      applyPatches([{
+        op: "update_section",
+        sectionId: ctx.sectionId,
+        [field]: value,
+      } as ScorePatch]);
+    };
     return [
       {
         label: "Add section above",
@@ -1012,6 +1063,29 @@ export default function ChordChartView({ score, performMode = false, performColu
         label: "Add section below",
         onClick: () => handleAddSection(idx >= 0 ? idx + 1 : undefined),
       },
+      // Repeats — clicking a flag toggles it.
+      { divider: true, label: section?.repeatStart ? "Remove start repeat 𝄆" : "Start repeat 𝄆",
+        onClick: () => setSectionField("repeatStart", section?.repeatStart ? null : true) },
+      { label: section?.repeatEnd ? "Remove end repeat 𝄇" : "End repeat 𝄇",
+        onClick: () => setSectionField("repeatEnd", section?.repeatEnd ? null : true) },
+      // Volta endings — quick-pick 1/2/clear.
+      { label: section?.endingNumber === 1 ? "Clear 1st ending" : "Mark 1st ending",
+        onClick: () => setSectionField("endingNumber", section?.endingNumber === 1 ? null : 1) },
+      { label: section?.endingNumber === 2 ? "Clear 2nd ending" : "Mark 2nd ending",
+        onClick: () => setSectionField("endingNumber", section?.endingNumber === 2 ? null : 2) },
+      // Navigation marks — submenu effect via 7 quick-pick items.
+      { divider: true, label: section?.navMark === "segno" ? "Remove Segno" : "Set Segno 𝄋",
+        onClick: () => setSectionField("navMark", section?.navMark === "segno" ? null : "segno") },
+      { label: section?.navMark === "coda" ? "Remove Coda" : "Set Coda 𝄌",
+        onClick: () => setSectionField("navMark", section?.navMark === "coda" ? null : "coda") },
+      { label: section?.navMark === "to-coda" ? "Remove To Coda" : "Set To Coda",
+        onClick: () => setSectionField("navMark", section?.navMark === "to-coda" ? null : "to-coda") },
+      { label: section?.navMark === "fine" ? "Remove Fine" : "Set Fine",
+        onClick: () => setSectionField("navMark", section?.navMark === "fine" ? null : "fine") },
+      { label: section?.navMark === "d.c. al fine" ? "Remove D.C. al Fine" : "Set D.C. al Fine",
+        onClick: () => setSectionField("navMark", section?.navMark === "d.c. al fine" ? null : "d.c. al fine") },
+      { label: section?.navMark === "d.s. al coda" ? "Remove D.S. al Coda" : "Set D.S. al Coda",
+        onClick: () => setSectionField("navMark", section?.navMark === "d.s. al coda" ? null : "d.s. al coda") },
       {
         divider: true,
         label: "Delete section",
