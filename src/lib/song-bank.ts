@@ -5,6 +5,9 @@ export interface SongBankEntry {
   title: string;
   savedAt: number;
   score: Score;
+  /** Optional folder name (e.g. "Originals", "Covers"). Songs without a
+   *  folder appear under "(Unfiled)" in the My Songs picker. */
+  folder?: string;
 }
 
 const STORAGE_KEY = "notation-app-songs";
@@ -48,4 +51,31 @@ export function setSongs(songs: SongBankEntry[]): void {
   } catch {
     console.warn("[song-bank] localStorage quota exceeded");
   }
+}
+
+/** Rename a single song in-place (preserves id, savedAt, score, folder).
+ *  Returns the updated entry, or null if no song with that id was found. */
+export function renameSong(id: string, title: string): SongBankEntry | null {
+  const songs = getSongs();
+  const idx = songs.findIndex(s => s.id === id);
+  if (idx === -1) return null;
+  const next: SongBankEntry = { ...songs[idx], title };
+  songs[idx] = next;
+  setSongs(songs);
+  return next;
+}
+
+/** Set or clear a song's folder. Pass null/"" to remove it (back to
+ *  "Unfiled"). */
+export function setSongFolder(id: string, folder: string | null): SongBankEntry | null {
+  const songs = getSongs();
+  const idx = songs.findIndex(s => s.id === id);
+  if (idx === -1) return null;
+  const cur = songs[idx];
+  const next: SongBankEntry = { ...cur };
+  if (folder && folder.trim()) next.folder = folder.trim();
+  else delete next.folder;
+  songs[idx] = next;
+  setSongs(songs);
+  return next;
 }

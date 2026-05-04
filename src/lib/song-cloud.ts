@@ -210,11 +210,14 @@ export async function syncSongbook(opts?: {
       } else {
         try {
           const dto = await cloudGetSong(summary.id);
+          // Preserve local-only fields (folder is not synced to cloud) so
+          // pulling a fresh copy doesn't strip the user's folder grouping.
           merged.push({
             id: dto.id,
             title: dto.title,
             savedAt: dto.savedAt,
             score: dto.score,
+            ...(localEntry?.folder ? { folder: localEntry.folder } : {}),
           });
         } catch {
           if (localEntry) merged.push(localEntry);

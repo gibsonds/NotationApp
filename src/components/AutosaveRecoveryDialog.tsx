@@ -6,6 +6,10 @@ import { useScoreStore } from "@/store/score-store";
 
 interface AutosaveRecoveryDialogProps {
   onClose: () => void;
+  /** When set, only show snapshots whose title matches (case-insensitive
+   *  exact match). Used by My Songs to scope the recovery list to one
+   *  song's history. */
+  filterTitle?: string;
 }
 
 function formatTimestamp(ms: number): string {
@@ -26,7 +30,7 @@ function formatTimestamp(ms: number): string {
  * (replaces the current score; the previous state is itself snapshot first
  * so the user can always undo a restore).
  */
-export default function AutosaveRecoveryDialog({ onClose }: AutosaveRecoveryDialogProps) {
+export default function AutosaveRecoveryDialog({ onClose, filterTitle }: AutosaveRecoveryDialogProps) {
   const setScore = useScoreStore((s) => s.setScore);
   const currentScore = useScoreStore((s) => s.score);
   const addMessage = useScoreStore((s) => s.addMessage);
@@ -37,9 +41,16 @@ export default function AutosaveRecoveryDialog({ onClose }: AutosaveRecoveryDial
 
   useEffect(() => {
     listSnapshots()
-      .then(setSnapshots)
+      .then((all) => {
+        if (filterTitle) {
+          const needle = filterTitle.toLowerCase();
+          setSnapshots(all.filter(s => (s.title || "").toLowerCase() === needle));
+        } else {
+          setSnapshots(all);
+        }
+      })
       .catch((err) => setError(err.message ?? "Failed to read autosave history"));
-  }, []);
+  }, [filterTitle]);
 
   const handleRestore = async (timestamp: number) => {
     if (busy) return;
@@ -96,7 +107,9 @@ export default function AutosaveRecoveryDialog({ onClose }: AutosaveRecoveryDial
       >
         <div className="px-5 py-3 border-b border-gray-200 flex items-center justify-between">
           <div>
-            <h2 className="text-base font-semibold">Recover from Auto-save</h2>
+            <h2 className="text-base font-semibold">
+              {filterTitle ? `History — ${filterTitle}` : "Recover from Auto-save"}
+            </h2>
             <p className="text-xs text-gray-500 mt-0.5">
               Up to the last 20 snapshots, saved every 30 seconds when there are changes.
             </p>

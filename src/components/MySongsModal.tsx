@@ -1,12 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useScoreStore } from "@/store/score-store";
 import { saveSnapshot } from "@/lib/autosave";
+import AutosaveRecoveryDialog from "@/components/AutosaveRecoveryDialog";
 import {
   getSongs,
   saveSong,
   deleteSong,
+  renameSong,
+  setSongFolder,
   setSongs as writeLocalSongs,
   SongBankEntry,
 } from "@/lib/song-bank";
@@ -45,6 +48,31 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
   const [showRawCode, setShowRawCode] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const [codeCopied, setCodeCopied] = useState(false);
+  // Per-row UI state
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+  const [historyForTitle, setHistoryForTitle] = useState<string | null>(null);
+
+  // Group entries by folder. Sorted: "(Unfiled)" first, then named folders
+  // alphabetically; songs within a folder by savedAt newest-first.
+  const grouped = useMemo(() => {
+    const buckets = new Map<string, SongBankEntry[]>();
+    for (const s of songs) {
+      const key = s.folder || "";
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key)!.push(s);
+    }
+    const folderNames = Array.from(buckets.keys()).filter(k => k !== "").sort();
+    const result: Array<{ name: string; label: string; entries: SongBankEntry[] }> = [];
+    if (buckets.has("")) {
+      result.push({ name: "", label: "(Unfiled)", entries: buckets.get("")! });
+    }
+    for (const f of folderNames) {
+      result.push({ name: f, label: f, entries: buckets.get(f)! });
+    }
+    return result;
+  }, [songs]);
 
   const refreshLocal = () => setSongsState(getSongs().slice().reverse());
 
@@ -151,6 +179,58 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
     onClose();
   };
 
+  const startRename = (entry: SongBankEntry) => {
+    setRenamingId(entry.id);
+    setRenameValue(entry.title);
+    setMenuOpenId(null);
+  };
+
+  const commitRename = async (entry: SongBankEntry) => {
+    const next = renameValue.trim();
+    setRenamingId(null);
+    if (!next || next === entry.title) return;
+    const updated = renameSong(entry.id, next);
+    refreshLocal();
+    if (!updated || !CLOUD_ENABLED) return;
+    // Push the rename to cloud (same id, new title — replaces the entry).
+    try {
+      await cloudPutSong({
+        id: updated.id,
+        title: updated.title,
+        score: updated.score,
+        savedAt: updated.savedAt,
+      });
+    } catch (err) {
+      if (isTransient(err)) {
+        enqueueOffline({
+          type: "put",
+          id: updated.id,
+          title: updated.title,
+          score: updated.score,
+          savedAt: updated.savedAt,
+        });
+        setSyncStatus("offline");
+      }
+    }
+  };
+
+  const handleMoveToFolder = (entry: SongBankEntry) => {
+    setMenuOpenId(null);
+    const next = window.prompt(
+      `Folder for "${entry.title}" (blank for Unfiled):`,
+      entry.folder || ""
+    );
+    if (next === null) return;
+    setSongFolder(entry.id, next.trim() || null);
+    refreshLocal();
+    // Folder is local-only — not synced to cloud. (No cloudPutSong call.)
+  };
+
+  const handleViewHistory = (entry: SongBankEntry) => {
+    setMenuOpenId(null);
+    setHistoryForTitle(entry.title);
+  };
+
   const handleDelete = async (id: string) => {
     deleteSong(id);
     refreshLocal();
@@ -250,33 +330,107 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
                 : "No songs saved yet."}
             </div>
           ) : (
-            <ul className="divide-y divide-gray-100">
-              {songs.map(entry => (
-                <li key={entry.id} className="flex items-center px-5 py-3 hover:bg-gray-50 gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-gray-900 truncate">{entry.title}</div>
-                    <div className="text-xs text-gray-400 mt-0.5">
-                      {new Date(entry.savedAt).toLocaleString()}
+            <div className="divide-y divide-gray-100">
+              {grouped.map(group => (
+                <div key={group.name || "_unfiled"}>
+                  {grouped.length > 1 && (
+                    <div className="px-5 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-gray-500 bg-gray-50 border-b border-gray-100 flex items-center gap-2">
+                      <svg className="w-3 h-3 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+                      </svg>
+                      <span>{group.label}</span>
+                      <span className="text-gray-400 font-normal">{group.entries.length}</span>
                     </div>
-                  </div>
-                  <button
-                    onClick={() => handleLoad(entry)}
-                    className="px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50 active:bg-blue-100 border border-blue-200 rounded-lg transition-colors shrink-0"
-                  >
-                    Load
-                  </button>
-                  <button
-                    onClick={() => handleDelete(entry.id)}
-                    className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 active:bg-red-100 rounded-lg transition-colors shrink-0"
-                    title="Remove from My Songs"
-                  >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                  </button>
-                </li>
+                  )}
+                  <ul className="divide-y divide-gray-100">
+                    {group.entries.map(entry => (
+                      <li key={entry.id} className="flex items-center px-5 py-3 hover:bg-gray-50 gap-3 relative">
+                        <div className="flex-1 min-w-0">
+                          {renamingId === entry.id ? (
+                            <input
+                              type="text"
+                              autoFocus
+                              value={renameValue}
+                              onChange={e => setRenameValue(e.target.value)}
+                              onKeyDown={e => {
+                                if (e.key === "Enter") commitRename(entry);
+                                if (e.key === "Escape") setRenamingId(null);
+                              }}
+                              onBlur={() => commitRename(entry)}
+                              className="w-full px-2 py-1 text-sm border border-blue-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => startRename(entry)}
+                              className="text-sm font-medium text-gray-900 truncate text-left hover:text-blue-700 w-full"
+                              title="Click to rename"
+                            >
+                              {entry.title}
+                            </button>
+                          )}
+                          <div className="text-xs text-gray-400 mt-0.5">
+                            {new Date(entry.savedAt).toLocaleString()}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleLoad(entry)}
+                          className="px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50 active:bg-blue-100 border border-blue-200 rounded-lg transition-colors shrink-0"
+                        >
+                          Load
+                        </button>
+                        <div className="relative shrink-0">
+                          <button
+                            onClick={() => setMenuOpenId(menuOpenId === entry.id ? null : entry.id)}
+                            className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 active:bg-gray-200 rounded-lg transition-colors"
+                            title="More"
+                            aria-label="More actions"
+                          >
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                              <circle cx="5" cy="12" r="2" />
+                              <circle cx="12" cy="12" r="2" />
+                              <circle cx="19" cy="12" r="2" />
+                            </svg>
+                          </button>
+                          {menuOpenId === entry.id && (
+                            <>
+                              <div className="fixed inset-0 z-10" onClick={() => setMenuOpenId(null)} />
+                              <div className="absolute right-0 mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20 text-sm">
+                                <button
+                                  onClick={() => startRename(entry)}
+                                  className="w-full text-left px-3 py-1.5 hover:bg-blue-50 text-gray-700"
+                                >
+                                  Rename
+                                </button>
+                                <button
+                                  onClick={() => handleMoveToFolder(entry)}
+                                  className="w-full text-left px-3 py-1.5 hover:bg-blue-50 text-gray-700"
+                                >
+                                  Move to folder…
+                                </button>
+                                <button
+                                  onClick={() => handleViewHistory(entry)}
+                                  className="w-full text-left px-3 py-1.5 hover:bg-blue-50 text-gray-700"
+                                >
+                                  View history
+                                </button>
+                                <div className="border-t border-gray-100 my-1" />
+                                <button
+                                  onClick={() => { setMenuOpenId(null); handleDelete(entry.id); }}
+                                  className="w-full text-left px-3 py-1.5 hover:bg-red-50 text-red-600"
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               ))}
-            </ul>
+            </div>
           )}
         </div>
 
@@ -374,6 +528,19 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
           </button>
         </div>
       </div>
+
+      {/* Per-song history (autosave snapshots filtered by title). Restores
+          the chosen snapshot via setScore — which auto-snapshots the
+          current state first, so picking a history entry is itself reversible. */}
+      {historyForTitle && (
+        <AutosaveRecoveryDialog
+          filterTitle={historyForTitle}
+          onClose={() => {
+            setHistoryForTitle(null);
+            onClose();
+          }}
+        />
+      )}
     </div>
   );
 }
