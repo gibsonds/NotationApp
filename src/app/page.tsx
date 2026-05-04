@@ -995,6 +995,7 @@ export default function Home() {
         <PerformView
           score={score}
           onExit={() => setUIState({ performMode: false })}
+          onOpenMySongs={() => setMySongsOpen(true)}
         />
       )}
     </div>

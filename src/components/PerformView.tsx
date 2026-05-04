@@ -45,6 +45,7 @@ function savePrefs(p: PerformPrefs): void {
 interface PerformViewProps {
   score: Score;
   onExit: () => void;
+  onOpenMySongs?: () => void;
 }
 
 /**
@@ -53,7 +54,7 @@ interface PerformViewProps {
  * size, leading, and kerning live (persisted globally to localStorage).
  * Esc or the Done button returns to edit mode.
  */
-export default function PerformView({ score, onExit }: PerformViewProps) {
+export default function PerformView({ score, onExit, onOpenMySongs }: PerformViewProps) {
   const [prefs, setPrefs] = useState<PerformPrefs>(loadPrefs);
   const setScore = useScoreStore(s => s.setScore);
   const setUIState = useScoreStore(s => s.setUIState);
@@ -284,9 +285,23 @@ export default function PerformView({ score, onExit }: PerformViewProps) {
         </>
       )}
 
-      {/* Floating toolbar — top-right. Sits above the top tap zone via DOM
-          order; pointer events on toolbar children win over the zone. */}
-      <div className="absolute top-3 right-3 flex flex-wrap items-center justify-end gap-2 max-w-[calc(100vw-1.5rem)]">
+      {/* Done button is its own pinned element — never wraps off-screen,
+          higher z-index than everything else, and small enough not to
+          clash with the rest of the toolbar. The user got stuck once when
+          a wrap pushed it out of reach; that can't happen now. */}
+      <button
+        type="button"
+        onClick={onExit}
+        className="absolute top-3 right-3 z-30 px-4 h-11 rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-sm font-medium shadow border border-white/10"
+        aria-label="Exit perform mode"
+      >
+        Done
+      </button>
+
+      {/* Floating toolbar — wrap-able cluster of style/columns controls
+          plus a My Songs button. Positioned to the LEFT of the pinned
+          Done button. */}
+      <div className="absolute top-3 right-[5.5rem] flex flex-wrap items-center justify-end gap-2 max-w-[calc(100vw-7rem)]">
         <div className="flex items-center gap-1 bg-gray-900/80 backdrop-blur-sm rounded-xl p-1 shadow border border-white/10">
           <button
             type="button"
@@ -365,13 +380,19 @@ export default function PerformView({ score, onExit }: PerformViewProps) {
             </svg>
           )}
         </button>
-        <button
-          type="button"
-          onClick={onExit}
-          className="px-4 h-11 rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-sm font-medium shadow"
-        >
-          Done
-        </button>
+        {onOpenMySongs && (
+          <button
+            type="button"
+            onClick={onOpenMySongs}
+            className={btn}
+            aria-label="Open My Songs"
+            title="My Songs"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h7" />
+            </svg>
+          </button>
+        )}
       </div>
 
     </div>
