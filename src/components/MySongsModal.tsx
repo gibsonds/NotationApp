@@ -11,6 +11,7 @@ import {
   renameSong,
   setSongFolder,
   setSongs as writeLocalSongs,
+  updateSong,
   SongBankEntry,
 } from "@/lib/song-bank";
 import {
@@ -32,6 +33,8 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
   const score = useScoreStore(s => s.score);
   const setScore = useScoreStore(s => s.setScore);
   const setUIState = useScoreStore(s => s.setUIState);
+  const currentSongId = useScoreStore(s => s.uiState.currentSongId);
+  const collapsedFolders = useScoreStore(s => s.uiState.collapsedFolders);
   const [songs, setSongsState] = useState<SongBankEntry[]>(() =>
     getSongs().slice().reverse()
   );
@@ -51,9 +54,29 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
   // Per-row UI state
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
-  const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
-  const [folderPickerId, setFolderPickerId] = useState<string | null>(null);
+  // Menu and folder picker render at FIXED position anchored to the
+  // kebab button — this escapes the modal's overflow-y-auto, which was
+  // clipping/swallowing taps on iPad.
+  type Anchor = { entry: SongBankEntry; top: number; right: number };
+  const [menuAnchor, setMenuAnchor] = useState<Anchor | null>(null);
+  const [pickerAnchor, setPickerAnchor] = useState<Anchor | null>(null);
   const [historyForTitle, setHistoryForTitle] = useState<string | null>(null);
+
+  const openKebab = (entry: SongBankEntry, e: React.MouseEvent<HTMLButtonElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setMenuAnchor({
+      entry,
+      top: rect.bottom + 4,
+      right: window.innerWidth - rect.right,
+    });
+  };
+
+  const toggleFolderCollapse = (folder: string) => {
+    const set = new Set(collapsedFolders);
+    if (set.has(folder)) set.delete(folder);
+    else set.add(folder);
+    setUIState({ collapsedFolders: Array.from(set) });
+  };
 
   // All distinct folder names across the bank, sorted — used by the
   // folder picker so the user doesn't have to remember/retype names.
@@ -136,20 +159,34 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
     await runSync();
   };
 
-  const handleSave = async () => {
+  // Save logic. The default Save UPDATES the current song (matching by
+  // currentSongId) instead of always creating a new entry — that's the
+  // root cause of the "duplicates pile up every time I save" complaint.
+  // Save As (asNew=true) explicitly creates a new entry; useful for
+  // forking/copying a song.
+  const performSave = async (asNew: boolean) => {
     if (!score) return;
     const title = saveTitle.trim() || score.title || "Untitled Song";
-    saveSong(title, score);
+
+    let entry: SongBankEntry | undefined;
+    const localList = getSongs();
+    const existing = !asNew && currentSongId ? localList.find(s => s.id === currentSongId) : null;
+    if (existing) {
+      // Update in place — no new id, no duplicate.
+      const updated = updateSong(existing.id, { title, score, savedAt: Date.now() });
+      entry = updated || undefined;
+    } else {
+      saveSong(title, score);
+      const fresh = getSongs();
+      entry = fresh[fresh.length - 1];
+    }
     refreshLocal();
     setJustSaved(true);
     setTimeout(() => setJustSaved(false), 2000);
 
-    const fresh = getSongs();
-    const entry = fresh[fresh.length - 1];
     if (entry) setUIState({ currentSongId: entry.id });
 
-    if (!CLOUD_ENABLED) return;
-    if (!entry) return;
+    if (!CLOUD_ENABLED || !entry) return;
     setSyncStatus("syncing");
     try {
       await cloudPutSong({
@@ -176,6 +213,9 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
     }
   };
 
+  const handleSave = () => performSave(false);
+  const handleSaveAs = () => performSave(true);
+
   const handleLoad = async (entry: SongBankEntry) => {
     // Take an autosave snapshot of the OUTGOING score before replacing it.
     // Recovery from this snapshot is how we get back from accidental Loads
@@ -191,7 +231,7 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
   const startRename = (entry: SongBankEntry) => {
     setRenamingId(entry.id);
     setRenameValue(entry.title);
-    setMenuOpenId(null);
+    setMenuAnchor(null);
   };
 
   const commitRename = async (entry: SongBankEntry) => {
@@ -224,19 +264,21 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
   };
 
   const handleMoveToFolder = (entry: SongBankEntry) => {
-    setMenuOpenId(null);
-    setFolderPickerId(entry.id);
+    // Promote the menu anchor into a picker anchor at the same position
+    // so the picker drops where the menu was.
+    if (!menuAnchor) return;
+    setPickerAnchor({ ...menuAnchor, entry });
+    setMenuAnchor(null);
   };
 
   const applyFolder = (entry: SongBankEntry, folder: string | null) => {
-    setFolderPickerId(null);
+    setPickerAnchor(null);
     setSongFolder(entry.id, folder);
     refreshLocal();
-    // Folder is local-only — not synced to cloud.
   };
 
   const applyNewFolder = (entry: SongBankEntry) => {
-    setFolderPickerId(null);
+    setPickerAnchor(null);
     const next = window.prompt(`New folder name:`, "");
     if (!next || !next.trim()) return;
     setSongFolder(entry.id, next.trim());
@@ -244,8 +286,47 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
   };
 
   const handleViewHistory = (entry: SongBankEntry) => {
-    setMenuOpenId(null);
+    setMenuAnchor(null);
     setHistoryForTitle(entry.title);
+  };
+
+  // Find groups of duplicate-titled songs and delete all but the newest
+  // (highest savedAt) per title. Both local and cloud — keeps the user
+  // out of the "every save creates another copy and they pile up" trap.
+  const handleCleanupDuplicates = async () => {
+    const list = getSongs();
+    const byTitle = new Map<string, SongBankEntry[]>();
+    for (const s of list) {
+      const k = s.title.trim().toLowerCase();
+      if (!byTitle.has(k)) byTitle.set(k, []);
+      byTitle.get(k)!.push(s);
+    }
+    const toDelete: SongBankEntry[] = [];
+    for (const entries of byTitle.values()) {
+      if (entries.length <= 1) continue;
+      entries.sort((a, b) => b.savedAt - a.savedAt);
+      toDelete.push(...entries.slice(1));
+    }
+    if (toDelete.length === 0) {
+      window.alert("No duplicates found.");
+      return;
+    }
+    const summary = toDelete
+      .slice(0, 5)
+      .map(e => `• ${e.title} (${new Date(e.savedAt).toLocaleString()})`)
+      .join("\n");
+    const more = toDelete.length > 5 ? `\n…and ${toDelete.length - 5} more` : "";
+    const ok = window.confirm(
+      `Delete ${toDelete.length} duplicate ${toDelete.length === 1 ? "song" : "songs"}? Newest copy of each title is kept.\n\n${summary}${more}`
+    );
+    if (!ok) return;
+    for (const entry of toDelete) {
+      deleteSong(entry.id);
+      if (CLOUD_ENABLED) {
+        try { await cloudDeleteSong(entry.id); } catch { /* best-effort */ }
+      }
+    }
+    refreshLocal();
   };
 
   const handleDelete = async (id: string) => {
@@ -327,9 +408,27 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
                   ? "bg-green-600 hover:bg-green-700"
                   : "bg-blue-600 hover:bg-blue-700 active:bg-blue-800"
               }`}
+              title={
+                currentSongId && songs.some(s => s.id === currentSongId)
+                  ? "Update the current song (no duplicate)"
+                  : "Create a new song"
+              }
             >
-              {justSaved ? "Saved!" : "Save Song"}
+              {justSaved
+                ? "Saved!"
+                : currentSongId && songs.some(s => s.id === currentSongId)
+                ? "Save"
+                : "Save Song"}
             </button>
+            {currentSongId && songs.some(s => s.id === currentSongId) && (
+              <button
+                onClick={handleSaveAs}
+                className="px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50 active:bg-blue-100 border border-blue-200 rounded-lg transition-colors whitespace-nowrap shrink-0"
+                title="Save as a new entry (keeps the current one)"
+              >
+                Save As…
+              </button>
+            )}
           </div>
         ) : (
           <div className="px-5 py-3 bg-gray-50 border-b border-gray-200">
@@ -348,17 +447,33 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
             </div>
           ) : (
             <div className="divide-y divide-gray-100">
-              {grouped.map(group => (
+              {grouped.map(group => {
+                const collapsed = collapsedFolders.includes(group.name || "_unfiled");
+                return (
                 <div key={group.name || "_unfiled"}>
                   {grouped.length > 1 && (
-                    <div className="px-5 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-gray-500 bg-gray-50 border-b border-gray-100 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => toggleFolderCollapse(group.name || "_unfiled")}
+                      className="w-full px-5 py-2 text-[11px] font-semibold uppercase tracking-wider text-gray-500 bg-gray-50 hover:bg-gray-100 active:bg-gray-200 border-b border-gray-100 flex items-center gap-2 transition-colors"
+                    >
+                      <svg
+                        className={`w-3 h-3 transition-transform ${collapsed ? "" : "rotate-90"}`}
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                      </svg>
                       <svg className="w-3 h-3 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
                       </svg>
                       <span>{group.label}</span>
                       <span className="text-gray-400 font-normal">{group.entries.length}</span>
-                    </div>
+                    </button>
                   )}
+                  {!collapsed && (
                   <ul className="divide-y divide-gray-100">
                     {group.entries.map(entry => (
                       <li key={entry.id} className="flex items-center px-5 py-3 hover:bg-gray-50 gap-3 relative">
@@ -396,91 +511,25 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
                         >
                           Load
                         </button>
-                        <div className="relative shrink-0">
-                          <button
-                            onClick={() => setMenuOpenId(menuOpenId === entry.id ? null : entry.id)}
-                            className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 active:bg-gray-200 rounded-lg transition-colors"
-                            title="More"
-                            aria-label="More actions"
-                          >
-                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                              <circle cx="5" cy="12" r="2" />
-                              <circle cx="12" cy="12" r="2" />
-                              <circle cx="19" cy="12" r="2" />
-                            </svg>
-                          </button>
-                          {menuOpenId === entry.id && (
-                            <>
-                              <div className="fixed inset-0 z-10" onClick={() => setMenuOpenId(null)} />
-                              <div className="absolute right-0 mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20 text-sm">
-                                <button
-                                  onClick={() => startRename(entry)}
-                                  className="w-full text-left px-3 py-1.5 hover:bg-blue-50 text-gray-700"
-                                >
-                                  Rename
-                                </button>
-                                <button
-                                  onClick={() => handleMoveToFolder(entry)}
-                                  className="w-full text-left px-3 py-1.5 hover:bg-blue-50 text-gray-700"
-                                >
-                                  Move to folder…
-                                </button>
-                                <button
-                                  onClick={() => handleViewHistory(entry)}
-                                  className="w-full text-left px-3 py-1.5 hover:bg-blue-50 text-gray-700"
-                                >
-                                  View history
-                                </button>
-                                <div className="border-t border-gray-100 my-1" />
-                                <button
-                                  onClick={() => { setMenuOpenId(null); handleDelete(entry.id); }}
-                                  className="w-full text-left px-3 py-1.5 hover:bg-red-50 text-red-600"
-                                >
-                                  Delete
-                                </button>
-                              </div>
-                            </>
-                          )}
-                          {folderPickerId === entry.id && (
-                            <>
-                              <div className="fixed inset-0 z-10" onClick={() => setFolderPickerId(null)} />
-                              <div className="absolute right-0 mt-1 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20 text-sm max-h-[60vh] overflow-y-auto">
-                                <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-gray-400">Move to…</div>
-                                <button
-                                  onClick={() => applyFolder(entry, null)}
-                                  className={`w-full text-left px-3 py-1.5 hover:bg-blue-50 ${
-                                    !entry.folder ? "text-blue-700 font-medium" : "text-gray-700"
-                                  }`}
-                                >
-                                  {!entry.folder && "✓ "}(Unfiled)
-                                </button>
-                                {folderNames.map(f => (
-                                  <button
-                                    key={f}
-                                    onClick={() => applyFolder(entry, f)}
-                                    className={`w-full text-left px-3 py-1.5 hover:bg-blue-50 ${
-                                      entry.folder === f ? "text-blue-700 font-medium" : "text-gray-700"
-                                    }`}
-                                  >
-                                    {entry.folder === f && "✓ "}{f}
-                                  </button>
-                                ))}
-                                <div className="border-t border-gray-100 my-1" />
-                                <button
-                                  onClick={() => applyNewFolder(entry)}
-                                  className="w-full text-left px-3 py-1.5 hover:bg-blue-50 text-blue-700"
-                                >
-                                  + New folder…
-                                </button>
-                              </div>
-                            </>
-                          )}
-                        </div>
+                        <button
+                          onClick={(e) => openKebab(entry, e)}
+                          className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 active:bg-gray-200 rounded-lg transition-colors shrink-0"
+                          title="More"
+                          aria-label="More actions"
+                        >
+                          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                            <circle cx="5" cy="12" r="2" />
+                            <circle cx="12" cy="12" r="2" />
+                            <circle cx="19" cy="12" r="2" />
+                          </svg>
+                        </button>
                       </li>
                     ))}
                   </ul>
+                  )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -570,7 +619,14 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
           </div>
         )}
 
-        <div className="px-5 py-4 border-t border-gray-200 flex justify-end">
+        <div className="px-5 py-4 border-t border-gray-200 flex justify-between items-center">
+          <button
+            onClick={handleCleanupDuplicates}
+            className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 active:bg-gray-200 rounded-lg transition-colors"
+            title="Delete duplicate-titled songs, keeping the newest of each"
+          >
+            Clean up duplicates
+          </button>
           <button
             onClick={onClose}
             className="px-5 py-2 text-sm text-gray-700 hover:bg-gray-100 active:bg-gray-200 rounded-lg transition-colors"
@@ -579,6 +635,84 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
           </button>
         </div>
       </div>
+
+      {/* Kebab menu — fixed-positioned at the button anchor so it isn't
+          clipped by the modal's overflow-y-auto song list (the bug that
+          made taps unreliable on iPad). */}
+      {menuAnchor && (
+        <>
+          <div className="fixed inset-0 z-[110]" onClick={() => setMenuAnchor(null)} />
+          <div
+            className="fixed z-[120] w-48 bg-white rounded-lg shadow-2xl border border-gray-200 py-1 text-sm"
+            style={{ top: menuAnchor.top, right: menuAnchor.right }}
+          >
+            <button
+              onClick={() => startRename(menuAnchor.entry)}
+              className="w-full text-left px-3 py-2 hover:bg-blue-50 active:bg-blue-100 text-gray-700"
+            >
+              Rename
+            </button>
+            <button
+              onClick={() => handleMoveToFolder(menuAnchor.entry)}
+              className="w-full text-left px-3 py-2 hover:bg-blue-50 active:bg-blue-100 text-gray-700"
+            >
+              Move to folder…
+            </button>
+            <button
+              onClick={() => handleViewHistory(menuAnchor.entry)}
+              className="w-full text-left px-3 py-2 hover:bg-blue-50 active:bg-blue-100 text-gray-700"
+            >
+              View history
+            </button>
+            <div className="border-t border-gray-100 my-1" />
+            <button
+              onClick={() => { const e = menuAnchor.entry; setMenuAnchor(null); handleDelete(e.id); }}
+              className="w-full text-left px-3 py-2 hover:bg-red-50 active:bg-red-100 text-red-600"
+            >
+              Delete
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* Folder picker — also fixed-positioned for the same reason. */}
+      {pickerAnchor && (
+        <>
+          <div className="fixed inset-0 z-[110]" onClick={() => setPickerAnchor(null)} />
+          <div
+            className="fixed z-[120] w-56 bg-white rounded-lg shadow-2xl border border-gray-200 py-1 text-sm max-h-[60vh] overflow-y-auto"
+            style={{ top: pickerAnchor.top, right: pickerAnchor.right }}
+          >
+            <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-gray-400">Move to…</div>
+            <button
+              onClick={() => applyFolder(pickerAnchor.entry, null)}
+              className={`w-full text-left px-3 py-2 hover:bg-blue-50 active:bg-blue-100 ${
+                !pickerAnchor.entry.folder ? "text-blue-700 font-medium" : "text-gray-700"
+              }`}
+            >
+              {!pickerAnchor.entry.folder && "✓ "}(Unfiled)
+            </button>
+            {folderNames.map(f => (
+              <button
+                key={f}
+                onClick={() => applyFolder(pickerAnchor.entry, f)}
+                className={`w-full text-left px-3 py-2 hover:bg-blue-50 active:bg-blue-100 ${
+                  pickerAnchor.entry.folder === f ? "text-blue-700 font-medium" : "text-gray-700"
+                }`}
+              >
+                {pickerAnchor.entry.folder === f && "✓ "}{f}
+              </button>
+            ))}
+            <div className="border-t border-gray-100 my-1" />
+            <button
+              onClick={() => applyNewFolder(pickerAnchor.entry)}
+              className="w-full text-left px-3 py-2 hover:bg-blue-50 active:bg-blue-100 text-blue-700"
+            >
+              + New folder…
+            </button>
+          </div>
+        </>
+      )}
 
       {/* Per-song history (autosave snapshots filtered by title). Restores
           the chosen snapshot via setScore — which auto-snapshots the

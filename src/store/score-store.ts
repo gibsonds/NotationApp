@@ -146,6 +146,9 @@ export interface UIState {
    *  score isn't from the bank (e.g. fresh creation, AI-generated). Used
    *  by PerformView to find prev/next songs in the user's list. */
   currentSongId: string | null;
+  /** Folder names the user has collapsed in My Songs. Persisted so the
+   *  collapse state survives reloads. */
+  collapsedFolders: string[];
 }
 
 export const DEFAULT_UI_STATE: UIState = {
@@ -154,6 +157,7 @@ export const DEFAULT_UI_STATE: UIState = {
   propsDrawerOpen: true,
   performMode: false,
   currentSongId: null,
+  collapsedFolders: [],
 };
 
 export interface SavedRevision {

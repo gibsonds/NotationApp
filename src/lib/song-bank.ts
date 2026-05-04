@@ -65,6 +65,28 @@ export function renameSong(id: string, title: string): SongBankEntry | null {
   return next;
 }
 
+/** Update an existing song in-place. Returns the updated entry, or null
+ *  if no song with that id was found. Use this for Save (overwriting the
+ *  current song) instead of saveSong (which always creates a new entry). */
+export function updateSong(
+  id: string,
+  patch: Partial<Pick<SongBankEntry, "title" | "score" | "savedAt" | "folder">>,
+): SongBankEntry | null {
+  const songs = getSongs();
+  const idx = songs.findIndex(s => s.id === id);
+  if (idx === -1) return null;
+  const next: SongBankEntry = {
+    ...songs[idx],
+    ...(patch.title !== undefined ? { title: patch.title } : {}),
+    ...(patch.score !== undefined ? { score: JSON.parse(JSON.stringify(patch.score)) } : {}),
+    ...(patch.savedAt !== undefined ? { savedAt: patch.savedAt } : {}),
+    ...(patch.folder !== undefined ? { folder: patch.folder } : {}),
+  };
+  songs[idx] = next;
+  setSongs(songs);
+  return next;
+}
+
 /** Set or clear a song's folder. Pass null/"" to remove it (back to
  *  "Unfiled"). */
 export function setSongFolder(id: string, folder: string | null): SongBankEntry | null {
