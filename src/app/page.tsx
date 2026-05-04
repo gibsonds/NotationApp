@@ -22,6 +22,7 @@ import JoinSongbookModal from "@/components/JoinSongbookModal";
 import PerformView from "@/components/PerformView";
 import PersistFailureBanner from "@/components/PersistFailureBanner";
 import { CLOUD_ENABLED, getDeviceId } from "@/lib/song-cloud";
+import { autosaveToCloud } from "@/lib/cloud-autosave";
 import { cleanScoreOverflow } from "@/lib/score-cleanup";
 
 // Dynamic import to prevent SSR for OSMD (uses browser APIs)
@@ -237,6 +238,21 @@ export default function Home() {
     }, 5_000);
     return () => clearTimeout(id);
   }, [score]);
+
+  // Cloud autosave — push the loaded song to DynamoDB after edits settle
+  // so an unsaved-since-load session can't lose work. Only fires when
+  // there's a known song id (i.e. the score came from My Songs or has
+  // been saved at least once); brand-new unnamed scores still need an
+  // explicit Save Song. 8s debounce is slightly longer than the IndexedDB
+  // autosave to avoid hammering the cloud during rapid edits.
+  const currentSongId = uiState.currentSongId;
+  useEffect(() => {
+    if (!score || !currentSongId || !CLOUD_ENABLED) return;
+    const id = setTimeout(() => {
+      autosaveToCloud(currentSongId, score);
+    }, 8_000);
+    return () => clearTimeout(id);
+  }, [score, currentSongId]);
 
   // Songbook share-link: visiting `?join=<deviceId>` prompts to take over
   // that device's songbook. The param is stripped after the user decides

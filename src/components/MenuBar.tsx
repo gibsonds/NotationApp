@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useScoreStore } from "@/store/score-store";
 import { scoreToMusicXML } from "@/lib/musicxml";
 import { ScoreSchema } from "@/lib/schema";
+import CloudSaveIndicator from "@/components/CloudSaveIndicator";
 import { IS_STATIC_EXPORT, STATIC_FEATURE_DISABLED_MESSAGE } from "@/lib/api-availability";
 import { v4 as uuidv4 } from "uuid";
 
@@ -397,6 +398,8 @@ export default function MenuBar({
         <MenuDropdown label="Edit" items={editMenu} isOpen={openMenu === "edit"} onToggle={() => toggleMenu("edit")} onClose={closeMenu} />
         <MenuDropdown label="View" items={viewMenu} isOpen={openMenu === "view"} onToggle={() => toggleMenu("view")} onClose={closeMenu} />
         <MenuDropdown label="Tools" items={toolsMenu} isOpen={openMenu === "tools"} onToggle={() => toggleMenu("tools")} onClose={closeMenu} />
+
+        <CloudSaveIndicator />
 
         {/* Perform mode — chord-chart only */}
         {onTogglePerform && score?.sections && score.sections.length > 0 && (

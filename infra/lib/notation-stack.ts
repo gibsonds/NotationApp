@@ -63,6 +63,16 @@ export class NotationStack extends Stack {
       methods: [HttpMethod.GET, HttpMethod.PUT, HttpMethod.DELETE],
       integration,
     });
+    api.addRoutes({
+      path: "/songs/{id}/versions",
+      methods: [HttpMethod.GET],
+      integration,
+    });
+    api.addRoutes({
+      path: "/songs/{id}/versions/{ts}",
+      methods: [HttpMethod.GET],
+      integration,
+    });
 
     new CfnOutput(this, "ApiUrl", { value: api.apiEndpoint });
     new CfnOutput(this, "TableName", { value: table.tableName });
