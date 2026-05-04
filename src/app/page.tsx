@@ -239,6 +239,56 @@ export default function Home() {
     return () => clearTimeout(id);
   }, [score]);
 
+  // Mac-native zoom shortcuts: Cmd+/-/0 keyboard, Cmd+scroll wheel and
+  // trackpad pinch (which Safari/Chromium translate to wheel events with
+  // ctrlKey=true). Only fires when focus isn't in a text field.
+  useEffect(() => {
+    const isTextTarget = (t: EventTarget | null) =>
+      t instanceof HTMLInputElement ||
+      t instanceof HTMLTextAreaElement ||
+      (t instanceof HTMLElement && t.isContentEditable);
+
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      if (isTextTarget(e.target)) return;
+      // "=" key with Shift gives "+" — both should zoom in.
+      if (e.key === "=" || e.key === "+") {
+        e.preventDefault();
+        setZoom(z => Math.min(2, +(z + 0.1).toFixed(2)));
+      } else if (e.key === "-") {
+        e.preventDefault();
+        setZoom(z => Math.max(0.5, +(z - 0.1).toFixed(2)));
+      } else if (e.key === "0") {
+        e.preventDefault();
+        setZoom(1.0);
+      }
+    };
+
+    const onWheel = (e: WheelEvent) => {
+      // ctrlKey covers both Mac Cmd+scroll (Chrome/Safari maps Cmd+wheel
+      // to ctrlKey on the event) and trackpad pinch gestures, which the
+      // browser also surfaces as wheel events with ctrlKey=true.
+      if (!e.ctrlKey && !e.metaKey) return;
+      if (isTextTarget(e.target)) return;
+      e.preventDefault();
+      // deltaY negative = scroll up = zoom in. Smaller step for pinch
+      // gestures (which fire many small events).
+      const step = Math.abs(e.deltaY) > 30 ? 0.1 : 0.03;
+      setZoom(z => {
+        const next = e.deltaY < 0 ? z + step : z - step;
+        return Math.max(0.5, Math.min(2, +next.toFixed(2)));
+      });
+    };
+
+    window.addEventListener("keydown", onKey);
+    // Wheel must be non-passive to call preventDefault.
+    window.addEventListener("wheel", onWheel, { passive: false });
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("wheel", onWheel);
+    };
+  }, []);
+
   // Cloud autosave — push the loaded song to DynamoDB after edits settle
   // so an unsaved-since-load session can't lose work. Only fires when
   // there's a known song id (i.e. the score came from My Songs or has
