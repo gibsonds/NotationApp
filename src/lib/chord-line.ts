@@ -175,6 +175,98 @@ export function findTokenAtColumn(chords: string, col: number, slack = 1): Chord
 }
 
 /**
+ * Place a single bar (`|`) at exactly `col`, without consuming or padding
+ * any surrounding spaces. Designed for Bar mode where the user is rapidly
+ * adding bars and any column shift in neighboring tokens would be a bug.
+ *
+ * - If column `col` is already a `|`, this is a no-op.
+ * - If column `col` is part of a non-bar chord token, it's a no-op (bar
+ *   mode shouldn't overwrite chord text). Use the chord-edit dialog to
+ *   change a chord; bar mode only places bars in empty slots.
+ * - If column `col` is past the end of the chord line, pad with spaces
+ *   to reach it and append `|`.
+ * - Otherwise overwrite the single character at `col` with `|`.
+ */
+export function placeBarAtColumn(chords: string, col: number): string {
+  if (col < 0) return chords;
+  if (col < chords.length) {
+    const ch = chords[col];
+    if (ch === "|") return chords;
+    if (ch !== " " && ch !== "\t") return chords; // protect chord text
+    return chords.slice(0, col) + "|" + chords.slice(col + 1);
+  }
+  // Past the end — pad and append.
+  return chords + " ".repeat(col - chords.length) + "|";
+}
+
+/**
+ * Remove the bar at exactly `col`, replacing it with a single space so
+ * subsequent tokens stay at their original columns. No-op if there's no
+ * bar at that column. Companion to placeBarAtColumn.
+ */
+export function removeBarAtColumn(chords: string, col: number): string {
+  if (col < 0 || col >= chords.length) return chords;
+  if (chords[col] !== "|") return chords;
+  return chords.slice(0, col) + " " + chords.slice(col + 1);
+}
+
+/**
+ * Toggle a bar at `col`. Every click does something:
+ *   - existing bar at col → remove it
+ *   - whitespace at col → place a bar in-place (no shift to other tokens)
+ *   - chord character at col → walk back to the chord's start and INSERT
+ *     a bar there, shifting the chord right by 1 column. Makes "click on
+ *     a chord to put a bar before it" work — the standard "|D" pattern.
+ *     Without this, clicks on chord-occupied columns silently did nothing
+ *     which felt hit-or-miss.
+ */
+export function toggleBarAtColumn(chords: string, col: number): { chords: string; changed: boolean } {
+  if (col < 0) return { chords, changed: false };
+
+  // Past the end: pad and append.
+  if (col >= chords.length) {
+    return {
+      chords: chords + " ".repeat(col - chords.length) + "|",
+      changed: true,
+    };
+  }
+
+  const ch = chords[col];
+
+  // Existing bar — toggle off.
+  if (ch === "|") {
+    return { chords: removeBarAtColumn(chords, col), changed: true };
+  }
+
+  // Whitespace — drop bar in place, no shift to anything else.
+  if (ch === " " || ch === "\t") {
+    return {
+      chords: chords.slice(0, col) + "|" + chords.slice(col + 1),
+      changed: true,
+    };
+  }
+
+  // Inside a chord token — walk back to the chord's start and INSERT
+  // a bar there, shifting the chord right by 1. This is the only path
+  // that intentionally shifts a neighboring token; the user is explicitly
+  // creating a bar in cramped space and the "|D" pattern matches songbook
+  // convention.
+  let start = col;
+  while (
+    start > 0 &&
+    chords[start - 1] !== " " &&
+    chords[start - 1] !== "\t" &&
+    chords[start - 1] !== "|"
+  ) {
+    start--;
+  }
+  return {
+    chords: chords.slice(0, start) + "|" + chords.slice(start),
+    changed: true,
+  };
+}
+
+/**
  * Write `newChord` into the chord line at `col`. If `newChord` is empty, the
  * existing chord (if any) at that column is removed. Other tokens are
  * preserved at their original columns whenever possible — replacing a chord
