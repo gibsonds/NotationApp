@@ -74,6 +74,9 @@ export type Articulation = z.infer<typeof Articulation>;
 export const BeamState = z.enum(["begin", "continue", "end", "none"]);
 export type BeamState = z.infer<typeof BeamState>;
 
+export const StemDirection = z.enum(["auto", "up", "down"]);
+export type StemDirection = z.infer<typeof StemDirection>;
+
 export const NoteSchema = z.object({
   pitch: z.string().describe('Scientific pitch notation, e.g. "G4", or "rest"'),
   duration: NoteDuration,
@@ -84,6 +87,7 @@ export const NoteSchema = z.object({
   lyric: z.string().optional(),
   dynamic: DynamicMarking.optional(),
   articulations: z.array(Articulation).optional(),
+  stemDirection: StemDirection.optional().describe('Override automatic stem direction'),
   beam: BeamState.optional().describe('Override auto-beaming: begin/continue/end a beam group, or "none" to prevent beaming'),
   tuplet: z.object({
     actualNotes: z.number().int().min(2),
@@ -315,6 +319,7 @@ export const ScorePatchSchema = z.discriminatedUnion("op", [
       articulations: z.array(Articulation).optional(),
       beam: BeamState.optional(),
       dynamic: DynamicMarking.optional(),
+      stemDirection: StemDirection.optional(),
     }),
   }),
   z.object({

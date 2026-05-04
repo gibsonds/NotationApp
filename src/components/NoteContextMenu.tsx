@@ -279,6 +279,42 @@ export default function NoteContextMenu({ x, y, note, onClose, onLyricEdit, onAI
         </div>
       </div>
 
+      {/* Stem direction. Note: data is plumbed; renderer respect for the
+          override is a follow-up — once OSMD/MusicXML emission picks up
+          the field, this UI will start affecting visuals. */}
+      <div className="border-t border-gray-100 px-1 py-1">
+        <div className="px-2 py-0.5 text-[10px] text-gray-400 uppercase">Stem</div>
+        <div className="flex gap-0.5 px-2">
+          {(["auto", "up", "down"] as const).map((dir) => (
+            <button
+              key={dir}
+              onClick={() => {
+                if (!scoreNote) return;
+                doAction(() => {
+                  applyPatches([{
+                    op: "update_note",
+                    staffId: staff.id,
+                    voiceId: voice.id,
+                    measure: note.measure,
+                    beat: note.beat,
+                    pitch: note.pitch,
+                    updates: { stemDirection: dir },
+                  }]);
+                });
+              }}
+              className={`px-2 py-0.5 text-xs rounded transition-colors capitalize ${
+                (scoreNote?.stemDirection ?? "auto") === dir
+                  ? "bg-blue-100 text-blue-700 font-medium"
+                  : "hover:bg-gray-100 text-gray-600"
+              }`}
+              title={`Stem ${dir}`}
+            >
+              {dir === "up" ? "↑" : dir === "down" ? "↓" : "auto"}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Lyric */}
       <div className="border-t border-gray-100">
         <button
