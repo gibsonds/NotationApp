@@ -20,3 +20,11 @@ export interface SongDTO extends SongSummary {
 export interface ApiError {
   error: string;
 }
+
+export interface VersionEntry {
+  ts: number;
+  kind: "auto" | "daily" | "named";
+  name?: string;
+  title?: string;
+  savedAt?: number;
+}

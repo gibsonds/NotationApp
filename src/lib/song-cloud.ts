@@ -1,5 +1,5 @@
 import type { Score } from "@/lib/schema";
-import type { SongDTO, SongSummary } from "@/lib/song-cloud-types";
+import type { SongDTO, SongSummary, VersionEntry } from "@/lib/song-cloud-types";
 import { getSongs, setSongs as writeLocalSongs, type SongBankEntry } from "@/lib/song-bank";
 
 const DEVICE_ID_KEY = "notation-app-device-id";
@@ -103,6 +103,39 @@ export async function cloudPutSong(s: {
 
 export async function cloudDeleteSong(id: string): Promise<void> {
   await apiFetch(`/songs/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+export async function cloudListVersions(id: string): Promise<VersionEntry[]> {
+  const res = await apiFetch(`/songs/${encodeURIComponent(id)}/versions`);
+  const json = (await res.json()) as { versions: VersionEntry[] };
+  return json.versions;
+}
+
+export async function cloudGetVersion(id: string, ts: number): Promise<SongDTO> {
+  const res = await apiFetch(
+    `/songs/${encodeURIComponent(id)}/versions/${ts}`
+  );
+  return (await res.json()) as SongDTO;
+}
+
+export async function cloudCreateNamedRevision(s: {
+  id: string;
+  name: string;
+  title: string;
+  score: Score;
+  folder?: string | null;
+}): Promise<VersionEntry> {
+  const body = JSON.stringify({
+    name: s.name,
+    title: s.title,
+    score: s.score,
+    folder: s.folder ?? null,
+  });
+  const res = await apiFetch(`/songs/${encodeURIComponent(s.id)}/versions`, {
+    method: "POST",
+    body,
+  });
+  return (await res.json()) as VersionEntry;
 }
 
 // ── Offline queue ──────────────────────────────────────────────────────────

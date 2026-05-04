@@ -49,6 +49,7 @@ export class NotationStack extends Stack {
         allowMethods: [
           CorsHttpMethod.GET,
           CorsHttpMethod.PUT,
+          CorsHttpMethod.POST,
           CorsHttpMethod.DELETE,
           CorsHttpMethod.OPTIONS,
         ],
@@ -65,7 +66,7 @@ export class NotationStack extends Stack {
     });
     api.addRoutes({
       path: "/songs/{id}/versions",
-      methods: [HttpMethod.GET],
+      methods: [HttpMethod.GET, HttpMethod.POST],
       integration,
     });
     api.addRoutes({

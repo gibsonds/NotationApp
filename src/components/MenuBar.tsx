@@ -5,6 +5,8 @@ import { useScoreStore } from "@/store/score-store";
 import { scoreToMusicXML } from "@/lib/musicxml";
 import { ScoreSchema } from "@/lib/schema";
 import CloudSaveIndicator from "@/components/CloudSaveIndicator";
+import { CLOUD_ENABLED, cloudCreateNamedRevision } from "@/lib/song-cloud";
+import { getSongs } from "@/lib/song-bank";
 import { IS_STATIC_EXPORT, STATIC_FEATURE_DISABLED_MESSAGE } from "@/lib/api-availability";
 import { v4 as uuidv4 } from "uuid";
 
@@ -117,6 +119,7 @@ export default function MenuBar({
     messages, savedRevisions, layout, setLayout,
     copySelection, pasteAtSelection, selection, setSelection,
   } = useScoreStore();
+  const currentSongId = useScoreStore((s) => s.uiState.currentSongId);
 
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -212,10 +215,28 @@ export default function MenuBar({
     else window.print();
   };
 
+  const pushNamedRevisionToCloud = async (name: string) => {
+    if (!score || !CLOUD_ENABLED || !currentSongId) return;
+    try {
+      const localEntry = getSongs().find((s) => s.id === currentSongId);
+      const title = localEntry?.title ?? score.title ?? "Untitled Song";
+      await cloudCreateNamedRevision({
+        id: currentSongId,
+        name,
+        title,
+        score,
+        folder: localEntry?.folder ?? null,
+      });
+    } catch (err) {
+      console.warn("[menubar] cloud named revision failed", err);
+    }
+  };
+
   const handleSave = () => {
     if (!score) return;
     const name = `${score.title || "Score"} \u2014 ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
     saveRevision(name);
+    void pushNamedRevisionToCloud(name);
     addMessage({ id: uuidv4(), role: "assistant", content: `Saved revision: "${name}".`, timestamp: Date.now() });
   };
 
@@ -224,6 +245,7 @@ export default function MenuBar({
     const name = prompt("Revision name:", score.title || "Score");
     if (!name) return;
     saveRevision(name);
+    void pushNamedRevisionToCloud(name);
     addMessage({ id: uuidv4(), role: "assistant", content: `Saved revision: "${name}".`, timestamp: Date.now() });
   };
 

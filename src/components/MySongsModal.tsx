@@ -315,9 +315,12 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
     await applyFolder(entry, next.trim());
   };
 
+  const [historyForId, setHistoryForId] = useState<string | null>(null);
+
   const handleViewHistory = (entry: SongBankEntry) => {
     setMenuAnchor(null);
     setHistoryForTitle(entry.title);
+    setHistoryForId(entry.id);
   };
 
   // Find groups of duplicate-titled songs and delete all but the newest
@@ -750,8 +753,10 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
       {historyForTitle && (
         <AutosaveRecoveryDialog
           filterTitle={historyForTitle}
+          cloudSongId={historyForId ?? undefined}
           onClose={() => {
             setHistoryForTitle(null);
+            setHistoryForId(null);
             onClose();
           }}
         />

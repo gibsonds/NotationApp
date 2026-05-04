@@ -3,6 +3,12 @@
 import { useEffect, useState } from "react";
 import { listSnapshots, loadSnapshot, deleteSnapshot, AutosaveSnapshot } from "@/lib/autosave";
 import { useScoreStore } from "@/store/score-store";
+import {
+  CLOUD_ENABLED,
+  cloudGetVersion,
+  cloudListVersions,
+} from "@/lib/song-cloud";
+import type { VersionEntry } from "@/lib/song-cloud-types";
 
 interface AutosaveRecoveryDialogProps {
   onClose: () => void;
@@ -10,6 +16,10 @@ interface AutosaveRecoveryDialogProps {
    *  exact match). Used by My Songs to scope the recovery list to one
    *  song's history. */
   filterTitle?: string;
+  /** When set, also fetch cloud versions (named revisions, daily
+   *  milestones, recent auto) for this song id and show them above the
+   *  local IndexedDB snapshots. */
+  cloudSongId?: string;
 }
 
 function formatTimestamp(ms: number): string {
@@ -30,12 +40,13 @@ function formatTimestamp(ms: number): string {
  * (replaces the current score; the previous state is itself snapshot first
  * so the user can always undo a restore).
  */
-export default function AutosaveRecoveryDialog({ onClose, filterTitle }: AutosaveRecoveryDialogProps) {
+export default function AutosaveRecoveryDialog({ onClose, filterTitle, cloudSongId }: AutosaveRecoveryDialogProps) {
   const setScore = useScoreStore((s) => s.setScore);
   const currentScore = useScoreStore((s) => s.score);
   const addMessage = useScoreStore((s) => s.addMessage);
 
   const [snapshots, setSnapshots] = useState<Omit<AutosaveSnapshot, "score">[] | null>(null);
+  const [cloudVersions, setCloudVersions] = useState<VersionEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -51,6 +62,37 @@ export default function AutosaveRecoveryDialog({ onClose, filterTitle }: Autosav
       })
       .catch((err) => setError(err.message ?? "Failed to read autosave history"));
   }, [filterTitle]);
+
+  useEffect(() => {
+    if (!cloudSongId || !CLOUD_ENABLED) {
+      setCloudVersions(null);
+      return;
+    }
+    cloudListVersions(cloudSongId)
+      .then(setCloudVersions)
+      .catch(() => setCloudVersions([]));
+  }, [cloudSongId]);
+
+  const handleRestoreCloud = async (ts: number) => {
+    if (!cloudSongId || busy) return;
+    setBusy(true);
+    try {
+      const dto = await cloudGetVersion(cloudSongId, ts);
+      // setScore auto-snapshots the outgoing state — restore is reversible.
+      setScore(dto.score);
+      addMessage({
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: `Restored cloud version from ${formatTimestamp(ts)}.`,
+        timestamp: Date.now(),
+      });
+      onClose();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to restore version";
+      setError(msg);
+      setBusy(false);
+    }
+  };
 
   const handleRestore = async (timestamp: number) => {
     if (busy) return;
@@ -129,12 +171,64 @@ export default function AutosaveRecoveryDialog({ onClose, filterTitle }: Autosav
               {error}
             </div>
           )}
+
+          {/* Cloud versions: named revisions, daily milestones, recent
+              auto. Sticky-named ones shown with a tag. */}
+          {cloudVersions && cloudVersions.length > 0 && (
+            <div className="border-b border-gray-200">
+              <div className="px-5 py-1.5 text-[11px] uppercase tracking-wider text-gray-500 bg-gray-50">
+                Cloud history ({cloudVersions.length})
+              </div>
+              <ul className="divide-y divide-gray-100">
+                {cloudVersions.map((v) => {
+                  const tagColor = v.kind === "named"
+                    ? "bg-blue-100 text-blue-700"
+                    : v.kind === "daily"
+                    ? "bg-green-100 text-green-700"
+                    : "bg-gray-100 text-gray-600";
+                  const tagLabel = v.kind === "named"
+                    ? (v.name || "Named")
+                    : v.kind === "daily"
+                    ? "Daily"
+                    : "Auto";
+                  return (
+                    <li key={v.ts} className="px-5 py-2 flex items-center justify-between hover:bg-gray-50">
+                      <button
+                        type="button"
+                        onClick={() => handleRestoreCloud(v.ts)}
+                        disabled={busy}
+                        className="flex-1 text-left disabled:opacity-50"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded ${tagColor}`}>
+                            {tagLabel}
+                          </span>
+                          {v.title && (
+                            <span className="text-sm font-medium text-gray-900 truncate">{v.title}</span>
+                          )}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-0.5">
+                          {formatTimestamp(v.ts)}
+                        </div>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
+
           {snapshots === null && !error && (
             <div className="px-5 py-6 text-sm text-gray-500">Loading…</div>
           )}
-          {snapshots !== null && snapshots.length === 0 && (
+          {snapshots !== null && snapshots.length === 0 && cloudVersions && cloudVersions.length === 0 && (
             <div className="px-5 py-6 text-sm text-gray-500">
-              No autosaves yet. They start appearing 30 seconds after your first edit.
+              No history yet. Recovery points appear here as you edit.
+            </div>
+          )}
+          {snapshots !== null && snapshots.length > 0 && cloudVersions && (
+            <div className="px-5 py-1.5 text-[11px] uppercase tracking-wider text-gray-500 bg-gray-50 border-b border-gray-100">
+              On this device ({snapshots.length})
             </div>
           )}
           {snapshots && snapshots.length > 0 && (

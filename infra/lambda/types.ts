@@ -19,3 +19,13 @@ export interface SongDTO extends SongSummary {
 export interface ApiError {
   error: string;
 }
+
+/** Returned by GET /songs/{id}/versions. Each entry is one recovery
+ *  point. Named revisions and daily milestones survive auto-pruning. */
+export interface VersionEntry {
+  ts: number;
+  kind: "auto" | "daily" | "named";
+  name?: string;
+  title?: string;
+  savedAt?: number;
+}

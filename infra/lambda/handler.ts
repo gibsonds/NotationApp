@@ -1,5 +1,13 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from "aws-lambda";
-import { deleteSong, getSong, getVersion, listSongs, listVersions, putSong } from "./repo";
+import {
+  createNamedRevision,
+  deleteSong,
+  getSong,
+  getVersion,
+  listSongs,
+  listVersions,
+  putSong,
+} from "./repo";
 
 const json = (statusCode: number, body: unknown): APIGatewayProxyResultV2 => ({
   statusCode,
@@ -55,6 +63,21 @@ export const handler = async (
       case "GET /songs/{id}/versions": {
         if (!id) return json(400, { error: "missing id" });
         return json(200, { versions: await listVersions(deviceId, id) });
+      }
+
+      case "POST /songs/{id}/versions": {
+        if (!id) return json(400, { error: "missing id" });
+        const body = JSON.parse(event.body ?? "{}");
+        if (!body.name || typeof body.name !== "string") {
+          return json(400, { error: "name required" });
+        }
+        if (!body.title || typeof body.title !== "string") {
+          return json(400, { error: "title required" });
+        }
+        if (!body.score || typeof body.score !== "object") {
+          return json(400, { error: "score required" });
+        }
+        return json(200, await createNamedRevision(deviceId, id, body.name, body));
       }
 
       case "GET /songs/{id}/versions/{ts}": {
