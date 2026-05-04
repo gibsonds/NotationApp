@@ -3,6 +3,7 @@ import { persist } from "zustand/middleware";
 import { Score, ScorePatch, NoteDuration } from "@/lib/schema";
 import { applyPatch } from "@/lib/patches";
 import { expandTabs } from "@/lib/chord-line";
+import { saveSnapshot } from "@/lib/autosave";
 import { NoteSelection, noteInSelection } from "@/lib/transforms";
 import { debugLog } from "@/lib/debug-log";
 
@@ -282,6 +283,14 @@ export const useScoreStore = create<ProjectState>()(
       };
     }
     const state = get();
+    // Auto-snapshot the OUTGOING score before replacing it. setScore is
+    // only called for full replacements (load, new, AI replace) — never
+    // by undo/redo or applyPatches. So this captures every potentially-
+    // destructive transition; the user can always recover from the
+    // autosave history via File → Recover from Auto-save.
+    if (state.score && state.score !== score) {
+      saveSnapshot(state.score).catch(() => { /* best-effort */ });
+    }
     let newHistory = [
       ...state.history.slice(0, state.historyIndex + 1),
       score,
@@ -714,9 +723,22 @@ export const useScoreStore = create<ProjectState>()(
         setItem: (name, value) => {
           try {
             localStorage.setItem(name, JSON.stringify(value));
+            // Clear any prior failure indicator on success.
+            if (typeof window !== "undefined") {
+              window.dispatchEvent(new CustomEvent("notation-persist-ok"));
+            }
           } catch (e) {
-            // QuotaExceededError — silently drop the persist rather than crashing
-            console.warn("[store] localStorage quota exceeded, skipping persist");
+            // Surface the failure rather than silently dropping. PersistFailureBanner
+            // listens for this event and shows a visible warning so a previous
+            // recurrence (2-hour data loss) can't happen quietly again.
+            console.warn("[store] localStorage persist failed:", e);
+            if (typeof window !== "undefined") {
+              window.dispatchEvent(
+                new CustomEvent("notation-persist-failed", {
+                  detail: { error: e instanceof Error ? e.message : String(e) },
+                })
+              );
+            }
           }
         },
         removeItem: (name) => localStorage.removeItem(name),

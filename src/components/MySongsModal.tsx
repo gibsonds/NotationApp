@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useScoreStore } from "@/store/score-store";
+import { saveSnapshot } from "@/lib/autosave";
 import {
   getSongs,
   saveSong,
@@ -138,7 +139,13 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
     }
   };
 
-  const handleLoad = (entry: SongBankEntry) => {
+  const handleLoad = async (entry: SongBankEntry) => {
+    // Take an autosave snapshot of the OUTGOING score before replacing it.
+    // Recovery from this snapshot is how we get back from accidental Loads
+    // that overwrite unsaved work — exactly what bit us before.
+    if (score) {
+      try { await saveSnapshot(score); } catch { /* best-effort */ }
+    }
     setScore(entry.score);
     setUIState({ currentSongId: entry.id });
     onClose();

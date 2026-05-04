@@ -20,6 +20,7 @@ import PasteLyricsModal from "@/components/PasteLyricsModal";
 import MySongsModal from "@/components/MySongsModal";
 import JoinSongbookModal from "@/components/JoinSongbookModal";
 import PerformView from "@/components/PerformView";
+import PersistFailureBanner from "@/components/PersistFailureBanner";
 import { CLOUD_ENABLED, getDeviceId } from "@/lib/song-cloud";
 import { cleanScoreOverflow } from "@/lib/score-cleanup";
 
@@ -219,19 +220,21 @@ export default function Home() {
   }, [stepEntry, score, setStepEntry, selectedNote, selection, setSelection, lyricMode]);
 
   // ── Autosave ──────────────────────────────────────────────────────────
-  // Persist a timestamped snapshot of the score to IndexedDB once activity
-  // settles (30s after the last applyPatches/setScore). Independent of the
-  // existing localStorage persist — IndexedDB has way more headroom and
-  // gives us a HISTORY of recovery points (last 20) instead of one current
-  // value. File menu has a "Recover from Auto-save..." command that opens
-  // the snapshots list.
+  // Persist a timestamped snapshot of the score to IndexedDB shortly after
+  // activity settles. Independent of the localStorage persist — IndexedDB
+  // has way more headroom and we keep up to MAX_SNAPSHOTS (50) recovery
+  // points. File menu has a "Recover from Auto-save..." command.
+  //
+  // Debounce was 30s but that meant a continuously-edited score never got
+  // a snapshot until the user paused — exactly the case where data was
+  // recently lost. 5s gives near-real-time recovery without thrashing IDB.
   useEffect(() => {
     if (!score) return;
     const id = setTimeout(() => {
       saveSnapshot(score).catch((err) => {
         console.warn("[autosave] snapshot failed:", err);
       });
-    }, 30_000);
+    }, 5_000);
     return () => clearTimeout(id);
   }, [score]);
 
@@ -493,6 +496,7 @@ export default function Home() {
 
   return (
     <div className="flex flex-col h-screen bg-[#f8f9fa] print-full">
+      <PersistFailureBanner />
       <div className="print-hide">
         <MenuBar
           zoom={zoom}

@@ -18,7 +18,7 @@ import type { Score } from "./schema";
 const DB_NAME = "notationapp-autosave";
 const STORE = "snapshots";
 const VERSION = 1;
-const MAX_SNAPSHOTS = 20;
+const MAX_SNAPSHOTS = 50;
 
 export interface AutosaveSnapshot {
   /** ms since epoch, used as the IndexedDB key. */
