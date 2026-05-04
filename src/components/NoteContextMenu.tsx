@@ -215,14 +215,17 @@ export default function NoteContextMenu({ x, y, note, onClose, onLyricEdit, onAI
         </div>
       </div>
 
-      {/* Articulations */}
+      {/* Articulations — full set from the Articulation schema enum. */}
       <div className="border-t border-gray-100 px-1 py-1">
         <div className="px-2 py-0.5 text-[10px] text-gray-400 uppercase">Articulation</div>
         <div className="flex flex-wrap gap-0.5 px-2">
           {([
             ["accent", ">"],
+            ["strong-accent", "^"],
             ["staccato", "·"],
+            ["staccatissimo", "'"],
             ["tenuto", "—"],
+            ["detached-legato", "—·"],
             ["fermata", "𝄐"],
           ] as const).map(([art, sym]) => (
             <button
@@ -236,6 +239,41 @@ export default function NoteContextMenu({ x, y, note, onClose, onLyricEdit, onAI
               title={art}
             >
               {sym}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Dynamics — pp..ff toggle. Click again to remove. */}
+      <div className="border-t border-gray-100 px-1 py-1">
+        <div className="px-2 py-0.5 text-[10px] text-gray-400 uppercase">Dynamic</div>
+        <div className="flex flex-wrap gap-0.5 px-2">
+          {(["ppp", "pp", "p", "mp", "mf", "f", "ff", "fff"] as const).map((dyn) => (
+            <button
+              key={dyn}
+              onClick={() => {
+                if (!scoreNote) return;
+                const next = scoreNote.dynamic === dyn ? undefined : dyn;
+                doAction(() => {
+                  applyPatches([{
+                    op: "update_note",
+                    staffId: staff.id,
+                    voiceId: voice.id,
+                    measure: note.measure,
+                    beat: note.beat,
+                    pitch: note.pitch,
+                    updates: { dynamic: next },
+                  }]);
+                });
+              }}
+              className={`px-1.5 py-0.5 text-xs italic rounded transition-colors ${
+                scoreNote?.dynamic === dyn
+                  ? "bg-blue-100 text-blue-700 font-medium"
+                  : "hover:bg-gray-100 text-gray-600"
+              }`}
+              title={dyn}
+            >
+              {dyn}
             </button>
           ))}
         </div>

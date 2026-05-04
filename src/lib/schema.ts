@@ -314,6 +314,7 @@ export const ScorePatchSchema = z.discriminatedUnion("op", [
       lyric: z.string().optional(),
       articulations: z.array(Articulation).optional(),
       beam: BeamState.optional(),
+      dynamic: DynamicMarking.optional(),
     }),
   }),
   z.object({
