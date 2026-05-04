@@ -7,6 +7,9 @@ export interface SongSummary {
   title: string;
   savedAt: number;
   updatedAt: number;
+  /** Optional folder for the My Songs picker. Synced so multiple devices
+   *  see the same organization. */
+  folder?: string;
 }
 
 export interface SongDTO extends SongSummary {

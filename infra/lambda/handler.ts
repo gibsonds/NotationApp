@@ -39,6 +39,10 @@ export const handler = async (
         if (!body.score || typeof body.score !== "object") {
           return json(400, { error: "score required" });
         }
+        // folder is optional; only string allowed (or null/missing for none)
+        if (body.folder !== undefined && body.folder !== null && typeof body.folder !== "string") {
+          return json(400, { error: "folder must be string" });
+        }
         return json(200, await putSong(deviceId, id, body));
       }
 

@@ -26,8 +26,9 @@ export async function listSongs(deviceId: string): Promise<SongSummary[]> {
         "#title": "title",
         "#savedAt": "savedAt",
         "#updatedAt": "updatedAt",
+        "#folder": "folder",
       },
-      ProjectionExpression: "#id, #title, #savedAt, #updatedAt",
+      ProjectionExpression: "#id, #title, #savedAt, #updatedAt, #folder",
     })
   );
   return (out.Items ?? []) as SongSummary[];
@@ -47,16 +48,17 @@ export async function getSong(deviceId: string, id: string): Promise<SongDTO | n
     savedAt: out.Item.savedAt,
     updatedAt: out.Item.updatedAt,
     score: out.Item.score,
+    ...(out.Item.folder ? { folder: out.Item.folder } : {}),
   };
 }
 
 export async function putSong(
   deviceId: string,
   id: string,
-  body: { title: string; score: Record<string, unknown>; savedAt?: number }
+  body: { title: string; score: Record<string, unknown>; savedAt?: number; folder?: string | null }
 ): Promise<SongDTO> {
   const now = Date.now();
-  const item = {
+  const item: Record<string, unknown> = {
     pk: songPk(deviceId),
     sk: songSk(id),
     entity: "Song",
@@ -67,13 +69,18 @@ export async function putSong(
     version: 1,
     score: body.score,
   };
+  // null/empty explicitly clears the folder; absent leaves it untouched
+  // — but PutCommand replaces the whole item, so we MUST include or
+  // omit folder according to body. Treat undefined as "no folder".
+  if (body.folder && body.folder.trim()) item.folder = body.folder.trim();
   await ddb.send(new PutCommand({ TableName: TABLE, Item: item }));
   return {
     id,
-    title: item.title,
-    savedAt: item.savedAt,
-    updatedAt: item.updatedAt,
+    title: item.title as string,
+    savedAt: item.savedAt as number,
+    updatedAt: item.updatedAt as number,
     score: body.score,
+    ...(item.folder ? { folder: item.folder as string } : {}),
   };
 }
 

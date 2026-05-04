@@ -81,8 +81,14 @@ export async function cloudPutSong(s: {
   title: string;
   score: Score;
   savedAt?: number;
+  folder?: string | null;
 }): Promise<SongDTO> {
-  const body = JSON.stringify({ title: s.title, score: s.score, savedAt: s.savedAt });
+  const body = JSON.stringify({
+    title: s.title,
+    score: s.score,
+    savedAt: s.savedAt,
+    folder: s.folder ?? null,
+  });
   if (body.length > MAX_PAYLOAD) {
     throw new TerminalCloudError(
       `song too large for cloud (${(body.length / 1024).toFixed(0)} KB; cap ${MAX_PAYLOAD / 1024} KB)`
@@ -195,13 +201,14 @@ export async function syncSongbook(opts?: {
     for (const summary of summaries) {
       const localEntry = localById.get(summary.id);
       if (localEntry && localEntry.savedAt >= summary.updatedAt) {
-        // Local has newer save — push it up.
+        // Local has newer save — push it up (include folder).
         try {
           await cloudPutSong({
             id: summary.id,
             title: localEntry.title,
             score: localEntry.score,
             savedAt: localEntry.savedAt,
+            folder: localEntry.folder ?? null,
           });
         } catch {
           /* keep local; retry next time */
@@ -210,14 +217,30 @@ export async function syncSongbook(opts?: {
       } else {
         try {
           const dto = await cloudGetSong(summary.id);
-          // Preserve local-only fields (folder is not synced to cloud) so
-          // pulling a fresh copy doesn't strip the user's folder grouping.
+          // Folder resolution: cloud is the source of truth IF it has one.
+          // If cloud has no folder but local does, that's a pre-sync local
+          // folder we need to migrate up — push it now.
+          let folder = dto.folder ?? localEntry?.folder;
+          if (!dto.folder && localEntry?.folder) {
+            try {
+              await cloudPutSong({
+                id: dto.id,
+                title: dto.title,
+                score: dto.score,
+                savedAt: dto.savedAt,
+                folder: localEntry.folder,
+              });
+              folder = localEntry.folder;
+            } catch {
+              /* keep local-only for now */
+            }
+          }
           merged.push({
             id: dto.id,
             title: dto.title,
             savedAt: dto.savedAt,
             score: dto.score,
-            ...(localEntry?.folder ? { folder: localEntry.folder } : {}),
+            ...(folder ? { folder } : {}),
           });
         } catch {
           if (localEntry) merged.push(localEntry);
@@ -225,7 +248,7 @@ export async function syncSongbook(opts?: {
       }
     }
 
-    // Local-only entries → push to cloud.
+    // Local-only entries → push to cloud (include folder).
     for (const entry of local) {
       if (cloudIds.has(entry.id)) continue;
       try {
@@ -234,6 +257,7 @@ export async function syncSongbook(opts?: {
           title: entry.title,
           score: entry.score,
           savedAt: entry.savedAt,
+          folder: entry.folder ?? null,
         });
         merged.push(entry);
       } catch (err) {

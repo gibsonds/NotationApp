@@ -203,6 +203,7 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
         title: entry.title,
         score: entry.score,
         savedAt: entry.savedAt,
+        folder: entry.folder ?? null,
       });
       setSyncStatus("ok");
     } catch (err) {
@@ -257,6 +258,7 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
         title: updated.title,
         score: updated.score,
         savedAt: updated.savedAt,
+        folder: updated.folder ?? null,
       });
     } catch (err) {
       if (isTransient(err)) {
@@ -280,18 +282,37 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
     setMenuAnchor(null);
   };
 
-  const applyFolder = (entry: SongBankEntry, folder: string | null) => {
+  const applyFolder = async (entry: SongBankEntry, folder: string | null) => {
     setPickerAnchor(null);
     setSongFolder(entry.id, folder);
     refreshLocal();
+    if (!CLOUD_ENABLED) return;
+    try {
+      await cloudPutSong({
+        id: entry.id,
+        title: entry.title,
+        score: entry.score,
+        savedAt: entry.savedAt,
+        folder: folder ?? null,
+      });
+    } catch (err) {
+      if (isTransient(err)) {
+        enqueueOffline({
+          type: "put",
+          id: entry.id,
+          title: entry.title,
+          score: entry.score,
+          savedAt: entry.savedAt,
+        });
+      }
+    }
   };
 
-  const applyNewFolder = (entry: SongBankEntry) => {
+  const applyNewFolder = async (entry: SongBankEntry) => {
     setPickerAnchor(null);
     const next = window.prompt(`New folder name:`, "");
     if (!next || !next.trim()) return;
-    setSongFolder(entry.id, next.trim());
-    refreshLocal();
+    await applyFolder(entry, next.trim());
   };
 
   const handleViewHistory = (entry: SongBankEntry) => {
