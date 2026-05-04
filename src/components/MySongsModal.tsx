@@ -29,13 +29,21 @@ import {
 
 type SyncStatus = "idle" | CloudSyncStatus;
 
+// Stable empty array for selectors that need a fallback. Returning `[]`
+// inline from a zustand selector creates a new reference per call and
+// triggers a "getSnapshot should be cached" loop.
+const EMPTY_STRINGS: string[] = [];
+
 export default function MySongsModal({ onClose }: { onClose: () => void }) {
   const score = useScoreStore(s => s.score);
   const setScore = useScoreStore(s => s.setScore);
   const setUIState = useScoreStore(s => s.setUIState);
   const currentSongId = useScoreStore(s => s.uiState.currentSongId);
-  // Default to [] in case the user's persisted UIState predates the field.
-  const collapsedFolders = useScoreStore(s => s.uiState.collapsedFolders ?? []);
+  // Selector returns the raw value (undefined-safe via store rehydrate
+  // migration). Default applied OUTSIDE the selector against a module-
+  // level constant so reference equality holds across renders.
+  const collapsedFoldersRaw = useScoreStore(s => s.uiState.collapsedFolders);
+  const collapsedFolders = collapsedFoldersRaw ?? EMPTY_STRINGS;
   const [songs, setSongsState] = useState<SongBankEntry[]>(() =>
     getSongs().slice().reverse()
   );
