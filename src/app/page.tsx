@@ -6,6 +6,7 @@ import { useScoreStore } from "@/store/score-store";
 import { v4 as uuidv4 } from "uuid";
 import { saveSnapshot } from "@/lib/autosave";
 import { playScore, stopPlayback, isPlaying } from "@/lib/playback";
+import { loadPlaybackPrefs, savePlaybackPrefs, type PlaybackPrefs } from "@/lib/playback-prefs";
 import PromptPanel from "@/components/PromptPanel";
 import PropertiesPanel from "@/components/PropertiesPanel";
 import MenuBar from "@/components/MenuBar";
@@ -59,6 +60,8 @@ export default function Home() {
   const clipboard = useScoreStore((s) => s.clipboard);
   const [zoom, setZoom] = useState(1.0);
   const [playing, setPlaying] = useState(false);
+  const [playbackPrefs, setPlaybackPrefs] = useState<PlaybackPrefs>(() => loadPlaybackPrefs());
+  useEffect(() => savePlaybackPrefs(playbackPrefs), [playbackPrefs]);
   const [playbackPos, setPlaybackPos] = useState<{ measure: number; beat: number } | null>(null);
   const [selectedNote, setSelectedNote] = useState<{ measure: number; beat: number; staffIndex: number; pitch: string } | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; note: { measure: number; beat: number; pitch: string; staffIndex: number } } | null>(null);
@@ -734,6 +737,9 @@ export default function Home() {
                   await playScore(score, selection, (m, b) => {
                     if (m === 0) { setPlaybackPos(null); return; }
                     setPlaybackPos({ measure: m, beat: b });
+                  }, {
+                    countInBars: playbackPrefs.countInBars,
+                    metronome: playbackPrefs.metronome,
                   });
                   setPlaying(false);
                   setPlaybackPos(null);
@@ -753,6 +759,34 @@ export default function Home() {
                 M{playbackPos.measure}:B{playbackPos.beat.toFixed(1)}
               </span>
             )}
+
+            {/* Metronome toggle — continuous click during playback. */}
+            <button
+              onClick={() => setPlaybackPrefs(p => ({ ...p, metronome: !p.metronome }))}
+              className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-colors ${
+                playbackPrefs.metronome
+                  ? "bg-amber-600 hover:bg-amber-700 text-white"
+                  : "bg-white/5 hover:bg-white/10 text-gray-400"
+              }`}
+              title="Metronome click during playback"
+              aria-label="Toggle metronome"
+            >
+              ♩
+            </button>
+
+            {/* Count-in cycle: 0 → 1 → 2 → 0 bars before playback. */}
+            <button
+              onClick={() => setPlaybackPrefs(p => ({ ...p, countInBars: ((p.countInBars + 1) % 3) as 0 | 1 | 2 }))}
+              className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-colors min-w-[28px] ${
+                playbackPrefs.countInBars > 0
+                  ? "bg-amber-600 hover:bg-amber-700 text-white"
+                  : "bg-white/5 hover:bg-white/10 text-gray-400"
+              }`}
+              title={`Count-in: ${playbackPrefs.countInBars} bar${playbackPrefs.countInBars === 1 ? "" : "s"} before play`}
+              aria-label="Cycle count-in bars"
+            >
+              {playbackPrefs.countInBars > 0 ? `+${playbackPrefs.countInBars}` : "+0"}
+            </button>
 
             {/* Divider */}
             <span className="text-gray-600">|</span>

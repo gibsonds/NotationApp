@@ -57,10 +57,36 @@ export function isPlaying(): boolean {
   return currentlyPlaying;
 }
 
+export interface PlayOptions {
+  /** Bars of click before playback starts. 0 disables count-in. */
+  countInBars?: number;
+  /** Continuous click during playback at the score's tempo, accent on
+   *  beat 1 of each bar. */
+  metronome?: boolean;
+}
+
+/** Schedule a single short click — triangle blip with quick decay.
+ *  Higher pitch + louder gain for accents (bar-1 beat). */
+function scheduleClick(ctx: AudioContext, when: number, accent: boolean): void {
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = "triangle";
+  osc.frequency.setValueAtTime(accent ? 1800 : 1200, when);
+  gain.gain.setValueAtTime(0, when);
+  gain.gain.linearRampToValueAtTime(accent ? 0.15 : 0.08, when + 0.005);
+  gain.gain.exponentialRampToValueAtTime(0.0001, when + 0.04);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(when);
+  osc.stop(when + 0.05);
+  osc.onended = () => { osc.disconnect(); gain.disconnect(); };
+}
+
 export async function playScore(
   score: Score,
   selection: NoteSelection | null,
   onProgress?: (measure: number, beat: number) => void,
+  options: PlayOptions = {},
 ): Promise<void> {
   if (currentlyPlaying) {
     stopPlayback();
@@ -159,7 +185,32 @@ export async function playScore(
   events.sort((a, b) => a.time - b.time);
 
   const totalDuration = (endMeasure - startMeasure + 1) * beatsPerMeasure * secPerBeat;
-  const startTime = ctx.currentTime + 0.05;
+  const countInBars = Math.max(0, Math.min(4, options.countInBars ?? 0));
+  const countInDuration = countInBars * beatsPerMeasure * secPerBeat;
+  // Push playback start past the count-in so the count-in clicks land
+  // before any notes do.
+  const startTime = ctx.currentTime + 0.05 + countInDuration;
+
+  // Count-in clicks: N bars at the same tempo, accent on beat 1.
+  if (countInBars > 0) {
+    const countInStart = ctx.currentTime + 0.05;
+    for (let bar = 0; bar < countInBars; bar++) {
+      for (let b = 0; b < beatsPerMeasure; b++) {
+        const t = countInStart + (bar * beatsPerMeasure + b) * secPerBeat;
+        scheduleClick(ctx, t, b === 0);
+      }
+    }
+  }
+
+  // Metronome: click on every beat for the duration of playback. Accent
+  // on beat 1 of each bar.
+  if (options.metronome) {
+    const totalBeats = (endMeasure - startMeasure + 1) * beatsPerMeasure;
+    for (let b = 0; b < totalBeats; b++) {
+      const t = startTime + b * secPerBeat;
+      scheduleClick(ctx, t, b % beatsPerMeasure === 0);
+    }
+  }
 
   // Schedule all notes
   const nodes: { osc: OscillatorNode; gain: GainNode }[] = [];
@@ -180,16 +231,24 @@ export async function playScore(
     nodes.push({ osc, gain });
   }
 
-  // Progress tracking loop
+  // Progress tracking loop. Account for count-in: the playhead is in
+  // the count-in until elapsed >= countInDuration. Report measure 0
+  // during count-in so the cursor doesn't jump around the score.
   const startWall = performance.now();
   while (!stopRequested) {
     const elapsed = (performance.now() - startWall) / 1000;
-    if (elapsed >= totalDuration) break;
+    const totalWithCountIn = countInDuration + totalDuration;
+    if (elapsed >= totalWithCountIn) break;
 
-    const beatPos = elapsed / secPerBeat;
-    const measure = startMeasure + Math.floor(beatPos / beatsPerMeasure);
-    const beat = 1 + (beatPos % beatsPerMeasure);
-    onProgress?.(measure, Math.round(beat * 100) / 100);
+    if (elapsed < countInDuration) {
+      onProgress?.(0, 1 + ((elapsed / secPerBeat) % beatsPerMeasure));
+    } else {
+      const playElapsed = elapsed - countInDuration;
+      const beatPos = playElapsed / secPerBeat;
+      const measure = startMeasure + Math.floor(beatPos / beatsPerMeasure);
+      const beat = 1 + (beatPos % beatsPerMeasure);
+      onProgress?.(measure, Math.round(beat * 100) / 100);
+    }
 
     await new Promise(r => setTimeout(r, 50));
   }
