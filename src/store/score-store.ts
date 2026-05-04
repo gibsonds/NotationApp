@@ -703,6 +703,13 @@ export const useScoreStore = create<ProjectState>()(
             uiState: persisted.uiState ?? DEFAULT_UI_STATE,
           };
         }
+        // Always reconcile UIState with current defaults so newly-added
+        // fields (collapsedFolders, currentSongId, etc.) don't show up as
+        // undefined on first load after an upgrade.
+        persisted = {
+          ...persisted,
+          uiState: { ...DEFAULT_UI_STATE, ...(persisted.uiState ?? {}) },
+        };
         return persisted as ProjectState;
       },
       partialize: (state) => ({

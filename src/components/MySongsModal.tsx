@@ -34,7 +34,8 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
   const setScore = useScoreStore(s => s.setScore);
   const setUIState = useScoreStore(s => s.setUIState);
   const currentSongId = useScoreStore(s => s.uiState.currentSongId);
-  const collapsedFolders = useScoreStore(s => s.uiState.collapsedFolders);
+  // Default to [] in case the user's persisted UIState predates the field.
+  const collapsedFolders = useScoreStore(s => s.uiState.collapsedFolders ?? []);
   const [songs, setSongsState] = useState<SongBankEntry[]>(() =>
     getSongs().slice().reverse()
   );
