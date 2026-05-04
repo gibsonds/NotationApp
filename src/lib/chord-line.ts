@@ -211,20 +211,59 @@ export function removeBarAtColumn(chords: string, col: number): string {
 }
 
 /**
- * Toggle a bar at `col`: place if empty, remove if already a bar. Used
- * by Bar mode where each tap on a column is a single binary action.
- * Returns the new chord line and a boolean indicating whether a change
- * was made (no-op if col is over chord text).
+ * Toggle a bar at `col`. Every click does something:
+ *   - existing bar at col → remove it
+ *   - whitespace at col → place a bar in-place (no shift to other tokens)
+ *   - chord character at col → walk back to the chord's start and INSERT
+ *     a bar there, shifting the chord right by 1 column. Makes "click on
+ *     a chord to put a bar before it" work — the standard "|D" pattern.
+ *     Without this, clicks on chord-occupied columns silently did nothing
+ *     which felt hit-or-miss.
  */
 export function toggleBarAtColumn(chords: string, col: number): { chords: string; changed: boolean } {
-  if (col >= 0 && col < chords.length && chords[col] === "|") {
+  if (col < 0) return { chords, changed: false };
+
+  // Past the end: pad and append.
+  if (col >= chords.length) {
+    return {
+      chords: chords + " ".repeat(col - chords.length) + "|",
+      changed: true,
+    };
+  }
+
+  const ch = chords[col];
+
+  // Existing bar — toggle off.
+  if (ch === "|") {
     return { chords: removeBarAtColumn(chords, col), changed: true };
   }
-  if (col >= 0 && col < chords.length) {
-    const ch = chords[col];
-    if (ch !== " " && ch !== "\t") return { chords, changed: false };
+
+  // Whitespace — drop bar in place, no shift to anything else.
+  if (ch === " " || ch === "\t") {
+    return {
+      chords: chords.slice(0, col) + "|" + chords.slice(col + 1),
+      changed: true,
+    };
   }
-  return { chords: placeBarAtColumn(chords, col), changed: true };
+
+  // Inside a chord token — walk back to the chord's start and INSERT
+  // a bar there, shifting the chord right by 1. This is the only path
+  // that intentionally shifts a neighboring token; the user is explicitly
+  // creating a bar in cramped space and the "|D" pattern matches songbook
+  // convention.
+  let start = col;
+  while (
+    start > 0 &&
+    chords[start - 1] !== " " &&
+    chords[start - 1] !== "\t" &&
+    chords[start - 1] !== "|"
+  ) {
+    start--;
+  }
+  return {
+    chords: chords.slice(0, start) + "|" + chords.slice(start),
+    changed: true,
+  };
 }
 
 /**
