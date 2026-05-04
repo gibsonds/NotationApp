@@ -45,7 +45,7 @@ export class NotationStack extends Stack {
     const api = new HttpApi(this, "Api", {
       apiName: "NotationApi",
       corsPreflight: {
-        allowOrigins: ["https://gibsonds.github.io", "http://localhost:3000"],
+        allowOrigins: ["https://gibsonds.github.io", "http://localhost:3000", "http://localhost:3001"],
         allowMethods: [
           CorsHttpMethod.GET,
           CorsHttpMethod.PUT,

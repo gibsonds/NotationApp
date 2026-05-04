@@ -37,8 +37,14 @@ export async function listSongs(deviceId: string): Promise<SongSummary[]> {
     new QueryCommand({
       TableName: TABLE,
       KeyConditionExpression: "pk = :pk AND begins_with(sk, :sk)",
-      ExpressionAttributeValues: { ":pk": songPk(deviceId), ":sk": "SONG#" },
-      // "id" and "title" are reserved words in DynamoDB; use placeholders.
+      // FilterExpression excludes Version rows (sk = SONG#<id>#V#<ts>) which
+      // share the SONG# prefix but aren't songs in the user's bank.
+      FilterExpression: "entity = :entity",
+      ExpressionAttributeValues: {
+        ":pk": songPk(deviceId),
+        ":sk": "SONG#",
+        ":entity": "Song",
+      },
       ExpressionAttributeNames: {
         "#id": "id",
         "#title": "title",
