@@ -731,6 +731,18 @@ export default function Home() {
                   selectedNote={selectedNote}
                   onScoreClick={handleScoreClick}
                   selection={selection}
+                  playbackPosition={
+                    playbackPos
+                      ? {
+                          measure: playbackPos.measure,
+                          beat: playbackPos.beat,
+                          // Show on first staff during playback — most users have
+                          // a single staff anyway. A future improvement: track
+                          // which staff/voice each scheduled event came from.
+                          staffIndex: 0,
+                        }
+                      : null
+                  }
                 />
               </div>
             )

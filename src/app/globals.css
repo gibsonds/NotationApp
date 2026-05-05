@@ -36,6 +36,20 @@ body {
   box-shadow: 0 0 4px rgba(37, 99, 235, 0.4);
 }
 
+/* Playback cursor — green vertical line that follows the playhead.
+ * No blink animation (it's already moving). Higher z-index than step
+ * cursor so it stays visible when both are present. */
+.playback-cursor {
+  position: absolute;
+  width: 2.5px;
+  background-color: #16a34a;
+  pointer-events: none;
+  z-index: 21;
+  border-radius: 1px;
+  box-shadow: 0 0 6px rgba(22, 163, 74, 0.6);
+  transition: left 0.08s linear, top 0.15s ease-out;
+}
+
 /* Selected note — colors the SVG note element blue with visible glow */
 .note-selected path,
 .note-selected line,

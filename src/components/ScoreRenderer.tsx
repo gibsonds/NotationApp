@@ -54,6 +54,10 @@ interface ScoreRendererProps {
   selectedNote?: { measure: number; beat: number; pitch: string; staffIndex: number } | null;
   /** Range selection (yellow overlay) */
   selection?: NoteSelection | null;
+  /** Live playback position (green cursor that follows the playhead).
+   *  Distinct from cursorPosition (which is the step-entry cursor and
+   *  shouldn't move during playback). */
+  playbackPosition?: { measure: number; beat: number; staffIndex: number } | null;
 }
 
 // ── Print overlay helpers ─────────────────────────────────────────────
@@ -318,6 +322,7 @@ function extractNoteHits(osmd: any, currentZoom: number): NoteHit[] {
 export default function ScoreRenderer({
   score, zoom = 1.0, layout = DEFAULT_LAYOUT, onReady,
   cursorPosition, selectedNote, onScoreClick, selection,
+  playbackPosition,
 }: ScoreRendererProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const osmdRef = useRef<any>(null);
@@ -337,6 +342,7 @@ export default function ScoreRenderer({
 
   // Cursor and selection DOM elements (imperative)
   const cursorElRef = useRef<HTMLDivElement | null>(null);
+  const playbackCursorElRef = useRef<HTMLDivElement | null>(null);
   const highlightedSvgRef = useRef<Element | null>(null); // currently blue-highlighted SVG note
   const selectionElsRef = useRef<HTMLDivElement[]>([]);
 
@@ -345,9 +351,11 @@ export default function ScoreRenderer({
   const selectedNoteRef = useRef(selectedNote);
   const onScoreClickRef = useRef(onScoreClick);
   const selectionRef = useRef(selection);
+  const playbackPositionRef = useRef(playbackPosition);
   cursorPositionRef.current = cursorPosition;
   selectedNoteRef.current = selectedNote;
   onScoreClickRef.current = onScoreClick;
+  playbackPositionRef.current = playbackPosition;
   selectionRef.current = selection;
 
   // ── Print ──────────────────────────────────────────────────────────
@@ -561,6 +569,94 @@ export default function ScoreRenderer({
     cursor.style.height = `${mp.height}px`;
   }, []);
 
+  // Playback cursor — distinct from the step-entry cursor. Uses the same
+  // x-position resolution as positionCursorEl (interpolating between live
+  // note coords) but renders as a green vertical bar via .playback-cursor.
+  // Also auto-scrolls into view so the user can follow long pieces.
+  const positionPlaybackCursorEl = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    if (!playbackCursorElRef.current || !container.contains(playbackCursorElRef.current)) {
+      const el = document.createElement("div");
+      el.className = "playback-cursor print-hide";
+      container.appendChild(el);
+      playbackCursorElRef.current = el;
+    }
+
+    const pp = playbackPositionRef.current;
+    const cursor = playbackCursorElRef.current;
+
+    if (!pp || measurePositionsRef.current.length === 0) {
+      cursor.style.display = "none";
+      return;
+    }
+
+    const mp = measurePositionsRef.current.find(
+      p => p.measure === pp.measure && p.staffIndex === pp.staffIndex
+    );
+    if (!mp) {
+      cursor.style.display = "none";
+      return;
+    }
+
+    const cRect = container.getBoundingClientRect();
+    const liveX = (hit: NoteHit): number => {
+      if (hit.svgElement?.isConnected) {
+        const r = hit.svgElement.getBoundingClientRect();
+        return r.x - cRect.left + r.width / 2;
+      }
+      return hit.x;
+    };
+
+    // Interpolate x against actual notes in this measure (same logic as
+    // step cursor, condensed).
+    const sameMeasure = noteHitsRef.current
+      .filter(n => n.measure === pp.measure && n.staffIndex === pp.staffIndex)
+      .sort((a, b) => a.beat - b.beat);
+
+    let cursorX: number;
+    if (sameMeasure.length === 0) {
+      const ts = scoreRef.current?.timeSignature || "4/4";
+      const [num, den] = ts.split("/").map(Number);
+      const beatsPerMeasure = num * (4 / den);
+      const beatFrac = Math.max(0, Math.min(1, (pp.beat - 1) / beatsPerMeasure));
+      const offset = mp.measure === 1 ? mp.width * 0.15 : mp.width * 0.05;
+      cursorX = mp.x + offset + beatFrac * (mp.width - offset);
+    } else {
+      const prev = [...sameMeasure].reverse().find(n => n.beat <= pp.beat);
+      const next = sameMeasure.find(n => n.beat > pp.beat);
+      if (prev && next) {
+        const t = (pp.beat - prev.beat) / (next.beat - prev.beat);
+        cursorX = liveX(prev) + t * (liveX(next) - liveX(prev));
+      } else if (prev) {
+        cursorX = liveX(prev);
+      } else if (next) {
+        cursorX = liveX(next);
+      } else {
+        cursorX = mp.x + mp.width / 2;
+      }
+    }
+
+    cursor.style.display = "block";
+    cursor.style.left = `${cursorX - 1}px`;
+    cursor.style.top = `${mp.y}px`;
+    cursor.style.height = `${mp.height}px`;
+
+    // Auto-scroll: keep the cursor inside the viewport. Only vertical, so
+    // long line-wrapped scores follow naturally.
+    const cTop = cRect.top;
+    const cBottom = cRect.bottom;
+    const cursorScreenTop = cTop + mp.y - container.scrollTop;
+    const cursorScreenBottom = cursorScreenTop + mp.height;
+    const margin = 60;
+    if (cursorScreenTop < cTop + margin) {
+      container.scrollBy({ top: cursorScreenTop - cTop - margin, behavior: "smooth" });
+    } else if (cursorScreenBottom > cBottom - margin) {
+      container.scrollBy({ top: cursorScreenBottom - cBottom + margin, behavior: "smooth" });
+    }
+  }, []);
+
   // ── Highlight selected note via CSS class on SVG element ─────
 
   // Track what we last highlighted to avoid redundant DOM work
@@ -656,9 +752,10 @@ export default function ScoreRenderer({
 
   useEffect(() => {
     positionCursorEl();
+    positionPlaybackCursorEl();
     updateNoteHighlight();
     positionSelectionEls();
-  }, [cursorPosition, selectedNote, selection, positionCursorEl, updateNoteHighlight, positionSelectionEls]);
+  }, [cursorPosition, selectedNote, selection, playbackPosition, positionCursorEl, positionPlaybackCursorEl, updateNoteHighlight, positionSelectionEls]);
 
   // ── Click handler: find nearest note or use measure fallback ──
 
