@@ -250,7 +250,10 @@ export function scoreToMusicXML(score: Score): string {
     }
 
     for (let m = 1; m <= score.measures; m++) {
-      lines.push(`    <measure number="${m}">`);
+      // When anacrusis is on, the first measure is the pickup (bar 0) and
+      // bar numbering shifts so the first full bar is bar 1.
+      const displayNumber = score.anacrusis ? m - 1 : m;
+      lines.push(`    <measure number="${displayNumber}">`);
 
       // Attributes on first measure
       if (m === 1) {

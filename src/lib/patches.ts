@@ -40,6 +40,9 @@ export function applyPatch(score: Score, patch: ScorePatch): Score {
     case "set_measures":
       return { ...score, measures: patch.value };
 
+    case "set_anacrusis":
+      return { ...score, anacrusis: patch.value };
+
     case "update_staff":
       return {
         ...score,

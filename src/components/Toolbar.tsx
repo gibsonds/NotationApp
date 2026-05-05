@@ -29,6 +29,7 @@ export default function Toolbar({ zoom, onZoomChange, onPrint }: ToolbarProps) {
       timeSignature: "4/4",
       keySignature: "C",
       measures: 16,
+      anacrusis: false,
       staves: [{
         id: uuidv4(),
         name: "Staff 1",
