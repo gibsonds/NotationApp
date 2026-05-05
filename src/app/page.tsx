@@ -243,9 +243,14 @@ export default function Home() {
   }, [score]);
 
   // Mac-native zoom shortcuts: Cmd+/-/0 keyboard, Cmd+scroll wheel and
-  // trackpad pinch (which Safari/Chromium translate to wheel events with
-  // ctrlKey=true). Only fires when focus isn't in a text field.
+  // trackpad pinch. Skipped in perform mode — there the user has the
+  // floating font/leading buttons, and the global zoom shortcut would
+  // block the browser's own page zoom (which the user often wants in
+  // perform mode to scale the whole UI for far-away viewing).
+  const inPerformMode = uiState.performMode;
   useEffect(() => {
+    if (inPerformMode) return;
+
     const isTextTarget = (t: EventTarget | null) =>
       t instanceof HTMLInputElement ||
       t instanceof HTMLTextAreaElement ||
@@ -290,7 +295,7 @@ export default function Home() {
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("wheel", onWheel);
     };
-  }, []);
+  }, [inPerformMode]);
 
   // Cloud autosave — push the loaded song to DynamoDB after edits settle
   // so an unsaved-since-load session can't lose work. Only fires when

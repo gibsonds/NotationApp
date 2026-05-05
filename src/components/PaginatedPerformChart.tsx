@@ -182,10 +182,13 @@ export default function PaginatedPerformChart({
             key={i}
             className="shrink-0 w-full h-full snap-start grid grid-cols-2 gap-8 px-4 py-2"
           >
-            <div className="overflow-hidden">
+            {/* overflow-y-auto so a section taller than the column doesn't
+                get clipped — user can scroll within the column. Beats the
+                previous overflow-hidden which silently cut content off. */}
+            <div className="overflow-y-auto overflow-x-hidden">
               {page.col1.map((s) => <PerformSection key={s.id} section={s} />)}
             </div>
-            <div className="overflow-hidden">
+            <div className="overflow-y-auto overflow-x-hidden">
               {page.col2.map((s) => <PerformSection key={s.id} section={s} />)}
             </div>
           </div>

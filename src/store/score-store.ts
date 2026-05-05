@@ -149,6 +149,10 @@ export interface UIState {
   /** Folder names the user has collapsed in My Songs. Persisted so the
    *  collapse state survives reloads. */
   collapsedFolders: string[];
+  /** Active folder filter for PerformView's song picker / prev-next nav.
+   *  Null means "all songs". When set to a folder name, prev/next and
+   *  the picker only see songs in that folder. Sticky across launches. */
+  performFolder: string | null;
 }
 
 export const DEFAULT_UI_STATE: UIState = {
@@ -158,6 +162,7 @@ export const DEFAULT_UI_STATE: UIState = {
   performMode: false,
   currentSongId: null,
   collapsedFolders: [],
+  performFolder: null,
 };
 
 export interface SavedRevision {
