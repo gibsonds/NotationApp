@@ -108,32 +108,43 @@ export default function Home() {
     setTimeout(restore, 30000);
   }, [score]);
 
+  const [loopEnabled, setLoopEnabled] = useState(false);
+  // Tracks whether the user explicitly stopped playback during a loop,
+  // so the loop body can break out instead of re-firing playScore.
+  const stopRequestedRef = useRef(false);
+
   // Transport: shared play/stop logic so the bottom-bar button and the
-  // spacebar shortcut hit the same path.
+  // spacebar shortcut hit the same path. When loopEnabled is on,
+  // playScore is re-fired when it returns naturally — stopping requires
+  // an explicit Stop click or spacebar.
   const togglePlayPause = useCallback(async () => {
     if (!score) return;
     if (playing) {
+      stopRequestedRef.current = true;
       stopPlayback();
       setPlaying(false);
       setPlaybackPos(null);
       return;
     }
+    stopRequestedRef.current = false;
     setPlaying(true);
-    await playScore(
-      score,
-      selection,
-      (m, b) => {
-        if (m === 0) { setPlaybackPos(null); return; }
-        setPlaybackPos({ measure: m, beat: b });
-      },
-      {
-        countInBars: playbackPrefs.countInBars,
-        metronome: playbackPrefs.metronome,
-      },
-    );
+    do {
+      await playScore(
+        score,
+        selection,
+        (m, b) => {
+          if (m === 0) { setPlaybackPos(null); return; }
+          setPlaybackPos({ measure: m, beat: b });
+        },
+        {
+          countInBars: playbackPrefs.countInBars,
+          metronome: playbackPrefs.metronome,
+        },
+      );
+    } while (loopEnabled && !stopRequestedRef.current);
     setPlaying(false);
     setPlaybackPos(null);
-  }, [score, selection, playing, playbackPrefs]);
+  }, [score, selection, playing, loopEnabled, playbackPrefs]);
 
   // Rewind: stop any in-flight playback and put the cursor at the very
   // start of the first staff/voice. Useful as a "back to top" action
@@ -820,6 +831,22 @@ export default function Home() {
               title={playing ? "Stop playback (Space)" : `Play (Space)${selection ? ` \u2014 m${selection.startMeasure}-${selection.endMeasure}` : ""}`}
             >
               {playing ? "\u25A0 Stop" : "\u25B6 Play"}
+            </button>
+            {/* Loop toggle: when on, playback re-fires when it ends.
+                Combined with a measure selection this is an A-B loop. */}
+            <button
+              onClick={() => setLoopEnabled(v => !v)}
+              className={`px-1.5 py-0.5 rounded text-[11px] font-bold transition-colors ${
+                loopEnabled
+                  ? "bg-amber-600 hover:bg-amber-700 text-white"
+                  : "bg-white/5 hover:bg-white/10 text-gray-400"
+              }`}
+              title={loopEnabled
+                ? `Loop ${selection ? "selection" : "song"} \u2014 click to disable`
+                : "Loop playback (uses selection if any)"}
+              aria-label="Toggle loop"
+            >
+              \u27F2
             </button>
             {playbackPos && (
               <span className="text-green-400 text-[10px]">
