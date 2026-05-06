@@ -85,7 +85,7 @@ export default function PropertiesPanel({ embedded = false }: PropertiesPanelPro
 
         {/* Style & Layout */}
         <PropSection title="Style" defaultOpen>
-          <div className="flex gap-1 mb-3">
+          <div className="flex flex-wrap gap-1 mb-3">
             {(Object.entries(STYLE_PRESETS) as [StylePreset, { label: string; layout: LayoutSettings }][]).map(([key, preset]) => {
               const isActive = layout.musicFont === preset.layout.musicFont && layout.textFont === preset.layout.textFont;
               return (
@@ -314,7 +314,7 @@ export default function PropertiesPanel({ embedded = false }: PropertiesPanelPro
           <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
             Style
           </h3>
-          <div className="flex gap-1 mb-3">
+          <div className="flex flex-wrap gap-1 mb-3">
             {(Object.entries(STYLE_PRESETS) as [StylePreset, { label: string; layout: LayoutSettings }][]).map(([key, preset]) => {
               const isActive = layout.musicFont === preset.layout.musicFont && layout.textFont === preset.layout.textFont;
               return (
@@ -330,7 +330,7 @@ export default function PropertiesPanel({ embedded = false }: PropertiesPanelPro
           <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
             Layout
           </h3>
-          <div className="flex gap-1 mb-3">
+          <div className="flex flex-wrap gap-1 mb-3">
             <button
               onClick={() => setLayout({ compactMode: !layout.compactMode })}
               className={`px-2 py-1 text-[10px] font-medium rounded transition-colors ${

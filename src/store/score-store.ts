@@ -107,6 +107,75 @@ export const PRINT_LAYOUT: LayoutSettings = {
   printFooter: "",
 };
 
+/** Manuscript / chamber-music style — engraved feel with the Gonville
+ *  music font and Garamond text. Roomier than print, tighter than modern. */
+export const MANUSCRIPT_LAYOUT: LayoutSettings = {
+  titleSize: 2.6,
+  composerSize: 1.3,
+  titleTopDistance: 4,
+  titleBottomDistance: 1,
+  pageTopMargin: 4,
+  pageLeftMargin: 4,
+  pageRightMargin: 4,
+  systemSpacing: 4,
+  compactMode: false,
+  measuresPerSystem: 0,
+  pageBreaks: true,
+  pageSize: "letter",
+  noteSize: 0.85,
+  musicFont: "gonville",
+  textFont: "garamond",
+  printPageNumbers: true,
+  printHeader: "",
+  printFooter: "",
+};
+
+/** Lead sheet — clean modern sans for titles/lyrics, slightly larger
+ *  notes and wider systems. Aimed at single-line melody charts. */
+export const LEAD_SHEET_LAYOUT: LayoutSettings = {
+  titleSize: 2.6,
+  composerSize: 1.3,
+  titleTopDistance: 5,
+  titleBottomDistance: 1,
+  pageTopMargin: 5,
+  pageLeftMargin: 5,
+  pageRightMargin: 5,
+  systemSpacing: 6,
+  compactMode: false,
+  measuresPerSystem: 4,
+  pageBreaks: false,
+  pageSize: "letter",
+  noteSize: 1.05,
+  musicFont: "bravura",
+  textFont: "helvetica",
+  printPageNumbers: false,
+  printHeader: "",
+  printFooter: "",
+};
+
+/** Classroom — very large notation, generous spacing, easy to read from
+ *  a distance. Useful when projecting on a screen for students. */
+export const CLASSROOM_LAYOUT: LayoutSettings = {
+  titleSize: 3.0,
+  composerSize: 1.6,
+  titleTopDistance: 6,
+  titleBottomDistance: 2,
+  pageTopMargin: 6,
+  pageLeftMargin: 6,
+  pageRightMargin: 6,
+  systemSpacing: 8,
+  compactMode: false,
+  measuresPerSystem: 2,
+  pageBreaks: false,
+  pageSize: "letter",
+  noteSize: 1.2,
+  musicFont: "bravura",
+  textFont: "noto",
+  printPageNumbers: false,
+  printHeader: "",
+  printFooter: "",
+};
+
 /** Real Book style — handwritten feel, compact, like classic jazz fake books */
 export const REALBOOK_LAYOUT: LayoutSettings = {
   titleSize: 3.2,
@@ -129,11 +198,20 @@ export const REALBOOK_LAYOUT: LayoutSettings = {
   printFooter: "",
 };
 
-export type StylePreset = "modern" | "realbook" | "print";
+export type StylePreset =
+  | "modern"
+  | "lead-sheet"
+  | "manuscript"
+  | "realbook"
+  | "classroom"
+  | "print";
 
 export const STYLE_PRESETS: Record<StylePreset, { label: string; layout: LayoutSettings }> = {
   modern: { label: "Modern", layout: DEFAULT_LAYOUT },
+  "lead-sheet": { label: "Lead Sheet", layout: LEAD_SHEET_LAYOUT },
+  manuscript: { label: "Manuscript", layout: MANUSCRIPT_LAYOUT },
   realbook: { label: "Real Book", layout: REALBOOK_LAYOUT },
+  classroom: { label: "Classroom", layout: CLASSROOM_LAYOUT },
   print: { label: "Print", layout: PRINT_LAYOUT },
 };
 
