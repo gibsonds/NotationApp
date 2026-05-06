@@ -65,9 +65,18 @@ export default function PropertiesPanel({ embedded = false }: PropertiesPanelPro
                   onChange={(v) => applyPatches([{ op: "update_staff", staffId: staff.id, clef: v as Clef }])} />
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] text-gray-500">{staff.voices.length}v, {staff.voices.reduce((n, v) => n + v.notes.length, 0)} notes</span>
-                  {score.staves.length > 1 && (
-                    <button onClick={() => applyPatches([{ op: "remove_staff", staffId: staff.id }])} className="text-[10px] text-red-400/60 hover:text-red-400">Remove</button>
-                  )}
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => applyPatches([{ op: "update_staff", staffId: staff.id, muted: !staff.muted }])}
+                      className={`px-1.5 py-0.5 text-[10px] font-medium rounded transition-colors ${staff.muted ? "bg-orange-500/30 text-orange-200" : "bg-white/10 text-gray-300 hover:bg-white/15"}`}
+                      title={staff.muted ? "Unmute (include this staff in playback)" : "Mute (silent during playback)"}
+                    >
+                      {staff.muted ? "Muted" : "Mute"}
+                    </button>
+                    {score.staves.length > 1 && (
+                      <button onClick={() => applyPatches([{ op: "remove_staff", staffId: staff.id }])} className="text-[10px] text-red-400/60 hover:text-red-400">Remove</button>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}

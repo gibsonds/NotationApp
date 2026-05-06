@@ -127,6 +127,9 @@ export const StaffSchema = z.object({
   transposition: z.number().int().optional(),
   lyricsMode: z.enum(["attached", "none"]).default("attached"),
   voices: z.array(VoiceSchema).default([]),
+  /** When true, the staff is silent during playback. Doesn't affect
+   *  rendering — the notes still appear on screen. */
+  muted: z.boolean().default(false).optional(),
 });
 export type Staff = z.infer<typeof StaffSchema>;
 
@@ -330,6 +333,7 @@ export const ScorePatchSchema = z.discriminatedUnion("op", [
     name: z.string().optional(),
     clef: Clef.optional(),
     lyricsMode: z.enum(["attached", "none"]).optional(),
+    muted: z.boolean().optional(),
   }),
   z.object({
     op: z.literal("add_staff"),
