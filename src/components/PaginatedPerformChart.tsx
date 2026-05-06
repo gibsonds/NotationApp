@@ -182,10 +182,13 @@ export default function PaginatedPerformChart({
             key={i}
             className="shrink-0 w-full h-full snap-start grid grid-cols-2 gap-8 px-4 py-2"
           >
-            <div className="overflow-hidden">
+            {/* overflow-y-auto so a section taller than the column doesn't
+                get clipped — user can scroll within the column. Beats the
+                previous overflow-hidden which silently cut content off. */}
+            <div className="overflow-y-auto overflow-x-hidden">
               {page.col1.map((s) => <PerformSection key={s.id} section={s} />)}
             </div>
-            <div className="overflow-hidden">
+            <div className="overflow-y-auto overflow-x-hidden">
               {page.col2.map((s) => <PerformSection key={s.id} section={s} />)}
             </div>
           </div>
@@ -257,11 +260,36 @@ function PerformMarkedLyric({
   );
 }
 
+const PERFORM_NAV_LABELS: Record<string, string> = {
+  segno: "Segno 𝄋",
+  coda: "Coda 𝄌",
+  "to-coda": "To Coda",
+  fine: "Fine",
+  "d.c.": "D.C.",
+  "d.s.": "D.S.",
+  "d.c. al fine": "D.C. al Fine",
+  "d.s. al fine": "D.S. al Fine",
+  "d.c. al coda": "D.C. al Coda",
+  "d.s. al coda": "D.S. al Coda",
+};
+
 function PerformSection({ section }: { section: ChordChartSection }) {
   return (
     <section className="mb-3">
-      <h3 className="text-pink-300 italic font-semibold text-base mb-1">
-        {section.label}
+      <h3 className="text-pink-300 italic font-semibold text-base mb-1 inline-flex items-baseline flex-wrap gap-2">
+        <span>{section.label}</span>
+        {section.endingNumber && (
+          <span className="text-xs font-mono text-amber-300 border-2 border-b-0 border-amber-300/80 px-1.5 pt-0.5 leading-tight">
+            {section.endingNumber}.
+          </span>
+        )}
+        {section.repeatStart && <span className="text-pink-200">𝄆</span>}
+        {section.repeatEnd && <span className="text-pink-200">𝄇</span>}
+        {section.navMark && (
+          <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-purple-500/30 text-purple-100 not-italic">
+            {PERFORM_NAV_LABELS[section.navMark] ?? section.navMark}
+          </span>
+        )}
       </h3>
       <div
         className="chord-chart-line-body whitespace-pre"

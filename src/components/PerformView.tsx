@@ -59,6 +59,7 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
   const setScore = useScoreStore(s => s.setScore);
   const setUIState = useScoreStore(s => s.setUIState);
   const currentSongId = useScoreStore(s => s.uiState.currentSongId);
+  const performFolder = useScoreStore(s => s.uiState.performFolder ?? null);
   // 1-col scrolls the outer container vertically; 2-col scrolls the
   // PaginatedPerformChart's inner pages strip horizontally. They live in
   // different DOM nodes so we need separate refs.
@@ -70,23 +71,36 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
   // by sync updates. Newest first matches the My Songs modal ordering.
   const [songs] = useState<SongBankEntry[]>(() => getSongs().slice().reverse());
 
-  // Find the position of the current song in the list. Falls back to the
-  // first song if currentSongId isn't set or doesn't match (e.g. unsaved
-  // edits, fresh creation). The fallback also handles the case where the
-  // user opens Perform without ever loading from My Songs.
+  // All folder names (sorted), for the picker's folder selector.
+  const folderNames = useMemo(() => {
+    const set = new Set<string>();
+    for (const s of songs) if (s.folder) set.add(s.folder);
+    return Array.from(set).sort();
+  }, [songs]);
+
+  // Songs in the active scope (folder filter). When performFolder is set,
+  // prev/next only walks that subset — picking 'Set 1' once means the
+  // user stays in Set 1 across song changes.
+  const songsInScope = useMemo(() => {
+    if (!performFolder) return songs;
+    return songs.filter(s => s.folder === performFolder);
+  }, [songs, performFolder]);
+
+  // Find the position of the current song in the SCOPED list. Falls back
+  // to 0 if the loaded song isn't in scope (so prev/next still work).
   const currentIndex = useMemo(() => {
-    if (!songs.length) return -1;
+    if (!songsInScope.length) return -1;
     const byId = currentSongId
-      ? songs.findIndex(s => s.id === currentSongId)
+      ? songsInScope.findIndex(s => s.id === currentSongId)
       : -1;
     if (byId !== -1) return byId;
-    const byTitle = songs.findIndex(s => s.title === score.title);
+    const byTitle = songsInScope.findIndex(s => s.title === score.title);
     return byTitle !== -1 ? byTitle : 0;
-  }, [songs, currentSongId, score.title]);
+  }, [songsInScope, currentSongId, score.title]);
 
   const loadAt = (idx: number) => {
-    if (idx < 0 || idx >= songs.length) return;
-    const entry = songs[idx];
+    if (idx < 0 || idx >= songsInScope.length) return;
+    const entry = songsInScope[idx];
     setScore(entry.score);
     setUIState({ currentSongId: entry.id });
     scrollRef.current?.scrollTo({ top: 0 });
@@ -232,20 +246,27 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
           <button
             type="button"
             onClick={() => setPickerOpen(o => !o)}
-            className="h-11 px-3 flex items-center gap-1 text-sm font-medium text-gray-100 hover:bg-gray-800 active:bg-gray-700 rounded-lg max-w-[40vw]"
+            className="h-11 px-3 flex flex-col items-start justify-center text-gray-100 hover:bg-gray-800 active:bg-gray-700 rounded-lg max-w-[40vw]"
             title="Jump to song"
           >
-            <span className="truncate">
-              {songs[currentIndex]?.title ?? score.title ?? "Untitled"}
+            {performFolder && (
+              <span className="text-[9px] uppercase tracking-wider text-gray-400 leading-none mb-0.5">
+                {performFolder}
+              </span>
+            )}
+            <span className="flex items-center gap-1 truncate text-sm font-medium leading-tight">
+              <span className="truncate">
+                {songsInScope[currentIndex]?.title ?? score.title ?? "Untitled"}
+              </span>
+              <svg className="w-3 h-3 shrink-0 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
             </span>
-            <svg className="w-3 h-3 shrink-0 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-            </svg>
           </button>
           <button
             type="button"
             onClick={() => loadAt(currentIndex + 1)}
-            disabled={currentIndex < 0 || currentIndex >= songs.length - 1}
+            disabled={currentIndex < 0 || currentIndex >= songsInScope.length - 1}
             className={`${btn} disabled:opacity-30 disabled:hover:bg-gray-900/80`}
             aria-label="Next song"
             title="Next song"
@@ -255,32 +276,75 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
         </div>
       )}
 
-      {/* Song picker — opens below the title button when toggled */}
+      {/* Song picker with folder scope selector at top. The folder filter
+          persists to UIState so picking 'Set 1' once keeps prev/next within
+          Set 1 across song changes. */}
       {pickerOpen && songs.length > 0 && (
         <>
           <div
             className="absolute inset-0 z-10"
             onClick={() => setPickerOpen(false)}
           />
-          <div className="absolute top-[68px] left-3 z-20 bg-white text-gray-800 rounded-xl shadow-2xl border border-gray-200 w-[min(360px,calc(100vw-1.5rem))] max-h-[60vh] overflow-y-auto">
-            <ul className="py-1">
-              {songs.map((s, i) => (
-                <li key={s.id}>
-                  <button
-                    type="button"
-                    onClick={() => loadAt(i)}
-                    className={`w-full text-left px-4 py-2 text-sm hover:bg-blue-50 active:bg-blue-100 ${
-                      i === currentIndex ? "bg-blue-50 font-medium" : ""
-                    }`}
-                  >
-                    <div className="truncate">{s.title}</div>
-                    <div className="text-xs text-gray-400">
-                      {new Date(s.savedAt).toLocaleDateString()}
-                    </div>
-                  </button>
-                </li>
-              ))}
-            </ul>
+          <div className="absolute top-[68px] left-3 z-20 bg-white text-gray-800 rounded-xl shadow-2xl border border-gray-200 w-[min(360px,calc(100vw-1.5rem))] max-h-[60vh] overflow-hidden flex flex-col">
+            {folderNames.length > 0 && (
+              <div className="px-3 py-2 border-b border-gray-100 bg-gray-50 flex flex-wrap gap-1">
+                <button
+                  type="button"
+                  onClick={() => setUIState({ performFolder: null })}
+                  className={`px-2 py-1 text-xs rounded-md transition-colors ${
+                    !performFolder
+                      ? "bg-blue-600 text-white"
+                      : "bg-white border border-gray-200 text-gray-700 hover:bg-gray-100"
+                  }`}
+                >
+                  All ({songs.length})
+                </button>
+                {folderNames.map(f => {
+                  const count = songs.filter(s => s.folder === f).length;
+                  return (
+                    <button
+                      key={f}
+                      type="button"
+                      onClick={() => setUIState({ performFolder: f })}
+                      className={`px-2 py-1 text-xs rounded-md transition-colors ${
+                        performFolder === f
+                          ? "bg-blue-600 text-white"
+                          : "bg-white border border-gray-200 text-gray-700 hover:bg-gray-100"
+                      }`}
+                    >
+                      {f} ({count})
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            <div className="flex-1 overflow-y-auto">
+              {songsInScope.length === 0 ? (
+                <div className="px-4 py-6 text-sm text-gray-500 text-center">
+                  No songs in this folder.
+                </div>
+              ) : (
+                <ul className="py-1">
+                  {songsInScope.map((s, i) => (
+                    <li key={s.id}>
+                      <button
+                        type="button"
+                        onClick={() => loadAt(i)}
+                        className={`w-full text-left px-4 py-2 text-sm hover:bg-blue-50 active:bg-blue-100 ${
+                          i === currentIndex ? "bg-blue-50 font-medium" : ""
+                        }`}
+                      >
+                        <div className="truncate">{s.title}</div>
+                        <div className="text-xs text-gray-400">
+                          {new Date(s.savedAt).toLocaleDateString()}
+                          {s.folder ? ` · ${s.folder}` : ""}
+                        </div>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
         </>
       )}

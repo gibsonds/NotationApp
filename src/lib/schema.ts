@@ -177,10 +177,35 @@ export const ChordChartLineSchema = z.object({
 });
 export type ChordChartLine = z.infer<typeof ChordChartLineSchema>;
 
+/** Navigation marks attached to a chord-chart section. Common songbook
+ *  signals like "go back to start" (D.C.) or "end here" (Fine). Rendered
+ *  next to the section label in the editor and perform view. */
+export const ChordChartNavMark = z.enum([
+  "segno",         // 𝄋 — target marker for D.S.
+  "coda",          // 𝄌 — target marker for Coda jump
+  "to-coda",       // jump to Coda from end of this section
+  "fine",          // end the song here on a D.C./D.S.
+  "d.c.",          // Da Capo — go to start
+  "d.s.",          // Dal Segno — go to Segno
+  "d.c. al fine",
+  "d.s. al fine",
+  "d.c. al coda",
+  "d.s. al coda",
+]);
+export type ChordChartNavMark = z.infer<typeof ChordChartNavMark>;
+
 export const ChordChartSectionSchema = z.object({
   id: z.string(),                                  // unique ID, e.g. "V" or "verse-1"
   label: z.string(),                               // human label, e.g. "Verse 1"
   lines: z.array(ChordChartLineSchema).default([]),
+  /** Open repeat (𝄆) at the start of this section. */
+  repeatStart: z.boolean().optional(),
+  /** Close repeat (𝄇) at the end of this section. */
+  repeatEnd: z.boolean().optional(),
+  /** Volta number for first/second-ending brackets. Optional 1..4. */
+  endingNumber: z.number().int().min(1).max(4).optional(),
+  /** Navigation mark attached to this section. */
+  navMark: ChordChartNavMark.optional(),
 });
 export type ChordChartSection = z.infer<typeof ChordChartSectionSchema>;
 
@@ -341,6 +366,15 @@ export const ScorePatchSchema = z.discriminatedUnion("op", [
     op: z.literal("set_section_label"),
     sectionId: z.string(),
     label: z.string(),
+  }),
+  z.object({
+    op: z.literal("update_section"),
+    sectionId: z.string(),
+    /** null clears the field; absent leaves it unchanged. */
+    repeatStart: z.boolean().nullable().optional(),
+    repeatEnd: z.boolean().nullable().optional(),
+    endingNumber: z.number().int().min(1).max(4).nullable().optional(),
+    navMark: ChordChartNavMark.nullable().optional(),
   }),
   z.object({
     op: z.literal("add_section"),
