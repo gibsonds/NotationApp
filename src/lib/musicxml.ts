@@ -511,10 +511,16 @@ function emitVoiceNotes(
     const nonFermataArticulations = note.articulations?.filter((a: Articulation) => a !== "fermata") ?? [];
     const hasTupletStart = note.tuplet && isTupletStart(notes, ni);
     const hasTupletStop = note.tuplet && isTupletEnd(notes, ni);
-    if (note.tieStart || note.tieEnd || hasArticulations || hasTupletStart || hasTupletStop) {
+    const hasSlur = note.slurStart || note.slurEnd;
+    if (note.tieStart || note.tieEnd || hasArticulations || hasTupletStart || hasTupletStop || hasSlur) {
       lines.push("        <notations>");
       if (note.tieEnd) lines.push('          <tied type="stop"/>');
       if (note.tieStart) lines.push('          <tied type="start"/>');
+      // Slur — number=1 keeps overlapping slurs distinct in MusicXML; OSMD
+      // pairs each <slur type="start"/> with the next <slur type="stop"/>
+      // by number.
+      if (note.slurEnd) lines.push('          <slur number="1" type="stop"/>');
+      if (note.slurStart) lines.push('          <slur number="1" type="start"/>');
       if (hasTupletStart) lines.push('          <tuplet type="start"/>');
       if (hasTupletStop) lines.push('          <tuplet type="stop"/>');
       if (nonFermataArticulations.length > 0) {

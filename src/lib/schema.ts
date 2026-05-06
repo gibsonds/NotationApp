@@ -84,6 +84,11 @@ export const NoteSchema = z.object({
   accidental: z.enum(["sharp", "flat", "natural", "none"]).default("none"),
   tieStart: z.boolean().default(false),
   tieEnd: z.boolean().default(false),
+  /** Note begins a slur (curved phrase mark) that ends on the next note
+   *  with slurEnd=true. Distinct from a tie: a slur connects different
+   *  pitches into a phrase, a tie joins identical pitches into one. */
+  slurStart: z.boolean().optional(),
+  slurEnd: z.boolean().optional(),
   lyric: z.string().optional(),
   dynamic: DynamicMarking.optional(),
   articulations: z.array(Articulation).optional(),
@@ -365,6 +370,8 @@ export const ScorePatchSchema = z.discriminatedUnion("op", [
     updates: z.object({
       tieStart: z.boolean().optional(),
       tieEnd: z.boolean().optional(),
+      slurStart: z.boolean().optional(),
+      slurEnd: z.boolean().optional(),
       dots: z.number().int().min(0).max(2).optional(),
       accidental: z.enum(["sharp", "flat", "natural", "none"]).optional(),
       duration: NoteDuration.optional(),

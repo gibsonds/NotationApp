@@ -133,6 +133,36 @@ export default function NoteContextMenu({ x, y, note, onClose, onLyricEdit, onAI
     });
   };
 
+  const toggleSlurStart = () => {
+    if (!scoreNote) return;
+    doAction(() => {
+      applyPatches([{
+        op: "update_note",
+        staffId: staff.id,
+        voiceId: voice.id,
+        measure: note.measure,
+        beat: note.beat,
+        pitch: note.pitch,
+        updates: { slurStart: !scoreNote.slurStart },
+      }]);
+    });
+  };
+
+  const toggleSlurEnd = () => {
+    if (!scoreNote) return;
+    doAction(() => {
+      applyPatches([{
+        op: "update_note",
+        staffId: staff.id,
+        voiceId: voice.id,
+        measure: note.measure,
+        beat: note.beat,
+        pitch: note.pitch,
+        updates: { slurEnd: !scoreNote.slurEnd },
+      }]);
+    });
+  };
+
   const setAccidental = (acc: "sharp" | "flat" | "natural" | "none") => {
     doAction(() => {
       applyPatches([{
@@ -227,6 +257,37 @@ export default function NoteContextMenu({ x, y, note, onClose, onLyricEdit, onAI
       <button onClick={toggleTie} className="w-full text-left px-3 py-1.5 hover:bg-gray-50 flex justify-between">
         <span>{scoreNote?.tieStart ? "Remove Tie" : "Add Tie"}</span>
       </button>
+
+      {/* Slur — separate from tie. Slur connects different pitches into a
+       *  phrase; tie joins identical pitches. Use slurStart on the first
+       *  note of the phrase, slurEnd on the last. */}
+      <div className="border-t border-gray-100 px-1 py-1">
+        <div className="px-2 py-0.5 text-[10px] text-gray-400 uppercase">Slur</div>
+        <div className="flex gap-0.5 px-2">
+          <button
+            onClick={toggleSlurStart}
+            className={`px-2 py-0.5 text-xs rounded transition-colors ${
+              scoreNote?.slurStart
+                ? "bg-blue-100 text-blue-700 font-medium"
+                : "hover:bg-gray-100 text-gray-600"
+            }`}
+            title="Start a slur on this note"
+          >
+            ⌒ Start
+          </button>
+          <button
+            onClick={toggleSlurEnd}
+            className={`px-2 py-0.5 text-xs rounded transition-colors ${
+              scoreNote?.slurEnd
+                ? "bg-blue-100 text-blue-700 font-medium"
+                : "hover:bg-gray-100 text-gray-600"
+            }`}
+            title="End a slur on this note"
+          >
+            ⌒ End
+          </button>
+        </div>
+      </div>
 
       {/* Accidentals */}
       <div className="border-t border-gray-100 px-1 py-1">
