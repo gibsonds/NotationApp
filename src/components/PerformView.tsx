@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Score } from "@/lib/schema";
 import ChordChartView from "@/components/ChordChartView";
 import PaginatedPerformChart from "@/components/PaginatedPerformChart";
+import AnnotationLayer from "@/components/AnnotationLayer";
 import { useScoreStore } from "@/store/score-store";
 import { getSongs, type SongBankEntry } from "@/lib/song-bank";
 
@@ -60,6 +61,11 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
   const setUIState = useScoreStore(s => s.setUIState);
   const currentSongId = useScoreStore(s => s.uiState.currentSongId);
   const performFolder = useScoreStore(s => s.uiState.performFolder ?? null);
+  // Whether we're annotating from inside perform mode. The button below
+  // toggles uiState.annotationMode without leaving perform — same scroll
+  // position, same chrome — so the user can drop a note where they're
+  // already looking on the chart.
+  const annotationMode = useScoreStore(s => s.uiState.annotationMode);
   // 1-col scrolls the outer container vertically; 2-col scrolls the
   // PaginatedPerformChart's inner pages strip horizontally. They live in
   // different DOM nodes so we need separate refs.
@@ -176,13 +182,19 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
       style={wrapperVars}
     >
       {/* 1-col: vertical scroll, ChordChartView reused.
-          2-col: PaginatedPerformChart owns layout (Quark-style pages). */}
+          2-col: PaginatedPerformChart owns layout (Quark-style pages).
+          The relative inner wrapper sizes to content so AnnotationLayer's
+          absolute inset-0 spans the actual chord chart, not just the
+          viewport — annotations stay anchored to content while scrolling. */}
       {prefs.columns === 1 ? (
         <div
           ref={scrollRef}
           className="absolute inset-0 overflow-auto pt-[7vh] pb-[9vh]"
         >
-          <ChordChartView score={score} performMode performColumns={1} />
+          <div className="relative">
+            <ChordChartView score={score} performMode performColumns={1} />
+            <AnnotationLayer />
+          </div>
         </div>
       ) : (
         <PaginatedPerformChart
@@ -349,23 +361,46 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
         </>
       )}
 
-      {/* Done button is its own pinned element — never wraps off-screen,
-          higher z-index than everything else, and small enough not to
-          clash with the rest of the toolbar. The user got stuck once when
-          a wrap pushed it out of reach; that can't happen now. */}
-      <button
-        type="button"
-        onClick={onExit}
-        className="absolute top-3 right-3 z-30 px-4 h-11 rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-sm font-medium shadow border border-white/10"
-        aria-label="Exit perform mode"
-      >
-        Done
-      </button>
+      {/* Mode buttons — pinned to the top-right, never wrap off-screen.
+          Annotate toggles annotationMode while staying in perform (same
+          scroll position, same chrome) so the user can drop a sticky
+          note where they're already looking. Edit exits perform back to
+          the full editor. */}
+      <div className="absolute top-3 right-3 z-30 flex items-center gap-1 rounded-xl bg-gray-900/80 backdrop-blur-sm shadow border border-white/10 p-1">
+        <button
+          type="button"
+          onClick={() => setUIState({ annotationMode: !annotationMode })}
+          className={`px-3 h-11 rounded-lg text-sm font-medium transition-colors ${
+            annotationMode
+              ? "bg-yellow-400 text-gray-900 hover:bg-yellow-300"
+              : "text-gray-100 hover:bg-gray-800 active:bg-gray-700"
+          }`}
+          aria-pressed={annotationMode}
+          aria-label={annotationMode ? "Stop annotating" : "Annotate"}
+          title={annotationMode ? "Tap the chart to add a note. Tap Annotating to stop." : "Annotate — drop sticky notes on the chart"}
+        >
+          {annotationMode ? "Annotating" : "Annotate"}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            // Leaving perform also clears annotate so the editor opens in
+            // its normal edit state, not in annotate-while-edit.
+            if (annotationMode) setUIState({ annotationMode: false });
+            onExit();
+          }}
+          className="px-3 h-11 rounded-lg bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-sm font-medium"
+          aria-label="Edit (exit perform mode)"
+        >
+          Edit
+        </button>
+      </div>
 
       {/* Floating toolbar — wrap-able cluster of style/columns controls
           plus a My Songs button. Positioned to the LEFT of the pinned
-          Done button. */}
-      <div className="absolute top-3 right-[5.5rem] flex flex-wrap items-center justify-end gap-2 max-w-[calc(100vw-7rem)]">
+          mode buttons. Width budget assumes both Edit + Annotate are
+          shown (~13rem). */}
+      <div className="absolute top-3 right-[14rem] flex flex-wrap items-center justify-end gap-2 max-w-[calc(100vw-15rem)]">
         <div className="flex items-center gap-1 bg-gray-900/80 backdrop-blur-sm rounded-xl p-1 shadow border border-white/10">
           <button
             type="button"
