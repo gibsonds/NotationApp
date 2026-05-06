@@ -331,7 +331,7 @@ export default function Home() {
   // floating font/leading buttons, and the global zoom shortcut would
   // block the browser's own page zoom (which the user often wants in
   // perform mode to scale the whole UI for far-away viewing).
-  const inPerformMode = uiState.performMode;
+  const inPerformMode = uiState.appMode === "perform";
   useEffect(() => {
     if (inPerformMode) return;
 
@@ -665,7 +665,6 @@ export default function Home() {
           onOpenAutosave={() => setAutosaveDialogOpen(true)}
           onPasteLyrics={() => setPasteLyricsOpen(true)}
           onMySongs={() => setMySongsOpen(true)}
-          onTogglePerform={() => setUIState({ performMode: true })}
         />
       </div>
 
@@ -1106,21 +1105,6 @@ export default function Home() {
             >
               Lyric
             </button>
-
-            <span className="text-gray-600">|</span>
-
-            {/* Annotate mode */}
-            <button
-              onClick={() => setUIState({ annotationMode: !uiState.annotationMode })}
-              className={`px-1.5 py-0.5 text-[10px] rounded transition-colors ${
-                uiState.annotationMode
-                  ? "bg-amber-500 text-white hover:bg-amber-600"
-                  : "bg-gray-700 hover:bg-gray-600"
-              }`}
-              title={uiState.annotationMode ? "Exit annotate mode" : "Enter annotate mode: click anywhere on the score to add a note"}
-            >
-              Annotate
-            </button>
           </div>
 
           <div className="flex items-center gap-2 text-gray-500 text-[10px]">
@@ -1223,10 +1207,10 @@ export default function Home() {
       )}
 
       {/* Perform view — full-screen overlay, chord-chart only */}
-      {uiState.performMode && score?.sections && score.sections.length > 0 && (
+      {uiState.appMode === "perform" && score?.sections && score.sections.length > 0 && (
         <PerformView
           score={score}
-          onExit={() => setUIState({ performMode: false })}
+          onExit={() => setUIState({ appMode: "edit" })}
           onOpenMySongs={() => setMySongsOpen(true)}
         />
       )}
