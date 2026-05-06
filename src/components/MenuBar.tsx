@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useScoreStore } from "@/store/score-store";
 import { scoreToMusicXML } from "@/lib/musicxml";
 import { downloadScoreAsMidi } from "@/lib/midi-export";
+import { downloadScoreAsChordPro } from "@/lib/chordpro-export";
 import { ScoreSchema } from "@/lib/schema";
 import CloudSaveIndicator from "@/components/CloudSaveIndicator";
 import ModeSelector from "@/components/ModeSelector";
@@ -219,6 +220,11 @@ export default function MenuBar({
     downloadScoreAsMidi(score);
   };
 
+  const handleExportChordPro = () => {
+    if (!score) return;
+    downloadScoreAsChordPro(score);
+  };
+
   const handlePrint = () => {
     if (!score) return;
     if (onPrint) onPrint();
@@ -384,6 +390,7 @@ export default function MenuBar({
     { separator: true },
     { label: "Export MusicXML", action: handleExportMusicXML, enabled: !!score },
     { label: "Export MIDI", action: handleExportMidi, enabled: !!score },
+    { label: "Export ChordPro", action: handleExportChordPro, enabled: !!(score && score.sections && score.sections.length > 0) },
     { label: "Export SVG", action: handleExportSVG, enabled: !!score },
     { label: "Export JSON", action: handleExportJSON, enabled: !!score },
     { separator: true },
