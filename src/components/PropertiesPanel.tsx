@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useScoreStore, DEFAULT_LAYOUT, PRINT_LAYOUT, REALBOOK_LAYOUT, STYLE_PRESETS, StylePreset, LayoutSettings, MusicFont, TextFont, PageSize } from "@/store/score-store";
+import { downloadScoreAsMidi } from "@/lib/midi-export";
 import { KeySignature, Clef } from "@/lib/schema";
 import { v4 as uuidv4 } from "uuid";
 import RevisionPanel from "./RevisionPanel";
@@ -79,6 +80,13 @@ export default function PropertiesPanel({ embedded = false }: PropertiesPanelPro
                       title={staff.hidden ? "Show this staff in the score" : "Hide this staff from the score (data preserved)"}
                     >
                       {staff.hidden ? "Hidden" : "Hide"}
+                    </button>
+                    <button
+                      onClick={() => downloadScoreAsMidi(score, { staffId: staff.id })}
+                      className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-white/10 text-gray-300 hover:bg-white/15 transition-colors"
+                      title={`Export this staff as a single-track MIDI file`}
+                    >
+                      .mid
                     </button>
                     {score.staves.length > 1 && (
                       <button onClick={() => applyPatches([{ op: "remove_staff", staffId: staff.id }])} className="text-[10px] text-red-400/60 hover:text-red-400">Remove</button>
