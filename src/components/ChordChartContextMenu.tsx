@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 export interface ChordChartContextMenuItem {
   label: string;
@@ -27,6 +27,32 @@ export default function ChordChartContextMenu({
   onClose,
 }: ChordChartContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
+  // Clamp / flip the menu so it never extends past the viewport. Hidden on
+  // first paint to avoid an off-screen flash before measurement.
+  const [pos, setPos] = useState<{ left: number; top: number; visible: boolean }>(
+    { left: x, top: y, visible: false }
+  );
+
+  useLayoutEffect(() => {
+    const el = menuRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const margin = 8;
+    let left = x;
+    let top = y;
+    if (left + rect.width + margin > vw) {
+      left = Math.max(margin, vw - rect.width - margin);
+    }
+    if (top + rect.height + margin > vh) {
+      top = Math.max(margin, y - rect.height);
+      if (top + rect.height + margin > vh) {
+        top = Math.max(margin, vh - rect.height - margin);
+      }
+    }
+    setPos({ left, top, visible: true });
+  }, [x, y]);
 
   useEffect(() => {
     const handleMouseDown = (e: MouseEvent) => {
@@ -48,7 +74,13 @@ export default function ChordChartContextMenu({
   return (
     <div
       ref={menuRef}
-      style={{ left: x, top: y }}
+      style={{
+        left: pos.left,
+        top: pos.top,
+        visibility: pos.visible ? "visible" : "hidden",
+        maxHeight: "calc(100vh - 16px)",
+        overflowY: "auto",
+      }}
       className="fixed z-50 min-w-[180px] bg-[#1a1a2e] border border-pink-500/30 rounded-md shadow-xl py-1 text-sm font-sans"
     >
       {items.map((item, i) => (
