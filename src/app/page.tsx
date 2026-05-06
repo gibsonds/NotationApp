@@ -24,6 +24,8 @@ import PerformView from "@/components/PerformView";
 import PersistFailureBanner from "@/components/PersistFailureBanner";
 import { CLOUD_ENABLED, getDeviceId } from "@/lib/song-cloud";
 import { autosaveToCloud } from "@/lib/cloud-autosave";
+import AnnotationLayer from "@/components/AnnotationLayer";
+import AnnotationFilterBar from "@/components/AnnotationFilterBar";
 import { cleanScoreOverflow } from "@/lib/score-cleanup";
 
 // Dynamic import to prevent SSR for OSMD (uses browser APIs)
@@ -717,11 +719,12 @@ export default function Home() {
         <div className="flex-1 overflow-auto p-4 print-full bg-[#f8f9fa]">
           {score ? (
             score.sections && score.sections.length > 0 ? (
-              <div className="score-container h-full">
+              <div className="score-container h-full relative">
                 <ChordChartView score={score} />
+                <AnnotationLayer />
               </div>
             ) : (
-              <div className="score-container h-full">
+              <div className="score-container h-full relative">
                 <ScoreRenderer
                   score={score}
                   zoom={zoom}
@@ -744,6 +747,7 @@ export default function Home() {
                       : null
                   }
                 />
+                <AnnotationLayer />
               </div>
             )
           ) : (
@@ -777,6 +781,7 @@ export default function Home() {
                       sections: [],
                       form: [],
                       metadata: {},
+                      annotations: [],
                     });
                   }}
                   className="px-4 py-2 text-sm rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 transition-colors"
@@ -807,6 +812,7 @@ export default function Home() {
                       }],
                       form: [],
                       metadata: {},
+                      annotations: [],
                     });
                   }}
                   className="px-4 py-2 text-sm rounded-md border border-pink-400 bg-pink-50 text-pink-700 hover:bg-pink-100 transition-colors"
@@ -821,6 +827,9 @@ export default function Home() {
           )}
         </div>
       </div>
+
+      {/* Annotation filter bar */}
+      <AnnotationFilterBar />
 
       {/* Bottom status bar */}
       {score && (
@@ -1096,6 +1105,21 @@ export default function Home() {
               title="Enter lyric mode: type words under notes (click a note first)"
             >
               Lyric
+            </button>
+
+            <span className="text-gray-600">|</span>
+
+            {/* Annotate mode */}
+            <button
+              onClick={() => setUIState({ annotationMode: !uiState.annotationMode })}
+              className={`px-1.5 py-0.5 text-[10px] rounded transition-colors ${
+                uiState.annotationMode
+                  ? "bg-amber-500 text-white hover:bg-amber-600"
+                  : "bg-gray-700 hover:bg-gray-600"
+              }`}
+              title={uiState.annotationMode ? "Exit annotate mode" : "Enter annotate mode: click anywhere on the score to add a note"}
+            >
+              Annotate
             </button>
           </div>
 

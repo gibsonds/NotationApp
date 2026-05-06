@@ -289,6 +289,7 @@ class SNTParser {
       sections: [],
       form: [],
       metadata: { source: "staffpad", originalFormat: "snt" },
+      annotations: [],
     };
   }
 

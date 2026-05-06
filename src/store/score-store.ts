@@ -137,6 +137,20 @@ export const STYLE_PRESETS: Record<StylePreset, { label: string; layout: LayoutS
   print: { label: "Print", layout: PRINT_LAYOUT },
 };
 
+export interface AnnotationFilters {
+  showShared: boolean;
+  showPersonal: boolean;
+  hiddenLabels: string[];
+  hideInPerformance: boolean;
+}
+
+export const DEFAULT_ANNOTATION_FILTERS: AnnotationFilters = {
+  showShared: true,
+  showPersonal: true,
+  hiddenLabels: [],
+  hideInPerformance: false,
+};
+
 export interface UIState {
   sidebarOpen: boolean;
   aiDrawerOpen: boolean;
@@ -153,6 +167,8 @@ export interface UIState {
    *  Null means "all songs". When set to a folder name, prev/next and
    *  the picker only see songs in that folder. Sticky across launches. */
   performFolder: string | null;
+  annotationMode: boolean;
+  annotationFilters: AnnotationFilters;
 }
 
 export const DEFAULT_UI_STATE: UIState = {
@@ -163,6 +179,8 @@ export const DEFAULT_UI_STATE: UIState = {
   currentSongId: null,
   collapsedFolders: [],
   performFolder: null,
+  annotationMode: false,
+  annotationFilters: DEFAULT_ANNOTATION_FILTERS,
 };
 
 export interface SavedRevision {
@@ -655,7 +673,7 @@ export const useScoreStore = create<ProjectState>()(
     }),
     {
       name: "notation-app-store",
-      version: 10,
+      version: 11,
       migrate: (persisted: any, version: number) => {
         if (version < 2) {
           persisted = { ...persisted, savedRevisions: persisted.savedRevisions ?? [] };
@@ -709,8 +727,8 @@ export const useScoreStore = create<ProjectState>()(
           };
         }
         // Always reconcile UIState with current defaults so newly-added
-        // fields (collapsedFolders, currentSongId, etc.) don't show up as
-        // undefined on first load after an upgrade.
+        // fields (collapsedFolders, currentSongId, annotationMode, etc.)
+        // don't show up as undefined on first load after an upgrade.
         persisted = {
           ...persisted,
           uiState: { ...DEFAULT_UI_STATE, ...(persisted.uiState ?? {}) },

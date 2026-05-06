@@ -362,5 +362,6 @@ export function parseMidi(
     sections: [],
     form: [],
     metadata: { source: "midi-import" },
+    annotations: [],
   };
 }

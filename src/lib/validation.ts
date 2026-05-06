@@ -193,6 +193,7 @@ export function expandIntentToScore(intent: ScoreIntent): Score {
     sections: intent.sections ?? [],
     form: intent.form ?? [],
     metadata: {},
+    annotations: [],
   };
 }
 

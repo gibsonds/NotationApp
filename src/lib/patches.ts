@@ -377,6 +377,29 @@ export function applyPatch(score: Score, patch: ScorePatch): Score {
       return { ...expanded, id: score.id };
     }
 
+    case "add_annotation": {
+      return {
+        ...score,
+        annotations: [...(score.annotations ?? []), patch.annotation],
+      };
+    }
+
+    case "update_annotation": {
+      return {
+        ...score,
+        annotations: (score.annotations ?? []).map((a) =>
+          a.id === patch.id ? { ...a, ...patch.updates } : a
+        ),
+      };
+    }
+
+    case "remove_annotation": {
+      return {
+        ...score,
+        annotations: (score.annotations ?? []).filter((a) => a.id !== patch.id),
+      };
+    }
+
     default:
       return score;
   }

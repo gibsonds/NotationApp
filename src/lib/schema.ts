@@ -209,6 +209,20 @@ export const ChordChartSectionSchema = z.object({
 });
 export type ChordChartSection = z.infer<typeof ChordChartSectionSchema>;
 
+// ── Annotation ─────────────────────────────────────────────────────────────
+
+export const AnnotationSchema = z.object({
+  id: z.string(),
+  anchorX: z.number().min(0).max(1),
+  anchorY: z.number().min(0).max(1),
+  text: z.string(),
+  color: z.enum(["yellow", "blue", "pink", "green"]).default("yellow"),
+  visibility: z.enum(["shared", "personal"]).default("shared"),
+  label: z.string().default(""),
+  createdAt: z.number(),
+});
+export type Annotation = z.infer<typeof AnnotationSchema>;
+
 // ── Score (top-level) ──────────────────────────────────────────────────────
 
 export const ScoreSchema = z.object({
@@ -237,6 +251,7 @@ export const ScoreSchema = z.object({
   sections: z.array(ChordChartSectionSchema).default([]),
   form: z.array(z.string()).default([]),
   metadata: z.record(z.string(), z.string()).default({}),
+  annotations: z.array(AnnotationSchema).default([]),
 });
 export type Score = z.infer<typeof ScoreSchema>;
 
@@ -440,6 +455,24 @@ export const ScorePatchSchema = z.discriminatedUnion("op", [
   z.object({
     op: z.literal("replace_score"),
     score: z.lazy(() => ScoreIntentSchema),
+  }),
+  z.object({
+    op: z.literal("add_annotation"),
+    annotation: AnnotationSchema,
+  }),
+  z.object({
+    op: z.literal("update_annotation"),
+    id: z.string(),
+    updates: z.object({
+      text: z.string().optional(),
+      color: z.enum(["yellow", "blue", "pink", "green"]).optional(),
+      visibility: z.enum(["shared", "personal"]).optional(),
+      label: z.string().optional(),
+    }),
+  }),
+  z.object({
+    op: z.literal("remove_annotation"),
+    id: z.string(),
   }),
 ]);
 export type ScorePatch = z.infer<typeof ScorePatchSchema>;

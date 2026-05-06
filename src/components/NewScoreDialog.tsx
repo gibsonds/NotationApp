@@ -74,6 +74,7 @@ export default function NewScoreDialog({ onClose }: { onClose: () => void }) {
       sections: [],
       form: [],
       metadata: {},
+      annotations: [],
     };
     setScore(score);
     addMessage({

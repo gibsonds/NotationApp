@@ -43,6 +43,7 @@ export default function Toolbar({ zoom, onZoomChange, onPrint }: ToolbarProps) {
       sections: [],
       form: [],
       metadata: {},
+      annotations: [],
     });
   };
   const fileInputRef = useRef<HTMLInputElement>(null);

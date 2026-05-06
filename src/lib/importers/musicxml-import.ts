@@ -229,6 +229,7 @@ export function parseMusicXML(xmlString: string): Score {
     sections: [],
     form: [],
     metadata: { source: "musicxml" },
+    annotations: [],
   };
 }
 

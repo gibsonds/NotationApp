@@ -161,6 +161,7 @@ export default function MenuBar({
       sections: [],
       form: [],
       metadata: {},
+      annotations: [],
     });
   };
 
@@ -189,6 +190,7 @@ export default function MenuBar({
       }],
       form: [],
       metadata: {},
+      annotations: [],
     });
   };
 
