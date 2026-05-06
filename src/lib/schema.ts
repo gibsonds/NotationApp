@@ -219,6 +219,11 @@ export const ScoreSchema = z.object({
   timeSignature: z.string().regex(/^\d+\/\d+$/).default("4/4"),
   keySignature: KeySignature.default("C"),
   measures: z.number().int().min(1).max(200).default(8),
+  /** When true, the first measure is treated as a pickup (anacrusis) —
+   *  bar numbering shifts so the first full bar is labeled 1 (the pickup
+   *  becomes 0). The pickup itself can hold fewer beats than the time
+   *  signature would otherwise require. */
+  anacrusis: z.boolean().default(false),
   // Allow zero staves for chord-chart-only songs (the chord chart view doesn't
   // need a staff). Notation views guard against empty staves.
   staves: z.array(StaffSchema).default([]),
@@ -299,6 +304,10 @@ export const ScorePatchSchema = z.discriminatedUnion("op", [
   z.object({
     op: z.literal("set_measures"),
     value: z.number().int(),
+  }),
+  z.object({
+    op: z.literal("set_anacrusis"),
+    value: z.boolean(),
   }),
   z.object({
     op: z.literal("update_staff"),

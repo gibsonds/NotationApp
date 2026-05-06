@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useScoreStore } from "@/store/score-store";
 import { NoteDuration } from "@/lib/schema";
 
@@ -24,6 +24,35 @@ const DURATIONS: { label: string; value: NoteDuration }[] = [
 export default function NoteContextMenu({ x, y, note, onClose, onLyricEdit, onAIEdit }: NoteContextMenuProps) {
   const { score, applyPatches } = useScoreStore();
   const menuRef = useRef<HTMLDivElement>(null);
+  // Adjusted position after measuring — flips above / leftward if the menu
+  // would overflow the viewport. We render off-screen on first paint so the
+  // raw (x, y) is never visible before clamping.
+  const [pos, setPos] = useState<{ left: number; top: number; visible: boolean }>(
+    { left: x, top: y, visible: false }
+  );
+
+  useLayoutEffect(() => {
+    const el = menuRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const margin = 8;
+    let left = x;
+    let top = y;
+    if (left + rect.width + margin > vw) {
+      left = Math.max(margin, vw - rect.width - margin);
+    }
+    if (top + rect.height + margin > vh) {
+      // Prefer flipping above the cursor; fall back to clamping to viewport
+      // top with margin if even that wouldn't fit.
+      top = Math.max(margin, y - rect.height);
+      if (top + rect.height + margin > vh) {
+        top = Math.max(margin, vh - rect.height - margin);
+      }
+    }
+    setPos({ left, top, visible: true });
+  }, [x, y]);
 
   // Close on outside click or Escape
   useEffect(() => {
@@ -150,12 +179,16 @@ export default function NoteContextMenu({ x, y, note, onClose, onLyricEdit, onAI
     });
   };
 
-  // Position: keep menu within viewport
+  // Position: clamped to viewport in the layout effect above. Hidden until
+  // measurement completes so the user never sees an off-screen flash.
   const menuStyle: React.CSSProperties = {
     position: "fixed",
-    left: x,
-    top: y,
+    left: pos.left,
+    top: pos.top,
     zIndex: 1000,
+    visibility: pos.visible ? "visible" : "hidden",
+    maxHeight: "calc(100vh - 16px)",
+    overflowY: "auto",
   };
 
   return (

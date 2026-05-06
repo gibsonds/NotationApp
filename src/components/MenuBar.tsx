@@ -147,6 +147,7 @@ export default function MenuBar({
       timeSignature: "4/4",
       keySignature: "C",
       measures: 16,
+      anacrusis: false,
       staves: [{
         id: uuidv4(),
         name: "Staff 1",
@@ -176,6 +177,7 @@ export default function MenuBar({
       timeSignature: "4/4",
       keySignature: "C",
       measures: 1,
+      anacrusis: false,
       staves: [],
       chordSymbols: [],
       rehearsalMarks: [],

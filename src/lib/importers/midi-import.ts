@@ -354,6 +354,7 @@ export function parseMidi(
     timeSignature,
     keySignature: keySignature as Score["keySignature"],
     measures: totalMeasures,
+    anacrusis: false,
     staves,
     chordSymbols: [],
     rehearsalMarks: [],

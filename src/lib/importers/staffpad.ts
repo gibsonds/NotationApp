@@ -281,6 +281,7 @@ class SNTParser {
       timeSignature,
       keySignature: keySignature as any,
       measures: barCount,
+      anacrusis: false,
       staves,
       chordSymbols: allChordSymbols,
       rehearsalMarks: [],

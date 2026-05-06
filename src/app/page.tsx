@@ -108,6 +108,88 @@ export default function Home() {
     setTimeout(restore, 30000);
   }, [score]);
 
+  const [loopEnabled, setLoopEnabled] = useState(false);
+  // Tracks whether the user explicitly stopped playback during a loop,
+  // so the loop body can break out instead of re-firing playScore.
+  const stopRequestedRef = useRef(false);
+
+  // Transport: shared play/stop logic so the bottom-bar button and the
+  // spacebar shortcut hit the same path. When loopEnabled is on,
+  // playScore is re-fired when it returns naturally — stopping requires
+  // an explicit Stop click or spacebar.
+  const togglePlayPause = useCallback(async () => {
+    if (!score) return;
+    if (playing) {
+      stopRequestedRef.current = true;
+      stopPlayback();
+      setPlaying(false);
+      setPlaybackPos(null);
+      return;
+    }
+    stopRequestedRef.current = false;
+    setPlaying(true);
+    do {
+      await playScore(
+        score,
+        selection,
+        (m, b) => {
+          if (m === 0) { setPlaybackPos(null); return; }
+          setPlaybackPos({ measure: m, beat: b });
+        },
+        {
+          countInBars: playbackPrefs.countInBars,
+          metronome: playbackPrefs.metronome,
+        },
+      );
+    } while (loopEnabled && !stopRequestedRef.current);
+    setPlaying(false);
+    setPlaybackPos(null);
+  }, [score, selection, playing, loopEnabled, playbackPrefs]);
+
+  // Rewind: stop any in-flight playback and put the cursor at the very
+  // start of the first staff/voice. Useful as a "back to top" action
+  // distinct from Stop (which leaves the cursor at the interrupt point).
+  const rewindToStart = useCallback(() => {
+    if (!score) return;
+    if (playing) {
+      stopPlayback();
+      setPlaying(false);
+    }
+    setPlaybackPos(null);
+    const firstStaff = score.staves[0];
+    const firstVoice = firstStaff?.voices[0];
+    if (firstStaff && firstVoice) {
+      setStepEntry({
+        active: true,
+        staffId: firstStaff.id,
+        voiceId: firstVoice.id,
+        measure: 1,
+        beat: 1,
+      });
+    }
+  }, [score, playing, setStepEntry]);
+
+  // Spacebar play/stop. Skipped when focus is in a text/contenteditable
+  // so typing space in the chord input or lyric editor still works.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== " " && e.code !== "Space") return;
+      const t = e.target;
+      const isText =
+        t instanceof HTMLInputElement ||
+        t instanceof HTMLTextAreaElement ||
+        (t instanceof HTMLElement && t.isContentEditable);
+      if (isText) return;
+      // Don't fire while a modifier is held — those combinations are
+      // reserved for shortcuts like Cmd+Space (Spotlight) etc.
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      e.preventDefault();
+      void togglePlayPause();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [togglePlayPause]);
+
   // Compute cursor position from stepEntry
   const cursorPosition = stepEntry ? {
     measure: stepEntry.measure,
@@ -649,6 +731,18 @@ export default function Home() {
                   selectedNote={selectedNote}
                   onScoreClick={handleScoreClick}
                   selection={selection}
+                  playbackPosition={
+                    playbackPos
+                      ? {
+                          measure: playbackPos.measure,
+                          beat: playbackPos.beat,
+                          // Show on first staff during playback — most users have
+                          // a single staff anyway. A future improvement: track
+                          // which staff/voice each scheduled event came from.
+                          staffIndex: 0,
+                        }
+                      : null
+                  }
                 />
               </div>
             )
@@ -669,6 +763,7 @@ export default function Home() {
                       timeSignature: "4/4",
                       keySignature: "C",
                       measures: 16,
+                      anacrusis: false,
                       staves: [{
                         id: uuidv4(),
                         name: "Staff 1",
@@ -700,6 +795,7 @@ export default function Home() {
                       timeSignature: "4/4",
                       keySignature: "C",
                       measures: 1,
+                      anacrusis: false,
                       staves: [],
                       chordSymbols: [],
                       rehearsalMarks: [],
@@ -730,34 +826,41 @@ export default function Home() {
       {score && (
         <div className="print-hide flex items-center justify-between px-4 py-1.5 bg-[#0f0f23] text-white text-xs font-mono border-t border-white/10">
           <div className="flex items-center gap-3">
-            {/* Playback controls */}
+            {/* Playback controls \u2014 Rewind | Play/Stop */}
             <button
-              onClick={async () => {
-                if (playing) {
-                  stopPlayback();
-                  setPlaying(false);
-                  setPlaybackPos(null);
-                } else {
-                  setPlaying(true);
-                  await playScore(score, selection, (m, b) => {
-                    if (m === 0) { setPlaybackPos(null); return; }
-                    setPlaybackPos({ measure: m, beat: b });
-                  }, {
-                    countInBars: playbackPrefs.countInBars,
-                    metronome: playbackPrefs.metronome,
-                  });
-                  setPlaying(false);
-                  setPlaybackPos(null);
-                }
-              }}
+              onClick={rewindToStart}
+              className="px-1.5 py-0.5 rounded text-[11px] font-bold bg-white/5 hover:bg-white/10 text-gray-300 transition-colors"
+              title="Rewind to start"
+              aria-label="Rewind"
+            >
+              \u23EE
+            </button>
+            <button
+              onClick={togglePlayPause}
               className={`px-2 py-0.5 rounded text-[11px] font-bold transition-colors ${
                 playing
                   ? "bg-red-600 hover:bg-red-700 text-white"
                   : "bg-green-600 hover:bg-green-700 text-white"
               }`}
-              title={playing ? "Stop playback" : `Play${selection ? ` m${selection.startMeasure}-${selection.endMeasure}` : " all"}`}
+              title={playing ? "Stop playback (Space)" : `Play (Space)${selection ? ` \u2014 m${selection.startMeasure}-${selection.endMeasure}` : ""}`}
             >
               {playing ? "\u25A0 Stop" : "\u25B6 Play"}
+            </button>
+            {/* Loop toggle: when on, playback re-fires when it ends.
+                Combined with a measure selection this is an A-B loop. */}
+            <button
+              onClick={() => setLoopEnabled(v => !v)}
+              className={`px-1.5 py-0.5 rounded text-[11px] font-bold transition-colors ${
+                loopEnabled
+                  ? "bg-amber-600 hover:bg-amber-700 text-white"
+                  : "bg-white/5 hover:bg-white/10 text-gray-400"
+              }`}
+              title={loopEnabled
+                ? `Loop ${selection ? "selection" : "song"} \u2014 click to disable`
+                : "Loop playback (uses selection if any)"}
+              aria-label="Toggle loop"
+            >
+              \u27F2
             </button>
             {playbackPos && (
               <span className="text-green-400 text-[10px]">

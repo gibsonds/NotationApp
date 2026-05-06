@@ -40,6 +40,16 @@ export default function PropertiesPanel({ embedded = false }: PropertiesPanelPro
               onChange={(v) => applyPatches([{ op: "set_key_signature", value: v as KeySignature }])} />
             <DarkField label="Time" value={score.timeSignature} onChange={(v) => applyPatches([{ op: "set_time_signature", value: v }])} />
             <DarkField label="Measures" value={String(score.measures)} type="number" onChange={(v) => applyPatches([{ op: "set_measures", value: parseInt(v, 10) || 8 }])} />
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-gray-400">Pickup (anacrusis)</span>
+              <button
+                onClick={() => applyPatches([{ op: "set_anacrusis", value: !score.anacrusis }])}
+                className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors ${score.anacrusis ? "bg-blue-500/30 text-blue-300" : "bg-white/10 text-gray-300 hover:bg-white/15"}`}
+                title="When on, bar 1 is treated as a pickup; the first full bar is numbered 1."
+              >
+                {score.anacrusis ? "On" : "Off"}
+              </button>
+            </div>
           </div>
         </PropSection>
 
@@ -170,6 +180,18 @@ export default function PropertiesPanel({ embedded = false }: PropertiesPanelPro
                 ])
               }
             />
+            <label className="flex items-center justify-between text-xs text-gray-700">
+              <span>Pickup (anacrusis)</span>
+              <input
+                type="checkbox"
+                checked={score.anacrusis}
+                onChange={(e) =>
+                  applyPatches([
+                    { op: "set_anacrusis", value: e.target.checked },
+                  ])
+                }
+              />
+            </label>
           </div>
         </section>
 
