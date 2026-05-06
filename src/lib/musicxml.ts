@@ -193,9 +193,11 @@ export function scoreToMusicXML(score: Score): string {
     lines.push("  </identification>");
   }
 
-  // Part list
+  // Part list — hidden staves are omitted entirely so OSMD doesn't allocate
+  // a system slot for them. Their notes remain in the data model.
+  const visibleStaves = score.staves.filter((s) => !s.hidden);
   lines.push("  <part-list>");
-  for (const staff of score.staves) {
+  for (const staff of visibleStaves) {
     lines.push(`    <score-part id="${esc(staff.id)}">`);
     lines.push(
       `      <part-name>${esc(staff.name)}</part-name>`
@@ -219,9 +221,10 @@ export function scoreToMusicXML(score: Score): string {
   // Measure duration in divisions
   const measureDivisions = beats * (64 / beatType);
 
-  // Parts
-  for (let si = 0; si < score.staves.length; si++) {
-    const staff = score.staves[si];
+  // Parts — iterate visibleStaves so isFirstPart correctly identifies the
+  // first emitted part (used to attach time/key signature attributes).
+  for (let si = 0; si < visibleStaves.length; si++) {
+    const staff = visibleStaves[si];
     const clef = clefToMusicXML(staff.clef);
     const isFirstPart = si === 0;
 

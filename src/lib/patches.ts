@@ -56,6 +56,7 @@ export function applyPatch(score: Score, patch: ScorePatch): Score {
                   lyricsMode: patch.lyricsMode,
                 }),
                 ...(patch.muted !== undefined && { muted: patch.muted }),
+                ...(patch.hidden !== undefined && { hidden: patch.hidden }),
               }
             : s
         ),

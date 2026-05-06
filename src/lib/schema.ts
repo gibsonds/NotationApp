@@ -135,6 +135,10 @@ export const StaffSchema = z.object({
   /** When true, the staff is silent during playback. Doesn't affect
    *  rendering — the notes still appear on screen. */
   muted: z.boolean().default(false).optional(),
+  /** When true, the staff is omitted from the rendered score (and from
+   *  print/export). The staff still exists in the data model so its
+   *  notes are preserved; toggle off to bring it back. */
+  hidden: z.boolean().default(false).optional(),
 });
 export type Staff = z.infer<typeof StaffSchema>;
 
@@ -339,6 +343,7 @@ export const ScorePatchSchema = z.discriminatedUnion("op", [
     clef: Clef.optional(),
     lyricsMode: z.enum(["attached", "none"]).optional(),
     muted: z.boolean().optional(),
+    hidden: z.boolean().optional(),
   }),
   z.object({
     op: z.literal("add_staff"),
