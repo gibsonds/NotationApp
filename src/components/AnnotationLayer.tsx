@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { useScoreStore } from "@/store/score-store";
 import type { Annotation } from "@/lib/schema";
@@ -16,6 +16,12 @@ const COLOR_CLASSES: Record<Color, { bg: string; border: string; text: string; t
   green:  { bg: "bg-green-200",  border: "border-green-400",  text: "text-green-900",  tail: "#bbf7d0" },
 };
 
+// How far the pointer can drift between down and up before we treat it as
+// a drag (= scroll) instead of a tap (= place annotation). Generous enough
+// to forgive trembling fingers on touch devices but tight enough that any
+// real swipe registers as scroll.
+const TAP_THRESHOLD_PX = 10;
+
 export default function AnnotationLayer() {
   const score = useScoreStore((s) => s.score);
   const applyPatches = useScoreStore((s) => s.applyPatches);
@@ -26,6 +32,11 @@ export default function AnnotationLayer() {
 
   const [pendingAnchor, setPendingAnchor] = useState<{ x: number; y: number } | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  // Track the start of a pointer interaction to distinguish a tap (place
+  // annotation) from a drag (scroll). Without this, every touch on the
+  // overlay opens a popover and scrolling on iPad/touch devices breaks.
+  const pointerStart = useRef<{ x: number; y: number } | null>(null);
 
   const editingAnnotation = editingId
     ? annotations.find((a) => a.id === editingId) ?? null
@@ -39,17 +50,40 @@ export default function AnnotationLayer() {
     return true;
   });
 
-  const handleLayerClick = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
       if (!annotationMode) return;
+      // Don't capture pointer events when starting on an existing bubble —
+      // its own handler will fire on click.
+      if ((e.target as HTMLElement).closest("[data-annotation-bubble]")) {
+        pointerStart.current = null;
+        return;
+      }
+      pointerStart.current = { x: e.clientX, y: e.clientY };
+    },
+    [annotationMode],
+  );
+
+  const handlePointerUp = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (!annotationMode) return;
+      const start = pointerStart.current;
+      pointerStart.current = null;
+      if (!start) return;
+      const dx = e.clientX - start.x;
+      const dy = e.clientY - start.y;
+      // If the pointer moved more than the tap threshold, this was a scroll
+      // gesture — leave it alone so the parent's overflow-auto can handle it.
+      if (Math.abs(dx) > TAP_THRESHOLD_PX || Math.abs(dy) > TAP_THRESHOLD_PX) return;
       if ((e.target as HTMLElement).closest("[data-annotation-bubble]")) return;
       const rect = e.currentTarget.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
       const x = (e.clientX - rect.left) / rect.width;
       const y = (e.clientY - rect.top) / rect.height;
       setPendingAnchor({ x, y });
       setEditingId(null);
     },
-    [annotationMode]
+    [annotationMode],
   );
 
   const handleBubbleClick = (e: React.MouseEvent, ann: Annotation) => {
@@ -98,11 +132,21 @@ export default function AnnotationLayer() {
 
   if (!score) return null;
 
+  // The layer must NOT eat scroll gestures. We set touch-action: pan-y so
+  // touch swipes always reach the parent's scroll handler; only single-tap
+  // (caught via pointerup with no movement) creates an annotation. When
+  // annotation mode is off, the layer is fully transparent to interaction.
+  const layerStyle: React.CSSProperties = {
+    pointerEvents: annotationMode ? "auto" : "none",
+    touchAction: annotationMode ? "pan-x pan-y" : "auto",
+  };
+
   return (
     <div
       className={`absolute inset-0 ${annotationMode ? "cursor-crosshair" : ""}`}
-      style={{ pointerEvents: annotationMode ? "auto" : "none" }}
-      onClick={handleLayerClick}
+      style={layerStyle}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
     >
       {/* Annotation bubbles */}
       {filteredAnnotations.map((ann) => {

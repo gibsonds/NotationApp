@@ -54,3 +54,9 @@ next-env.d.ts
 /infra/cdk.out
 /infra/dist
 /cdk-outputs.json
+
+# Local-only project files and test artifacts (never commit)
+/Projects
+/e2e/screenshots
+/test-results
+/playwright-report
