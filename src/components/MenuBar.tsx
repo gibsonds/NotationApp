@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useScoreStore } from "@/store/score-store";
 import { scoreToMusicXML } from "@/lib/musicxml";
+import { downloadScoreAsMidi } from "@/lib/midi-export";
 import { ScoreSchema } from "@/lib/schema";
 import CloudSaveIndicator from "@/components/CloudSaveIndicator";
 import ModeSelector from "@/components/ModeSelector";
@@ -213,6 +214,11 @@ export default function MenuBar({
     downloadFile(svgData, `${score?.title || "score"}.svg`, "image/svg+xml");
   };
 
+  const handleExportMidi = () => {
+    if (!score) return;
+    downloadScoreAsMidi(score);
+  };
+
   const handlePrint = () => {
     if (!score) return;
     if (onPrint) onPrint();
@@ -377,6 +383,7 @@ export default function MenuBar({
     { label: "Save Project", action: handleSaveProject, enabled: !!score },
     { separator: true },
     { label: "Export MusicXML", action: handleExportMusicXML, enabled: !!score },
+    { label: "Export MIDI", action: handleExportMidi, enabled: !!score },
     { label: "Export SVG", action: handleExportSVG, enabled: !!score },
     { label: "Export JSON", action: handleExportJSON, enabled: !!score },
     { separator: true },
