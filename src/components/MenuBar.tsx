@@ -5,6 +5,7 @@ import { useScoreStore } from "@/store/score-store";
 import { scoreToMusicXML } from "@/lib/musicxml";
 import { downloadScoreAsMidi } from "@/lib/midi-export";
 import { downloadScoreAsChordPro } from "@/lib/chordpro-export";
+import { parseChordPro } from "@/lib/chordpro-import";
 import { ScoreSchema } from "@/lib/schema";
 import CloudSaveIndicator from "@/components/CloudSaveIndicator";
 import ModeSelector from "@/components/ModeSelector";
@@ -297,6 +298,27 @@ export default function MenuBar({
       return;
     }
 
+    // ChordPro family \u2014 pure client-side, works in static export.
+    if (filename.endsWith(".cho") || filename.endsWith(".crd") || filename.endsWith(".pro") || filename.endsWith(".chopro")) {
+      try {
+        const text = await file.text();
+        const { score: parsed, warnings } = parseChordPro(text);
+        const validated = ScoreSchema.safeParse(parsed);
+        if (!validated.success) {
+          addMessage({ id: uuidv4(), role: "assistant", content: `Import error: ${validated.error.issues.map(i => i.message).join(", ")}`, timestamp: Date.now() });
+          return;
+        }
+        setScore(validated.data);
+        const note = warnings.length ? ` (${warnings.join("; ")})` : "";
+        addMessage({ id: uuidv4(), role: "assistant", content: `Loaded ${file.name}${note}.`, timestamp: Date.now() });
+      } catch (err: any) {
+        addMessage({ id: uuidv4(), role: "assistant", content: `Import error: ${err.message}`, timestamp: Date.now() });
+      } finally {
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      }
+      return;
+    }
+
     if (IS_STATIC_EXPORT) {
       addMessage({ id: uuidv4(), role: "assistant", content: STATIC_FEATURE_DISABLED_MESSAGE, timestamp: Date.now() });
       return;
@@ -425,7 +447,7 @@ export default function MenuBar({
   return (
     <>
       {/* Hidden file inputs */}
-      <input ref={fileInputRef} type="file" accept=".mid,.midi,.snt,.musicxml,.mxl,.xml,.json" onChange={handleImport} className="hidden" />
+      <input ref={fileInputRef} type="file" accept=".mid,.midi,.snt,.musicxml,.mxl,.xml,.json,.cho,.crd,.pro,.chopro" onChange={handleImport} className="hidden" />
       <input ref={audioInputRef} type="file" accept=".mp3,.m4a,.wav,.aif,.aiff,.ogg,.flac,.mp4" onChange={handleTranscribe} className="hidden" />
       <input ref={projectInputRef} type="file" accept=".notation,.json" onChange={handleOpenProject} className="hidden" />
 
