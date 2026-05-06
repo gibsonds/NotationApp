@@ -296,6 +296,23 @@ body {
     page-break-inside: avoid;
   }
 
+  /* Hide on-screen affordances that would otherwise leak into print:
+   * - selection-highlight: blue translucent range overlay
+   * - note-selected: blue tint + glow on a single note
+   * Step/playback cursors already carry .print-hide on their elements. */
+  .selection-highlight {
+    display: none !important;
+  }
+  .note-selected path,
+  .note-selected line,
+  .note-selected polygon {
+    fill: black !important;
+    stroke: black !important;
+  }
+  .note-selected {
+    filter: none !important;
+  }
+
   /* Show print overlays */
   .print-overlay {
     display: block !important;
