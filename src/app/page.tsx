@@ -665,7 +665,6 @@ export default function Home() {
           onOpenAutosave={() => setAutosaveDialogOpen(true)}
           onPasteLyrics={() => setPasteLyricsOpen(true)}
           onMySongs={() => setMySongsOpen(true)}
-          onTogglePerform={() => setUIState({ performMode: true })}
         />
       </div>
 
@@ -1107,20 +1106,6 @@ export default function Home() {
               Lyric
             </button>
 
-            <span className="text-gray-600">|</span>
-
-            {/* Annotate mode */}
-            <button
-              onClick={() => setUIState({ annotationMode: !uiState.annotationMode })}
-              className={`px-1.5 py-0.5 text-[10px] rounded transition-colors ${
-                uiState.annotationMode
-                  ? "bg-amber-500 text-white hover:bg-amber-600"
-                  : "bg-gray-700 hover:bg-gray-600"
-              }`}
-              title={uiState.annotationMode ? "Exit annotate mode" : "Enter annotate mode: click anywhere on the score to add a note"}
-            >
-              Annotate
-            </button>
           </div>
 
           <div className="flex items-center gap-2 text-gray-500 text-[10px]">

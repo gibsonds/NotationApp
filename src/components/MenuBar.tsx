@@ -5,6 +5,7 @@ import { useScoreStore } from "@/store/score-store";
 import { scoreToMusicXML } from "@/lib/musicxml";
 import { ScoreSchema } from "@/lib/schema";
 import CloudSaveIndicator from "@/components/CloudSaveIndicator";
+import ModeSelector from "@/components/ModeSelector";
 import { CLOUD_ENABLED, cloudCreateNamedRevision } from "@/lib/song-cloud";
 import { getSongs } from "@/lib/song-bank";
 import { IS_STATIC_EXPORT, STATIC_FEATURE_DISABLED_MESSAGE } from "@/lib/api-availability";
@@ -19,7 +20,6 @@ interface MenuBarProps {
   onOpenAutosave?: () => void;
   onPasteLyrics?: () => void;
   onMySongs?: () => void;
-  onTogglePerform?: () => void;
 }
 
 type MenuItem = {
@@ -111,7 +111,7 @@ function MenuDropdown({ label, items, isOpen, onToggle, onClose }: {
 
 export default function MenuBar({
   zoom, onZoomChange, onPrint, onOpenAutosave, onPasteLyrics, onMySongs,
-  onToggleSidebar, sidebarOpen, onTogglePerform,
+  onToggleSidebar, sidebarOpen,
 }: MenuBarProps) {
   const {
     score, undo, redo, history, historyIndex, reset, setScore,
@@ -415,7 +415,7 @@ export default function MenuBar({
       <input ref={audioInputRef} type="file" accept=".mp3,.m4a,.wav,.aif,.aiff,.ogg,.flac,.mp4" onChange={handleTranscribe} className="hidden" />
       <input ref={projectInputRef} type="file" accept=".notation,.json" onChange={handleOpenProject} className="hidden" />
 
-      <div className="flex items-center gap-0.5 px-2 py-1 bg-[#0f0f23] border-b border-white/10 text-gray-300">
+      <div className="relative flex items-center gap-0.5 px-2 py-1 bg-[#0f0f23] border-b border-white/10 text-gray-300">
         {/* Brand */}
         <span className="text-sm font-bold text-gray-100 mr-3 tracking-wide">\u2669 NotationApp</span>
 
@@ -427,19 +427,12 @@ export default function MenuBar({
 
         <CloudSaveIndicator />
 
-        {/* Perform mode — chord-chart only */}
-        {onTogglePerform && score?.sections && score.sections.length > 0 && (
-          <button
-            onClick={onTogglePerform}
-            className="ml-2 inline-flex items-center gap-1.5 px-3 py-1 text-sm rounded bg-pink-500/15 text-pink-200 hover:bg-pink-500/25 transition-colors"
-            title="Perform view (Esc to exit)"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 3l14 9-14 9V3z" />
-            </svg>
-            Perform
-          </button>
-        )}
+        {/* Mode selector — absolutely centered in the bar */}
+        <div className="absolute left-1/2 -translate-x-1/2 pointer-events-none flex items-center">
+          <div className="pointer-events-auto">
+            <ModeSelector />
+          </div>
+        </div>
 
         {/* Spacer */}
         <div className="flex-1" />
