@@ -3,6 +3,17 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-07 — 9c7a24d
+
+**Add ledger line weight setting; default ledger lines to staff width**
+
+- Commit: [`9c7a24d`](../../commit/9c7a24d0ad0f5631ff2cbfa108656a8d0f60f391)
+- Author: gibsonds
+- Files changed:
+  - `src/components/PropertiesPanel.tsx`
+  - `src/components/ScoreRenderer.tsx`
+  - `src/store/score-store.ts`
+
 ## 2026-05-07 — 3aa3ca1
 
 **fix: apply basePath to MenuBar docs links so they resolve on Pages (#79)**
