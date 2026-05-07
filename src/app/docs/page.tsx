@@ -16,26 +16,177 @@ const SECTIONS: Section[] = [
     body: (
       <>
         <p>
-          NotationApp is an AI-native, browser-based music notation tool. Describe music in
-          plain English, paste in chord charts, sketch with the on-screen keyboard, or import
-          MIDI/MusicXML and get an editable score back.
+          Musicians ask notation software for two different things. Sometimes you&apos;re
+          arranging a full piece and need precise notation — the staves, the rhythms, the
+          dynamics. Other times you&apos;re at a band rehearsal and just need the chords
+          and lyrics on one page. NotationApp supports both, and is designed so a future
+          release can blend the two in a single document.
+        </p>
+        <h3>Document types — what you&apos;re working with</h3>
+        <ul>
+          <li>
+            <strong>Score</strong> — full music notation: staves, notes, rhythms,
+            dynamics, articulations. The right pick for arranging, composition, or anything
+            that needs the precise pitches and durations on the page.
+          </li>
+          <li>
+            <strong>Chord Chart</strong> — chords above lyrics, broken into sections
+            (Verse, Chorus, Bridge, …). The right pick for songbooks, lead sheets, and
+            band rehearsals where the singer just needs the words and the band just needs
+            the changes.
+          </li>
+          <li>
+            <strong>Blended document</strong> <em>(coming soon)</em> — a single document
+            that mixes notated passages with chord-chart sections, so a song can carry its
+            head arrangement and its rhythm-section chart side by side.
+          </li>
+        </ul>
+        <h3>View modes — how you&apos;re looking at it</h3>
+        <p>
+          Whatever document type you&apos;re working with, you need two ways of looking
+          at it:
+        </p>
+        <ul>
+          <li>
+            <strong>Edit</strong> — the full interface. Menu bar, sidebar, properties,
+            note-entry tools, AI panel. This is where you build the document.
+          </li>
+          <li>
+            <strong>Perform</strong> — clean, distraction-free, full-screen. The chrome
+            disappears so you can read off the page while playing or rehearsing.
+          </li>
+        </ul>
+        <p>
+          Edit and Perform both work for Scores and for Chord Charts. The mode selector at
+          the top of the menu bar flips between them.
+        </p>
+        <h3>Annotations — cutting across both views</h3>
+        <p>
+          A sticky note isn&apos;t something you stop everything to add. If your teacher
+          says &quot;watch the dynamics here&quot; in the middle of a run-through, you
+          shouldn&apos;t have to leave Perform mode to write it down. So Annotate is a
+          function available <em>inside</em> both Edit and Perform — turn it on, tap the
+          spot, type the note, keep going.
+        </p>
+        <h3>Where the AI fits</h3>
+        <p>
+          For most edits, manual is faster: click a beat, type a note; click a chord,
+          retype it. The AI Assistant is for the moments where typing your intent beats
+          clicking through menus — operations that span measures or sections, like
+          <em> &quot;transpose the bridge up a whole step&quot;</em>,
+          <em> &quot;copy the chord pattern from verse 1 to verse 2&quot;</em>, or
+          <em> &quot;add a pickup measure before the chorus&quot;</em>. Reach for the AI
+          panel when the change is large enough that describing it is faster than doing it
+          by hand.
         </p>
         <h3>First steps</h3>
         <ol>
-          <li>Open the app — if no score is loaded, click <em>New Score</em> for staff
-          notation, or <em>New Chord Chart</em> for a lyrics-and-chords song.</li>
+          <li>From the empty state, click <em>New Score</em> for staff notation, or
+          <em> New Chord Chart</em> for a lyrics-and-chords song.</li>
           <li>Open the sidebar with <Kbd>Cmd&nbsp;B</Kbd> to reveal the AI Assistant and
           Properties drawers.</li>
-          <li>Click any beat on the staff to drop the cursor, then type notes (<Kbd>A</Kbd>–<Kbd>G</Kbd>)
-          or play a connected MIDI keyboard.</li>
+          <li>Build the document in <em>Edit</em>; flip to <em>Perform</em> when you&apos;re
+          ready to play it.</li>
           <li>Use <em>File → My Songs</em> to save your work to the local song bank (and
-          to the cloud if it&apos;s configured).</li>
+          the cloud, if your build has it configured).</li>
         </ol>
-        <h3>The three modes</h3>
+      </>
+    ),
+  },
+  {
+    id: "scores",
+    title: "Scores",
+    body: (
+      <>
         <p>
-          The mode selector at the top center of the menu bar switches between
-          <strong> Edit</strong> (full editing UI), <strong>Perform</strong> (clean, full-screen
-          view for playing), and <strong>Annotate</strong> (sticky-note overlay).
+          A Score is a full music-notation document — staves, time and key signatures,
+          notes with explicit pitches and durations, dynamics, and articulations. Use it
+          when the precise musical content matters: arrangements, compositions, vocal
+          parts, lead sheets where someone needs to read the actual melody.
+        </p>
+        <h3>Creating a score</h3>
+        <p>
+          From the empty state, click <em>New Score</em>, or <em>File → New Score</em>.
+          You start with one staff in C major, 4/4, 16 measures — change any of those in
+          the Properties drawer.
+        </p>
+        <h3>What&apos;s in a Score</h3>
+        <ul>
+          <li>One or more <strong>staves</strong>, each with its own clef and (optionally)
+          its own lyrics.</li>
+          <li><strong>Notes and rests</strong> with explicit pitches, durations, and
+          articulations.</li>
+          <li><strong>Time signature, key signature, tempo, anacrusis</strong> — all
+          editable in Properties.</li>
+          <li><strong>Repeats and rehearsal marks</strong> for navigation.</li>
+          <li><strong>Chord symbols above the staff</strong> when you want both the
+          notated melody and the changes.</li>
+        </ul>
+        <p>
+          Building and editing a Score is covered under <em>Edit Mode</em> below. Reading
+          one back during practice is covered under <em>Perform Mode</em>.
+        </p>
+      </>
+    ),
+  },
+  {
+    id: "chord-charts",
+    title: "Chord Charts",
+    body: (
+      <>
+        <p>
+          A Chord Chart is a song laid out as lyrics with chord names above, broken into
+          sections (Verse, Chorus, Bridge, …). It&apos;s the right document type for
+          band rehearsals, songbooks, and any context where the singer just needs the
+          words and the players just need the changes.
+        </p>
+        <h3>Creating a chord chart</h3>
+        <p>
+          Use <em>File → New Chord Chart</em>, or click <em>New Chord Chart</em> from
+          the empty-state buttons. You start with a single empty Verse 1 section and add
+          more from there.
+        </p>
+        <h3>Pasting from clipboard</h3>
+        <p>
+          Use <em>Edit → Paste Lyrics / Chords…</em> or paste directly into the chart
+          area. The parser recognizes:
+        </p>
+        <ul>
+          <li><strong>Section headers</strong> like <code>Verse 1:</code>,
+          <code> CHORUS</code>, <code>Pre-Chorus</code>, <code>Bridge</code>,
+          <code> Intro</code>, <code>Outro</code>.</li>
+          <li><strong>Chord lines</strong> — lines made up only of chord-shaped tokens
+          (<code>Cmaj7</code>, <code>F#m7b5</code>, <code>Bb/D</code>) get treated as
+          chords above the next lyric line.</li>
+          <li><strong>Inline chords</strong> — chords inside lyric lines, like
+          <code>[C]Hello [G]world</code>, are detected and floated above the right
+          syllable.</li>
+        </ul>
+        <h3>Editing</h3>
+        <p>
+          Click any chord or lyric to edit it inline. Right-click a section header for
+          options like rename, duplicate, or delete. Section labels are reorderable —
+          dragging a section moves all its lines with it.
+        </p>
+      </>
+    ),
+  },
+  {
+    id: "blended-documents",
+    title: "Blended Documents (coming soon)",
+    body: (
+      <>
+        <p>
+          A <strong>blended document</strong> mixes notated passages with chord-chart
+          sections in one file — so a song can carry its head arrangement (notated
+          melody, exact rhythms) alongside its rhythm-section chart (chords + lyrics for
+          the verses) without splitting it across two documents.
+        </p>
+        <p>
+          This is on the roadmap. Today you can build either a Score or a Chord Chart,
+          but not interleave them. When the feature lands, it will surface as a third
+          option in <em>File → New</em> and as a new section type inside existing
+          documents.
         </p>
       </>
     ),
@@ -46,37 +197,49 @@ const SECTIONS: Section[] = [
     body: (
       <>
         <p>
-          Edit mode is the default. The score sits in the center, the sidebar holds AI and
-          properties panels, and a status bar runs along the bottom.
+          Edit is the full interface — menu bar, sidebar, properties, status bar — and
+          it&apos;s where you build the document. It works the same way for Scores and
+          Chord Charts: the controls that don&apos;t apply to the current document type
+          simply disappear (no staff-tools when you&apos;re editing a Chord Chart, no
+          section-tools when you&apos;re editing a Score).
         </p>
-        <h3>Entering notes</h3>
+        <h3>Entering notes (Score)</h3>
         <ul>
           <li>Click an empty beat to place the cursor.</li>
-          <li>Type <Kbd>A</Kbd>–<Kbd>G</Kbd> to add a note at the cursor; the cursor advances
-          to the next beat.</li>
-          <li>Use the on-screen MIDI keyboard at the bottom of the screen, or play a connected
-          MIDI device.</li>
-          <li>Press <Kbd>L</Kbd> to enter lyric mode — type words under the highlighted note,
-          space advances to the next note.</li>
-          <li>Right-click a note for the context menu (change duration, edit with AI, delete).</li>
+          <li>Type <Kbd>A</Kbd>–<Kbd>G</Kbd> to add a note at the cursor; the cursor
+          advances to the next beat.</li>
+          <li>Use the on-screen MIDI keyboard at the bottom of the screen, or play a
+          connected MIDI device.</li>
+          <li>Press <Kbd>L</Kbd> to enter lyric mode — type words under the highlighted
+          note, space advances to the next note.</li>
+          <li>Right-click a note for the context menu (change duration, edit with AI,
+          delete).</li>
         </ul>
-        <h3>Key signature, time signature, tempo</h3>
+        <h3>Entering chords and lyrics (Chord Chart)</h3>
+        <ul>
+          <li>Click a chord or lyric line to edit it inline.</li>
+          <li>Add or rename sections from the section header right-click menu, or paste
+          a whole song via <em>Edit → Paste Lyrics / Chords…</em>.</li>
+        </ul>
+        <h3>Document properties</h3>
         <p>
-          Open the <em>Properties</em> drawer in the sidebar to change key, time signature,
-          tempo, number of measures, anacrusis (pickup bar), and more. Changes apply immediately
-          and are undoable.
+          Open the <em>Properties</em> drawer in the sidebar to change key, time
+          signature, tempo, number of measures, anacrusis (pickup bar), and more. Changes
+          apply immediately and are undoable.
         </p>
         <h3>Playback</h3>
         <p>
-          Hit <Kbd>Space</Kbd> or click <em>▶ Play</em> in the status bar. If a measure range
-          is selected, only that range plays. Toggle the loop button (⟲) to repeat, the
-          metronome (♩) for a click track, or the count-in (+1/+2) for one or two lead-in bars.
+          Hit <Kbd>Space</Kbd> or click <em>▶ Play</em> in the status bar. If a measure
+          range is selected, only that range plays. Toggle the loop button (⟲) to repeat,
+          the metronome (♩) for a click track, or the count-in (+1/+2) for one or two
+          lead-in bars.
         </p>
         <h3>Selection</h3>
         <p>
-          Click an empty area of a measure to select that measure. Shift-click another measure
-          to extend the range. Cmd-click on multi-staff scores toggles which staves are part
-          of the selection. Selections drive copy/paste, AI scope, and playback range.
+          Click an empty area of a measure to select that measure. Shift-click another
+          measure to extend the range. Cmd-click on multi-staff scores toggles which
+          staves are part of the selection. Selections drive copy/paste, AI scope, and
+          playback range.
         </p>
       </>
     ),
@@ -87,62 +250,79 @@ const SECTIONS: Section[] = [
     body: (
       <>
         <p>
-          Perform mode is a stripped-down full-screen view for actually playing your song,
-          designed for use on stage or at the music stand. It currently works for chord-chart
-          songs (sections with lyrics + chords).
+          Perform is a stripped-down full-screen view for actually playing your document,
+          designed for the music stand or the stage. It works for both Scores and Chord
+          Charts; the chord-chart Perform view is the most polished today, with large
+          high-contrast lyrics and page-snap navigation.
         </p>
         <h3>What&apos;s hidden</h3>
         <ul>
           <li>Menu bar, sidebar, status bar, properties — all gone.</li>
-          <li>Editing controls — Perform mode is read-only.</li>
-          <li>Annotation controls — annotations themselves can still be shown, but you
-          can&apos;t add or edit them while performing.</li>
+          <li>Editing controls — Perform is read-only as far as note entry goes.</li>
         </ul>
-        <h3>What you get</h3>
+        <h3>What you get (Chord Chart Perform)</h3>
         <ul>
-          <li>Large, high-contrast lyrics with chord names floating above the syllable they
-          land on.</li>
+          <li>Large, high-contrast lyrics with chord names floating above the syllable
+          they land on.</li>
           <li>Single- or double-column page layout (toggle in the floating controls).</li>
-          <li>Page-snap navigation — arrow keys / page-down step a full screen at a time.</li>
-          <li>A song picker for jumping to other saved songs without leaving Perform mode.</li>
+          <li>Page-snap navigation — arrow keys / page-down step a full screen at a
+          time.</li>
+          <li>A song picker for jumping to other saved songs without leaving Perform.</li>
         </ul>
+        <h3>Annotating from Perform</h3>
+        <p>
+          Annotate is available right inside Perform — there&apos;s a small button in
+          the floating control cluster. Tap it, drop a sticky note where you&apos;re
+          looking, and you stay on the same page at the same scroll position. See
+          <em> Annotations</em> below.
+        </p>
         <h3>Entering and exiting</h3>
         <p>
-          Click the <em>Perform</em> button in the mode selector at the top of the menu bar.
-          To exit, press <Kbd>Esc</Kbd> or click the close button in the corner.
+          Click the <em>Perform</em> button in the mode selector at the top of the menu
+          bar. To exit, press <Kbd>Esc</Kbd> or click the close button in the corner.
         </p>
       </>
     ),
   },
   {
-    id: "annotate-mode",
-    title: "Annotate Mode",
+    id: "annotations",
+    title: "Annotations",
     body: (
       <>
         <p>
-          Annotate mode lets you stick virtual sticky-notes anywhere on the score — for
+          Annotations are virtual sticky notes you place anywhere on the document — for
           rehearsal notes, fingerings, comments to a bandmate, or reminders to yourself.
+          Annotation is a <em>function</em>, not a top-level mode: you can use it from
+          inside Edit <em>or</em> from inside Perform, without leaving the view
+          you&apos;re in.
         </p>
+        <h3>Turning Annotate on</h3>
+        <ul>
+          <li>From <em>Edit</em>: pick <strong>Annotate</strong> in the mode selector at
+          the top of the menu bar. The editing chrome stays in place; the cursor turns
+          into a note-drop tool.</li>
+          <li>From <em>Perform</em>: tap the small <strong>Annotate</strong> button in
+          the floating control cluster. The full-screen view stays, the page stays
+          where it was — only the cursor changes.</li>
+        </ul>
         <h3>Placing a sticky note</h3>
         <ol>
-          <li>Switch to <em>Annotate</em> via the mode selector.</li>
-          <li>Click anywhere on the score where you want the note to live.</li>
+          <li>With Annotate active, click anywhere on the document where you want the
+          note to live.</li>
           <li>Type your text. The note stays anchored at that location and travels with
-          the score.</li>
+          the document.</li>
         </ol>
         <h3>Colors</h3>
         <p>
-          Each note has a color — <span className="text-yellow-300">yellow</span> (default),
-          {" "}<span className="text-blue-300">blue</span>,
+          Each note has a color — <span className="text-yellow-300">yellow</span>{" "}
+          (default), <span className="text-blue-300">blue</span>,
           {" "}<span className="text-pink-300">pink</span>, or
-          {" "}<span className="text-green-300">green</span>. Use them for your own
-          coding scheme — e.g. yellow for general notes, pink for &quot;ask the band&quot;,
-          green for &quot;done&quot;.
+          {" "}<span className="text-green-300">green</span>. Use them for your own coding
+          scheme — e.g. yellow for general notes, pink for &quot;ask the band&quot;, green
+          for &quot;done&quot;.
         </p>
         <h3>Shared vs Personal</h3>
-        <p>
-          Each note has a visibility:
-        </p>
+        <p>Each note has a visibility:</p>
         <ul>
           <li><strong>Shared</strong> — saved with the song and visible to everyone who
           loads it from the cloud.</li>
@@ -152,7 +332,8 @@ const SECTIONS: Section[] = [
         <h3>Labels</h3>
         <p>
           Tag a note with a label like <em>Guitar</em>, <em>Voice</em>, or <em>Drums</em>
-          (the defaults — you can add your own). Labels turn into chips in the filter bar.
+          {" "}(the defaults — you can add your own). Labels turn into chips in the filter
+          bar.
         </p>
         <h3>Filter bar</h3>
         <p>
@@ -165,38 +346,52 @@ const SECTIONS: Section[] = [
     ),
   },
   {
-    id: "chord-chart-mode",
-    title: "Chord Chart Mode",
+    id: "ai-assistant",
+    title: "AI Assistant",
     body: (
       <>
         <p>
-          A chord chart is a song laid out as lyrics with chord names above. NotationApp
-          treats it as a separate document type, with its own renderer and its own Perform
-          mode.
+          The AI Assistant lives in the sidebar — open it with <Kbd>Cmd&nbsp;B</Kbd> and
+          expand the <em>AI Assistant</em> drawer. The right time to reach for it is when
+          typing your intent is faster than doing it by hand.
         </p>
-        <h3>Creating a chord chart</h3>
+        <h3>When manual editing is faster</h3>
         <p>
-          Use <em>File → New Chord Chart</em>, or click <em>New Chord Chart</em> from the
-          empty-state buttons. You start with a single empty Verse 1 section.
+          Single notes, single chords, fixing a typo in a lyric, changing a duration —
+          click and type. The UI is built for that, and it&apos;ll always be quicker
+          than describing the change in words.
         </p>
-        <h3>Pasting from clipboard</h3>
+        <h3>When the AI is faster</h3>
         <p>
-          Use <em>Edit → Paste Lyrics / Chords…</em> or paste directly into the chart area.
-          The parser recognizes:
+          Anything that spans measures, sections, or staves. Examples:
         </p>
         <ul>
-          <li><strong>Section headers</strong> like <code>Verse 1:</code>, <code>CHORUS</code>,
-          <code> Pre-Chorus</code>, <code>Bridge</code>, <code>Intro</code>, <code>Outro</code>.</li>
-          <li><strong>Chord lines</strong> — lines made up only of chord-shaped tokens
-          (<code>Cmaj7</code>, <code>F#m7b5</code>, <code>Bb/D</code>) get treated as
-          chords above the next lyric line.</li>
-          <li><strong>Inline chords</strong> — chords inside lyric lines, like
-          <code>[C]Hello [G]world</code>, are detected and floated above the right syllable.</li>
+          <li><em>&quot;Transpose the bridge up a whole step&quot;</em></li>
+          <li><em>&quot;Copy the chord pattern from verse 1 to verse 2&quot;</em></li>
+          <li><em>&quot;Add a pickup measure before the chorus&quot;</em></li>
+          <li><em>&quot;Add a harmony a third above the melody from measures 9–16&quot;</em></li>
+          <li><em>&quot;Generate a 16-bar blues in F with a walking bass line&quot;</em>{" "}
+          (creates a new score from scratch).</li>
         </ul>
-        <h3>Editing</h3>
+        <h3>Scoping with selection</h3>
         <p>
-          Click any chord or lyric to edit it inline. Right-click a section header for
-          options like rename, duplicate, or delete.
+          Select a measure range first — the AI scopes its edit to that range and the
+          selection is attached to the prompt automatically. For inline single-note
+          edits, right-click a note → <em>Edit with AI</em>.
+        </p>
+        <h3>Built-in commands</h3>
+        <p>
+          Some prompts are recognized as deterministic transforms and run instantly
+          without calling the AI — things like <em>copy</em>, <em>paste</em>,
+          <em> transpose up a step</em>. The AI is only invoked when needed.
+        </p>
+        <h3>Bring Your Own Key (BYOK)</h3>
+        <p>
+          You can supply your own Anthropic or OpenAI API key from
+          <em> Edit → API Keys</em>; usage is then billed to your account directly. If
+          no BYOK key is set and the deployment doesn&apos;t have a server-side default
+          configured, the AI panel shows a &quot;No LLM connected&quot; banner with a
+          shortcut to add one.
         </p>
       </>
     ),
@@ -232,43 +427,6 @@ const SECTIONS: Section[] = [
         <p>
           If a session crashes, <em>File → Recover from Auto-save…</em> shows the last
           ~50 IndexedDB snapshots so you can restore one.
-        </p>
-      </>
-    ),
-  },
-  {
-    id: "ai-features",
-    title: "AI Features",
-    body: (
-      <>
-        <p>
-          The AI Assistant lives in the sidebar. Open it with <Kbd>Cmd&nbsp;B</Kbd> and
-          expand the <em>AI Assistant</em> drawer.
-        </p>
-        <h3>What it can do</h3>
-        <ul>
-          <li>Generate a score from a description: <em>&quot;a 16-bar blues in F with a
-          walking bass line&quot;</em>.</li>
-          <li>Edit the current score: <em>&quot;transpose to G major&quot;</em>,
-          <em>&quot;add a harmony a third above the melody&quot;</em>,
-          <em>&quot;double the tempo&quot;</em>.</li>
-          <li>Operate on a selection — select measures first, and the AI scopes its
-          edit to that range. The selection gets attached to the prompt automatically.</li>
-          <li>Right-click any note → <em>Edit with AI</em> to open an inline prompt
-          targeted at just that note.</li>
-        </ul>
-        <h3>Built-in commands</h3>
-        <p>
-          Some prompts are recognized as deterministic transforms and run instantly without
-          calling the AI — things like <em>copy</em>, <em>paste</em>, <em>transpose up
-          a step</em>. The AI is only invoked when needed.
-        </p>
-        <h3>Bring Your Own Key (BYOK)</h3>
-        <p>
-          If your build supports BYOK, you can supply your own Anthropic API key in
-          settings — usage is then billed to your account directly. If BYOK isn&apos;t
-          enabled in your deployment, the AI features use the server&apos;s configured
-          key (or fall back to a static-export message if neither is available).
         </p>
       </>
     ),
