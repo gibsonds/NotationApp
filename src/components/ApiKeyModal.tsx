@@ -81,6 +81,7 @@ export default function ApiKeyModal({ onClose }: ApiKeyModalProps) {
     }
     setApiKey(provider, draft.trim());
     logEvent("api_key_set", provider);
+    window.dispatchEvent(new CustomEvent("notation-app-byok-change"));
     setStoreRevision((r) => r + 1);
     setDraft("");
     setShow(false);
@@ -91,6 +92,7 @@ export default function ApiKeyModal({ onClose }: ApiKeyModalProps) {
   const handleRemove = () => {
     clearApiKey(provider);
     logEvent("api_key_removed", provider);
+    window.dispatchEvent(new CustomEvent("notation-app-byok-change"));
     setStoreRevision((r) => r + 1);
     setDraft("");
     setShow(false);

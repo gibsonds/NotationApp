@@ -728,7 +728,7 @@ export default function Home() {
               }}
               flex
             >
-              <PromptPanel />
+              <PromptPanel onOpenApiKeys={() => setApiKeysOpen(true)} />
             </DrawerSection>
           </div>
         </div>

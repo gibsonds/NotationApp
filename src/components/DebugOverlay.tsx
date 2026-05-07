@@ -125,11 +125,11 @@ export default function DebugOverlay() {
           <li className="text-gray-500 italic px-1 py-2">No events yet.</li>
         ) : (
           recent.map((ev, i) => (
-            <li key={`${ev.timestamp}-${i}`} className="flex gap-2 leading-tight">
+            <li key={`${ev.t}-${i}`} className="flex gap-2 leading-tight">
               <span className="text-gray-500 shrink-0 tabular-nums">
-                {formatTimestamp(ev.timestamp)}
+                {formatTimestamp(ev.t)}
               </span>
-              <span className="text-gray-200 truncate">{ev.event}</span>
+              <span className="text-gray-200 truncate">{ev.e}</span>
             </li>
           ))
         )}

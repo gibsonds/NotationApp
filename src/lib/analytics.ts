@@ -1,66 +1,46 @@
-// Lightweight client-side usage instrumentation. Logs anonymized interaction
-// events to a localStorage ring buffer so we can inspect what users do without
-// shipping any of their content. Event payloads are deliberately minimal:
-// names + score type + platform — never lyrics, chord names, annotation text,
-// AI prompts, or any user-typed string.
+// Lightweight client-side usage instrumentation. Always-on for all users;
+// payloads are deliberately minimal — short field names, no user content.
 //
 // Storage layout:
 //   localStorage["notation-app-analytics"] = JSON array, oldest-first, capped
 //     at MAX_EVENTS. Oldest entries are dropped when full.
-//   sessionStorage["notation-app-session-id"] = UUID generated lazily once per
-//     browser session; cleared when the tab closes.
+//   sessionStorage["notation-app-session-id"] = UUID generated lazily once
+//     per browser session; cleared when the tab closes.
+//
+// Stored shape per event: { e, t, s }
+//   e = event name (with ":<name>" suffix when caller passed a `name`)
+//   t = unix ms timestamp
+//   s = first 8 chars of session id
+// appVersion / scoreType / platform are intentionally NOT stored — they bulk
+// up the buffer and can be derived at analysis time from session metadata.
 
 import { v4 as uuidv4 } from "uuid";
-import packageJson from "../../package.json";
 
 const STORAGE_KEY = "notation-app-analytics";
 const SESSION_KEY = "notation-app-session-id";
-const MAX_EVENTS = 500;
+const MAX_EVENTS = 100;
+const SESSION_PREFIX_LEN = 8;
 
 export type ScoreType = "notation" | "chord-chart" | "none";
 
 export interface AnalyticsEvent {
-  event: string;
-  timestamp: number;
-  sessionId: string;
-  appVersion: string;
-  scoreType: ScoreType;
-  platform: string;
+  e: string;
+  t: number;
+  s: string;
 }
 
 // Optional per-event extras — kept tiny on purpose. Callers may pass a
-// `name` (menu item label, mode name, error type, etc.); we never accept
-// freeform user content here. No `text`, `prompt`, `lyric`, or `chord`
-// fields exist by design.
+// `name` (menu item label, mode name, error type, etc.) and a `scoreType`
+// for back-compat with existing call sites; we never accept freeform user
+// content here. `scoreType` is currently ignored at write time (see header).
 export interface LogEventInput {
   event: string;
   scoreType?: ScoreType;
   name?: string;
 }
 
-const APP_VERSION = (packageJson as { version?: string }).version ?? "unknown";
-
 function isBrowser(): boolean {
   return typeof window !== "undefined";
-}
-
-function getPlatform(): string {
-  if (!isBrowser()) return "ssr";
-  const nav = window.navigator;
-  // userAgentData is the modern, privacy-conscious surface; fall back to
-  // platform/userAgent for older browsers. We only record the broad bucket
-  // (Mac, Windows, Linux, iOS, Android, Other) — never the full UA.
-  const uaPlatform = (nav as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform
-    ?? nav.platform
-    ?? "";
-  const ua = nav.userAgent || "";
-  const lower = (uaPlatform || ua).toLowerCase();
-  if (lower.includes("iphone") || lower.includes("ipad") || lower.includes("ios")) return "iOS";
-  if (lower.includes("android")) return "Android";
-  if (lower.includes("mac")) return "macOS";
-  if (lower.includes("win")) return "Windows";
-  if (lower.includes("linux")) return "Linux";
-  return "Other";
 }
 
 function getSessionId(): string {
@@ -72,9 +52,7 @@ function getSessionId(): string {
     window.sessionStorage.setItem(SESSION_KEY, fresh);
     return fresh;
   } catch {
-    // Session storage can throw in privacy modes — fall back to a per-call
-    // id so we still log something coherent within this call.
-    return "no-session";
+    return "no-sess";
   }
 }
 
@@ -84,7 +62,25 @@ function readBuffer(): AnalyticsEvent[] {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    if (!Array.isArray(parsed)) return [];
+    // Tolerate the previous (verbose) shape if the buffer was written by an
+    // older build — normalize to {e,t,s}.
+    return parsed
+      .map((ev): AnalyticsEvent | null => {
+        if (!ev || typeof ev !== "object") return null;
+        if (typeof ev.e === "string" && typeof ev.t === "number") {
+          return { e: ev.e, t: ev.t, s: typeof ev.s === "string" ? ev.s : "" };
+        }
+        if (typeof ev.event === "string" && typeof ev.timestamp === "number") {
+          return {
+            e: ev.event,
+            t: ev.timestamp,
+            s: typeof ev.sessionId === "string" ? ev.sessionId.slice(0, SESSION_PREFIX_LEN) : "",
+          };
+        }
+        return null;
+      })
+      .filter((x): x is AnalyticsEvent => x !== null);
   } catch {
     return [];
   }
@@ -95,34 +91,25 @@ function writeBuffer(events: AnalyticsEvent[]): void {
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(events));
   } catch {
-    // Quota exceeded or storage disabled — drop silently. Analytics must
-    // never break the app.
+    // Quota exceeded or storage disabled — drop silently.
   }
 }
 
-export function logEvent(input: LogEventInput | AnalyticsEvent): void {
+export function logEvent(input: LogEventInput): void {
   if (!isBrowser()) return;
   const eventName = input.event;
   if (!eventName) return;
-  // If the caller passes a fully-formed event (e.g. replaying), respect its
-  // fields; otherwise fill in the contextual ones.
-  const fullEvent: AnalyticsEvent = "sessionId" in input && "timestamp" in input
-    ? input as AnalyticsEvent
-    : {
-        event: input.name ? `${eventName}:${input.name}` : eventName,
-        timestamp: Date.now(),
-        sessionId: getSessionId(),
-        appVersion: APP_VERSION,
-        scoreType: (input as LogEventInput).scoreType ?? "none",
-        platform: getPlatform(),
-      };
+  const ev: AnalyticsEvent = {
+    e: input.name ? `${eventName}:${input.name}` : eventName,
+    t: Date.now(),
+    s: getSessionId().slice(0, SESSION_PREFIX_LEN),
+  };
   const buffer = readBuffer();
-  buffer.push(fullEvent);
+  buffer.push(ev);
   while (buffer.length > MAX_EVENTS) buffer.shift();
   writeBuffer(buffer);
-  // Notify in-page listeners (the debug overlay polls via this event).
   try {
-    window.dispatchEvent(new CustomEvent("notation-app-analytics", { detail: fullEvent }));
+    window.dispatchEvent(new CustomEvent("notation-app-analytics", { detail: ev }));
   } catch {
     // CustomEvent unavailable in some environments — non-fatal.
   }

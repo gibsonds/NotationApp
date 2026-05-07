@@ -420,6 +420,8 @@ export default function MenuBar({
 
   const toolsMenu: MenuItem[] = [
     { label: "Transcribe Audio...", action: () => audioInputRef.current?.click() },
+    { separator: true },
+    { label: "User Guide", action: () => { if (typeof window !== "undefined") window.open("/docs", "_blank"); } },
   ];
 
   return (

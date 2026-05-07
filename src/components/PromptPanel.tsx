@@ -4,11 +4,17 @@ import { useState, useRef, useEffect } from "react";
 import { useScoreStore, ChatMessage, RecordedOperation } from "@/store/score-store";
 import { matchBuiltinCommand, BUILTIN_COMMANDS } from "@/lib/transforms";
 import { IS_STATIC_EXPORT, STATIC_FEATURE_DISABLED_MESSAGE } from "@/lib/api-availability";
-import { getByokHeaders } from "@/lib/api-key-store";
+import { getApiKey, getByokHeaders } from "@/lib/api-key-store";
 import { v4 as uuidv4 } from "uuid";
 import { logEvent, scoreTypeOf } from "@/lib/analytics";
 
-export default function PromptPanel() {
+interface PromptPanelProps {
+  /** Opens the API Keys (BYOK) modal — supplied by the page so the
+   *  no-key prompt has somewhere to send the user. */
+  onOpenApiKeys?: () => void;
+}
+
+export default function PromptPanel({ onOpenApiKeys }: PromptPanelProps = {}) {
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const {
@@ -31,6 +37,44 @@ export default function PromptPanel() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // No-key detection: BYOK first (instant, local), then server env-var
+  // default (one fetch). When both are absent we render the prompt to
+  // link a key. Static-export builds have no server, so skip the fetch
+  // and rely on BYOK alone.
+  const [hasByokKey, setHasByokKey] = useState(false);
+  const [serverHasDefaultKey, setServerHasDefaultKey] = useState<boolean | null>(IS_STATIC_EXPORT ? false : null);
+
+  useEffect(() => {
+    const refreshByok = () => {
+      setHasByokKey(!!(getApiKey("anthropic") || getApiKey("openai")));
+    };
+    refreshByok();
+    window.addEventListener("storage", refreshByok);
+    window.addEventListener("notation-app-byok-change", refreshByok);
+    return () => {
+      window.removeEventListener("storage", refreshByok);
+      window.removeEventListener("notation-app-byok-change", refreshByok);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (IS_STATIC_EXPORT) return;
+    let cancelled = false;
+    fetch("/api/llm-status")
+      .then((r) => (r.ok ? r.json() : { hasDefaultKey: false }))
+      .then((data) => {
+        if (!cancelled) setServerHasDefaultKey(!!data?.hasDefaultKey);
+      })
+      .catch(() => {
+        if (!cancelled) setServerHasDefaultKey(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const noKeyAvailable = !hasByokKey && serverHasDefaultKey === false;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -270,6 +314,26 @@ export default function PromptPanel() {
           Describe the music you want to create or edit
         </p>
       </div>
+
+      {/* No-LLM-key banner — shown above the messages list. Stays visible
+          while the panel has no key configured so the user always has a
+          path to fix it without hunting through menus. */}
+      {noKeyAvailable && (
+        <div className="px-4 py-3 border-b border-amber-500/30 bg-amber-500/10 text-[12px] text-amber-200">
+          No LLM connected.{" "}
+          {onOpenApiKeys ? (
+            <button
+              type="button"
+              onClick={onOpenApiKeys}
+              className="underline underline-offset-2 hover:text-amber-100"
+            >
+              Link your API key &rarr;
+            </button>
+          ) : (
+            <span className="opacity-80">Add an API key from the Edit menu &rarr; API Keys.</span>
+          )}
+        </div>
+      )}
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-3 space-y-2.5">
