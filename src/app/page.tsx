@@ -1221,15 +1221,26 @@ export default function Home() {
         />
       )}
 
-      {/* Annotate sub-mode toggle — pinned to the top-right of the
-          viewport in edit mode (PerformView renders its own at the same
-          screen position when active, so this one is hidden behind it).
-          Putting it in a fixed wrapper guarantees it lives in the SAME
-          screen location whether the user is in Edit or Perform — no
-          button-shuffling between modes. */}
+      {/* Mode cluster — pinned top-right in the SAME screen position used
+          in PerformView. In edit mode the neighbor of Annotate is Perform;
+          in perform mode it's Edit (rendered by PerformView). The Perform
+          button is disabled unless the score has chord-chart sections. */}
       {!uiState.performMode && score && (
         <div className="fixed top-3 right-3 z-40 flex items-center gap-1 rounded-xl bg-gray-900/80 backdrop-blur-sm shadow border border-white/10 p-1 print-hide">
           <AnnotateToggle />
+          <button
+            type="button"
+            onClick={() => {
+              if (!(score.sections && score.sections.length > 0)) return;
+              setUIState({ performMode: true });
+            }}
+            disabled={!(score.sections && score.sections.length > 0)}
+            className="px-3 h-11 rounded-lg bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-blue-600"
+            title={(score.sections && score.sections.length > 0) ? "Open the perform view" : "Perform mode requires a chord-chart score"}
+            aria-label="Perform"
+          >
+            Perform
+          </button>
         </div>
       )}
     </div>
