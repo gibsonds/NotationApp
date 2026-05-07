@@ -65,7 +65,7 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
   // toggles uiState.annotationMode without leaving perform — same scroll
   // position, same chrome — so the user can drop a note where they're
   // already looking on the chart.
-  const annotationMode = useScoreStore(s => s.uiState.annotationMode);
+  const annotationMode = useScoreStore(s => s.uiState.appMode === "annotate");
   // 1-col scrolls the outer container vertically; 2-col scrolls the
   // PaginatedPerformChart's inner pages strip horizontally. They live in
   // different DOM nodes so we need separate refs.
@@ -369,7 +369,7 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
       <div className="absolute top-3 right-3 z-30 flex items-center gap-1 rounded-xl bg-gray-900/80 backdrop-blur-sm shadow border border-white/10 p-1">
         <button
           type="button"
-          onClick={() => setUIState({ annotationMode: !annotationMode })}
+          onClick={() => setUIState({ appMode: annotationMode ? "perform" : "annotate" })}
           className={`px-3 h-11 rounded-lg text-sm font-medium transition-colors ${
             annotationMode
               ? "bg-yellow-400 text-gray-900 hover:bg-yellow-300"
@@ -386,7 +386,6 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
           onClick={() => {
             // Leaving perform also clears annotate so the editor opens in
             // its normal edit state, not in annotate-while-edit.
-            if (annotationMode) setUIState({ annotationMode: false });
             onExit();
           }}
           className="px-3 h-11 rounded-lg bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-sm font-medium"
