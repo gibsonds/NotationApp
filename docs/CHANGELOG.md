@@ -3,6 +3,15 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-07 — 4d8b286
+
+**My Songs: badge each entry as Score / Chart, accept both (#72)**
+
+- Commit: [`4d8b286`](../../commit/4d8b286d4efcbee4a62f927a541c395d3260211b)
+- Author: gibsonds
+- Files changed:
+  - `src/components/MySongsModal.tsx`
+
 ## 2026-05-07 — a54c004
 
 **Move audio transcribe to dev/audio-transcribe branch (#71)**
