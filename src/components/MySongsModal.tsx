@@ -478,7 +478,7 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
           </div>
         ) : (
           <div className="px-5 py-3 bg-gray-50 border-b border-gray-200">
-            <p className="text-sm text-gray-500">Open or create a score to save it here.</p>
+            <p className="text-sm text-gray-500">Open or create a score or chord chart to save it here.</p>
           </div>
         )}
 
@@ -541,10 +541,28 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
                             <button
                               type="button"
                               onClick={() => startRename(entry)}
-                              className="text-sm font-medium text-gray-900 truncate text-left hover:text-blue-700 w-full"
+                              className="text-sm font-medium text-gray-900 truncate text-left hover:text-blue-700 w-full inline-flex items-center gap-2"
                               title="Click to rename"
                             >
-                              {entry.title}
+                              <span className="truncate">{entry.title}</span>
+                              {(() => {
+                                const t = scoreTypeOf(entry.score);
+                                if (t === "chord-chart") {
+                                  return (
+                                    <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-pink-100 text-pink-700 shrink-0">
+                                      Chart
+                                    </span>
+                                  );
+                                }
+                                if (t === "notation") {
+                                  return (
+                                    <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 shrink-0">
+                                      Score
+                                    </span>
+                                  );
+                                }
+                                return null;
+                              })()}
                             </button>
                           )}
                           <div className="text-xs text-gray-400 mt-0.5">
