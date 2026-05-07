@@ -190,7 +190,7 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
       {prefs.columns === 1 ? (
         <div
           ref={scrollRef}
-          className="absolute inset-0 overflow-auto pt-[7vh] pb-[9vh]"
+          className="absolute inset-0 overflow-auto pt-[7vh] pb-16"
         >
           <div className="relative">
             <ChordChartView score={score} performMode performColumns={1} />
@@ -205,43 +205,42 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
         />
       )}
 
-      {/* Top tap zone — page up. Shrunk to free vertical real estate;
-          still well above Apple HIG's 44pt minimum on iPad. */}
-      <button
-        type="button"
-        onClick={() => pageBy(-1)}
-        className="absolute top-0 left-0 right-0 h-[7vh] flex items-start justify-center pt-1 text-gray-400 hover:bg-white/5 active:bg-white/10 transition-colors"
-        aria-label="Scroll up"
-      >
-        <svg
-          className="w-7 h-7 opacity-40"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth={2}
+      {/* Pager — compact bidirectional control floated at bottom-center.
+          Replaces the full-width top/bottom tap zones that obscured
+          lyrics. Arrow direction tracks the column mode: ↑/↓ in 1-col
+          (vertical paging), ←/→ in 2-col (horizontal page-turn). */}
+      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1 rounded-xl bg-gray-900/70 backdrop-blur-sm shadow border border-white/10 p-1">
+        <button
+          type="button"
+          onClick={() => pageBy(-1)}
+          className={btn}
+          aria-label="Previous page"
+          title="Previous page"
         >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
-        </svg>
-      </button>
-
-      {/* Bottom tap zone — page down. Slightly larger than the top zone
-          since it gets the most use during performance. */}
-      <button
-        type="button"
-        onClick={() => pageBy(1)}
-        className="absolute bottom-0 left-0 right-0 h-[9vh] flex items-end justify-center pb-2 text-gray-400 hover:bg-white/5 active:bg-white/10 transition-colors"
-        aria-label="Scroll down"
-      >
-        <svg
-          className="w-8 h-8 opacity-40"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth={2}
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            {prefs.columns === 2 ? (
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+            ) : (
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+            )}
+          </svg>
+        </button>
+        <button
+          type="button"
+          onClick={() => pageBy(1)}
+          className={btn}
+          aria-label="Next page"
+          title="Next page"
         >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            {prefs.columns === 2 ? (
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+            ) : (
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            )}
+          </svg>
+        </button>
+      </div>
 
       {/* Top-left nav cluster — Prev / Title (opens picker) / Next */}
       {songs.length > 0 && (
