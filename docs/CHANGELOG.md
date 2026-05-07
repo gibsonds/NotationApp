@@ -3,6 +3,15 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-07 — 357e1bf
+
+**docs: rewrite chord how-to for songwriter "lyrics already loaded" flow (#78)**
+
+- Commit: [`357e1bf`](../../commit/357e1bfe69f0d040c328562482812d309fa7d665)
+- Author: gibsonds
+- Files changed:
+  - `src/app/docs/page.tsx`
+
 ## 2026-05-07 — e752d2f
 
 **docs: How To — add chords above lyrics (with visual) (#77)**
