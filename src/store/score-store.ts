@@ -229,11 +229,15 @@ export const DEFAULT_ANNOTATION_FILTERS: AnnotationFilters = {
   hideInPerformance: false,
 };
 
+export type AppMode = "edit" | "perform" | "annotate";
+
 export interface UIState {
   sidebarOpen: boolean;
   aiDrawerOpen: boolean;
   propsDrawerOpen: boolean;
-  performMode: boolean;
+  /** Top-level interaction mode. Drives the perform overlay (`appMode === "perform"`)
+   *  and the annotation click-layer (`appMode === "annotate"`). */
+  appMode: AppMode;
   /** Song-bank entry id of the currently loaded score, or null if the
    *  score isn't from the bank (e.g. fresh creation, AI-generated). Used
    *  by PerformView to find prev/next songs in the user's list. */
@@ -245,7 +249,6 @@ export interface UIState {
    *  Null means "all songs". When set to a folder name, prev/next and
    *  the picker only see songs in that folder. Sticky across launches. */
   performFolder: string | null;
-  annotationMode: boolean;
   annotationFilters: AnnotationFilters;
 }
 
@@ -253,11 +256,10 @@ export const DEFAULT_UI_STATE: UIState = {
   sidebarOpen: true,
   aiDrawerOpen: false,
   propsDrawerOpen: true,
-  performMode: false,
+  appMode: "edit",
   currentSongId: null,
   collapsedFolders: [],
   performFolder: null,
-  annotationMode: false,
   annotationFilters: DEFAULT_ANNOTATION_FILTERS,
 };
 
@@ -751,7 +753,7 @@ export const useScoreStore = create<ProjectState>()(
     }),
     {
       name: "notation-app-store",
-      version: 11,
+      version: 12,
       migrate: (persisted: any, version: number) => {
         if (version < 2) {
           persisted = { ...persisted, savedRevisions: persisted.savedRevisions ?? [] };
@@ -804,9 +806,24 @@ export const useScoreStore = create<ProjectState>()(
             uiState: persisted.uiState ?? DEFAULT_UI_STATE,
           };
         }
+        if (version < 12) {
+          // Fold the old performMode / annotationMode booleans into the
+          // unified appMode tri-state. Both can't be true at once, but if
+          // somehow both are set, perform wins (matches the old precedence
+          // where the perform overlay covered annotation UI).
+          const ui = (persisted.uiState ?? {}) as Record<string, unknown>;
+          let appMode: AppMode = "edit";
+          if (ui.performMode) appMode = "perform";
+          else if (ui.annotationMode) appMode = "annotate";
+          const { performMode, annotationMode, ...rest } = ui;
+          void performMode; void annotationMode;
+          persisted = {
+            ...persisted,
+            uiState: { ...rest, appMode },
+          };
+        }
         // Always reconcile UIState with current defaults so newly-added
-        // fields (collapsedFolders, currentSongId, annotationMode, etc.)
-        // don't show up as undefined on first load after an upgrade.
+        // fields don't show up as undefined on first load after an upgrade.
         persisted = {
           ...persisted,
           uiState: { ...DEFAULT_UI_STATE, ...(persisted.uiState ?? {}) },

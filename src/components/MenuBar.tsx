@@ -3,9 +3,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useScoreStore } from "@/store/score-store";
 import { scoreToMusicXML } from "@/lib/musicxml";
-import { downloadScoreAsMidi } from "@/lib/midi-export";
-import { downloadScoreAsChordPro } from "@/lib/chordpro-export";
-import { parseChordPro } from "@/lib/chordpro-import";
 import { ScoreSchema } from "@/lib/schema";
 import CloudSaveIndicator from "@/components/CloudSaveIndicator";
 import ModeSelector from "@/components/ModeSelector";
@@ -216,16 +213,6 @@ export default function MenuBar({
     downloadFile(svgData, `${score?.title || "score"}.svg`, "image/svg+xml");
   };
 
-  const handleExportMidi = () => {
-    if (!score) return;
-    downloadScoreAsMidi(score);
-  };
-
-  const handleExportChordPro = () => {
-    if (!score) return;
-    downloadScoreAsChordPro(score);
-  };
-
   const handlePrint = () => {
     if (!score) return;
     if (onPrint) onPrint();
@@ -290,27 +277,6 @@ export default function MenuBar({
         }
         setScore(result.data);
         addMessage({ id: uuidv4(), role: "assistant", content: `Loaded ${file.name}.`, timestamp: Date.now() });
-      } catch (err: any) {
-        addMessage({ id: uuidv4(), role: "assistant", content: `Import error: ${err.message}`, timestamp: Date.now() });
-      } finally {
-        if (fileInputRef.current) fileInputRef.current.value = "";
-      }
-      return;
-    }
-
-    // ChordPro family \u2014 pure client-side, works in static export.
-    if (filename.endsWith(".cho") || filename.endsWith(".crd") || filename.endsWith(".pro") || filename.endsWith(".chopro")) {
-      try {
-        const text = await file.text();
-        const { score: parsed, warnings } = parseChordPro(text);
-        const validated = ScoreSchema.safeParse(parsed);
-        if (!validated.success) {
-          addMessage({ id: uuidv4(), role: "assistant", content: `Import error: ${validated.error.issues.map(i => i.message).join(", ")}`, timestamp: Date.now() });
-          return;
-        }
-        setScore(validated.data);
-        const note = warnings.length ? ` (${warnings.join("; ")})` : "";
-        addMessage({ id: uuidv4(), role: "assistant", content: `Loaded ${file.name}${note}.`, timestamp: Date.now() });
       } catch (err: any) {
         addMessage({ id: uuidv4(), role: "assistant", content: `Import error: ${err.message}`, timestamp: Date.now() });
       } finally {
@@ -411,8 +377,6 @@ export default function MenuBar({
     { label: "Save Project", action: handleSaveProject, enabled: !!score },
     { separator: true },
     { label: "Export MusicXML", action: handleExportMusicXML, enabled: !!score },
-    { label: "Export MIDI", action: handleExportMidi, enabled: !!score },
-    { label: "Export ChordPro", action: handleExportChordPro, enabled: !!(score && score.sections && score.sections.length > 0) },
     { label: "Export SVG", action: handleExportSVG, enabled: !!score },
     { label: "Export JSON", action: handleExportJSON, enabled: !!score },
     { separator: true },
@@ -447,11 +411,11 @@ export default function MenuBar({
   return (
     <>
       {/* Hidden file inputs */}
-      <input ref={fileInputRef} type="file" accept=".mid,.midi,.snt,.musicxml,.mxl,.xml,.json,.cho,.crd,.pro,.chopro" onChange={handleImport} className="hidden" />
+      <input ref={fileInputRef} type="file" accept=".mid,.midi,.snt,.musicxml,.mxl,.xml,.json" onChange={handleImport} className="hidden" />
       <input ref={audioInputRef} type="file" accept=".mp3,.m4a,.wav,.aif,.aiff,.ogg,.flac,.mp4" onChange={handleTranscribe} className="hidden" />
       <input ref={projectInputRef} type="file" accept=".notation,.json" onChange={handleOpenProject} className="hidden" />
 
-      <div className="relative flex items-center gap-0.5 px-2 py-1 bg-[#0f0f23] border-b border-white/10 text-gray-300">
+      <div className="flex items-center gap-0.5 px-2 py-1 bg-[#0f0f23] border-b border-white/10 text-gray-300">
         {/* Brand */}
         <span className="text-sm font-bold text-gray-100 mr-3 tracking-wide">\u2669 NotationApp</span>
 
@@ -463,15 +427,17 @@ export default function MenuBar({
 
         <CloudSaveIndicator />
 
-        {/* Mode selector — absolutely centered in the bar */}
-        <div className="absolute left-1/2 -translate-x-1/2 pointer-events-none flex items-center">
-          <div className="pointer-events-auto">
-            <ModeSelector />
-          </div>
-        </div>
-
         {/* Spacer */}
         <div className="flex-1" />
+
+        {/* Mode selector — Edit | Perform | Annotate. Perform requires
+            a chord-chart song (sections); for staff-only scores it's disabled. */}
+        <div className="mr-2">
+          <ModeSelector
+            performAvailable={!!(score?.sections && score.sections.length > 0)}
+          />
+        </div>
+
 
         {/* Quick-access icons: Undo/Redo + Zoom */}
         <div className="flex items-center gap-0.5">
