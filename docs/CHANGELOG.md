@@ -3,6 +3,15 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-07 — 325bfb3
+
+**Fix infinite update loop in PaginatedPerformChart (#70)**
+
+- Commit: [`325bfb3`](../../commit/325bfb3844f85be5c990b6ac8a2310575397d2ed)
+- Author: gibsonds
+- Files changed:
+  - `src/components/PaginatedPerformChart.tsx`
+
 ## 2026-05-07 — f25a45c
 
 **Merge main: adopt Annotate-as-overlay model (#64, #66)**
