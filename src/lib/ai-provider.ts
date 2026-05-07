@@ -449,9 +449,19 @@ export class OpenAIProvider implements ScoreIntentProvider {
 
 // ── Provider Factory ───────────────────────────────────────────────────────
 
-export function createProvider(): ScoreIntentProvider {
-  const anthropicKey = process.env.ANTHROPIC_API_KEY;
-  const openaiKey = process.env.OPENAI_API_KEY;
+export interface ByokOverrides {
+  anthropic?: string;
+  openai?: string;
+}
+
+/**
+ * Build a provider, preferring BYOK keys (passed by the client per request)
+ * over the server's env-var defaults. BYOK keys must NEVER be persisted —
+ * they are accepted in-memory for this request only.
+ */
+export function createProvider(byok?: ByokOverrides): ScoreIntentProvider {
+  const anthropicKey = byok?.anthropic || process.env.ANTHROPIC_API_KEY;
+  const openaiKey = byok?.openai || process.env.OPENAI_API_KEY;
 
   if (anthropicKey) {
     return new ClaudeProvider(
@@ -468,8 +478,18 @@ export function createProvider(): ScoreIntentProvider {
   }
 
   throw new Error(
-    "No AI provider configured. Set ANTHROPIC_API_KEY or OPENAI_API_KEY."
+    "No AI provider configured. Set ANTHROPIC_API_KEY or OPENAI_API_KEY, or add a key via the API Keys settings."
   );
+}
+
+/** Extract BYOK overrides from request headers. Returns empty object when none. */
+export function byokFromHeaders(headers: Headers): ByokOverrides {
+  const out: ByokOverrides = {};
+  const a = headers.get("x-byok-anthropic-key");
+  const o = headers.get("x-byok-openai-key");
+  if (a) out.anthropic = a;
+  if (o) out.openai = o;
+  return out;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────

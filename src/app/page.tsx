@@ -19,6 +19,7 @@ import ChordChartView from "@/components/ChordChartView";
 import AutosaveRecoveryDialog from "@/components/AutosaveRecoveryDialog";
 import PasteLyricsModal from "@/components/PasteLyricsModal";
 import MySongsModal from "@/components/MySongsModal";
+import ApiKeyModal from "@/components/ApiKeyModal";
 import JoinSongbookModal from "@/components/JoinSongbookModal";
 import PerformView from "@/components/PerformView";
 import PersistFailureBanner from "@/components/PersistFailureBanner";
@@ -85,6 +86,7 @@ export default function Home() {
   const [pasteLyricsOpen, setPasteLyricsOpen] = useState(false);
   const [mySongsOpen, setMySongsOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [apiKeysOpen, setApiKeysOpen] = useState(false);
   const [joinCode, setJoinCode] = useState<string | null>(null);
   const [inlineAI, setInlineAI] = useState<{ note: { measure: number; beat: number; pitch: string; staffIndex: number }; position: { x: number; y: number } } | null>(null);
   const printFnRef = useRef<(() => Promise<void>) | null>(null);
@@ -668,6 +670,7 @@ export default function Home() {
           onPasteLyrics={() => setPasteLyricsOpen(true)}
           onMySongs={() => setMySongsOpen(true)}
           onSendFeedback={() => setFeedbackOpen(true)}
+          onApiKeys={() => setApiKeysOpen(true)}
         />
       </div>
 
@@ -1187,6 +1190,11 @@ export default function Home() {
       {/* My Songs modal */}
       {mySongsOpen && (
         <MySongsModal onClose={() => setMySongsOpen(false)} />
+      )}
+
+      {/* API Keys (BYOK) modal */}
+      {apiKeysOpen && (
+        <ApiKeyModal onClose={() => setApiKeysOpen(false)} />
       )}
 
       {/* Autosave recovery dialog */}

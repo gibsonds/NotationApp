@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createProvider } from "@/lib/ai-provider";
+import { createProvider, byokFromHeaders } from "@/lib/ai-provider";
 import { expandIntentToScore, validateScore, validateScoreIntent } from "@/lib/validation";
 
 export async function POST(req: NextRequest) {
@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const provider = createProvider();
+    const provider = createProvider(byokFromHeaders(req.headers));
     const { intent, message } = await provider.createScoreFromPrompt(prompt);
 
     // Validate intent schema

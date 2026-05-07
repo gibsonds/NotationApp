@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { useScoreStore, ChatMessage, RecordedOperation } from "@/store/score-store";
 import { matchBuiltinCommand, BUILTIN_COMMANDS } from "@/lib/transforms";
 import { IS_STATIC_EXPORT, STATIC_FEATURE_DISABLED_MESSAGE } from "@/lib/api-availability";
+import { getByokHeaders } from "@/lib/api-key-store";
 import { v4 as uuidv4 } from "uuid";
 
 export default function PromptPanel() {
@@ -134,7 +135,7 @@ export default function PromptPanel() {
 
       const res = await fetch(endpoint, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getByokHeaders() },
         body: JSON.stringify(body),
       });
 
@@ -216,7 +217,7 @@ export default function PromptPanel() {
     try {
       const res = await fetch("/api/score/revise", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getByokHeaders() },
         body: JSON.stringify({
           prompt: lastOperation.prompt,
           currentScore: score,

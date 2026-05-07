@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useScoreStore } from "@/store/score-store";
 import { IS_STATIC_EXPORT, STATIC_FEATURE_DISABLED_MESSAGE } from "@/lib/api-availability";
+import { getByokHeaders } from "@/lib/api-key-store";
 import { v4 as uuidv4 } from "uuid";
 
 interface InlineAIPromptProps {
@@ -61,7 +62,7 @@ export default function InlineAIPrompt({ note, position, onClose }: InlineAIProm
 
       const res = await fetch("/api/score/revise", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getByokHeaders() },
         body: JSON.stringify({
           prompt,
           currentScore: score,
