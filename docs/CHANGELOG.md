@@ -3,6 +3,15 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-07 — e752d2f
+
+**docs: How To — add chords above lyrics (with visual) (#77)**
+
+- Commit: [`e752d2f`](../../commit/e752d2f7705554b9c678532f63290daac9560c10)
+- Author: gibsonds
+- Files changed:
+  - `src/app/docs/page.tsx`
+
 ## 2026-05-07 — 4d8b286
 
 **My Songs: badge each entry as Score / Chart, accept both (#72)**
