@@ -11,6 +11,10 @@ import { IS_STATIC_EXPORT, STATIC_FEATURE_DISABLED_MESSAGE } from "@/lib/api-ava
 import { v4 as uuidv4 } from "uuid";
 import { logEvent, scoreTypeOf } from "@/lib/analytics";
 
+// On the GitHub Pages static export, the app is served from /NotationApp/.
+// next/link auto-applies basePath, but raw <a href> and window.open() do not.
+const DOCS_HREF = IS_STATIC_EXPORT ? "/NotationApp/docs/" : "/docs";
+
 interface MenuBarProps {
   zoom: number;
   onZoomChange: (zoom: number) => void;
@@ -391,7 +395,7 @@ export default function MenuBar({
   ];
 
   const toolsMenu: MenuItem[] = [
-    { label: "User Guide", action: () => { if (typeof window !== "undefined") window.open("/docs", "_blank"); } },
+    { label: "User Guide", action: () => { if (typeof window !== "undefined") window.open(DOCS_HREF, "_blank"); } },
   ];
 
   return (
@@ -482,7 +486,7 @@ export default function MenuBar({
           </button>
           <span className="text-gray-700 mx-1">|</span>
           <a
-            href="/docs"
+            href={DOCS_HREF}
             target="_blank"
             rel="noopener noreferrer"
             className="w-5 h-5 flex items-center justify-center text-[11px] font-bold text-gray-400 hover:bg-white/10 hover:text-gray-200 rounded-full border border-white/15"
