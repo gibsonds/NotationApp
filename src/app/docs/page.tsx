@@ -177,16 +177,39 @@ const SECTIONS: Section[] = [
     body: (
       <>
         <p>
-          A <strong>blended document</strong> mixes notated passages with chord-chart
-          sections in one file — so a song can carry its head arrangement (notated
-          melody, exact rhythms) alongside its rhythm-section chart (chords + lyrics for
-          the verses) without splitting it across two documents.
+          A <strong>blended document</strong> lets you mix document types <em>within a
+          single piece</em>. The frame is a Chord Chart — verses, choruses, the usual
+          sections — but any individual section can switch to a different format when the
+          music calls for it. Concretely, blended sections can be:
+        </p>
+        <ul>
+          <li>
+            <strong>Passages</strong> — a notated melody or arrangement excerpt. Use them
+            for things like a fully written-out intro, a vocal melody on the bridge, or a
+            horn line that the players need on the page.
+          </li>
+          <li>
+            <strong>Licks</strong> — short notated phrases, riffs, or fills that are far
+            easier to read in notation than to describe in words. Drop one between chord
+            sections to specify a turnaround, a signature lick, or a fill.
+          </li>
+          <li>
+            <strong>Tab</strong> — guitar or bass tablature, for sections, licks, or solos
+            where fret positions matter (a specific voicing on the neck, a fingerstyle
+            pattern, a solo).
+          </li>
+        </ul>
+        <p>
+          The use case is the realistic one: most of a song is a chord chart (verse,
+          chorus), but the guitar solo is tab, and the horn intro is notated. Today
+          that&apos;s three separate documents. With blended mode, it&apos;s one.
         </p>
         <p>
           This is on the roadmap. Today you can build either a Score or a Chord Chart,
-          but not interleave them. When the feature lands, it will surface as a third
-          option in <em>File → New</em> and as a new section type inside existing
-          documents.
+          but not interleave them. When the feature lands, individual sections inside a
+          Chord Chart will get a section-type selector (<em>Chord Chart</em>, <em>Notation
+          passage</em>, <em>Tab</em>, <em>Lick</em>) and Edit/Perform will render each
+          section in its appropriate format inline.
         </p>
       </>
     ),
