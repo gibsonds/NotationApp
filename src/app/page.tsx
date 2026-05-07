@@ -22,6 +22,7 @@ import MySongsModal from "@/components/MySongsModal";
 import JoinSongbookModal from "@/components/JoinSongbookModal";
 import PerformView from "@/components/PerformView";
 import PersistFailureBanner from "@/components/PersistFailureBanner";
+import FeedbackModal from "@/components/FeedbackModal";
 import { CLOUD_ENABLED, getDeviceId } from "@/lib/song-cloud";
 import { autosaveToCloud } from "@/lib/cloud-autosave";
 import AnnotationLayer from "@/components/AnnotationLayer";
@@ -83,6 +84,7 @@ export default function Home() {
   const [autosaveDialogOpen, setAutosaveDialogOpen] = useState(false);
   const [pasteLyricsOpen, setPasteLyricsOpen] = useState(false);
   const [mySongsOpen, setMySongsOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [joinCode, setJoinCode] = useState<string | null>(null);
   const [inlineAI, setInlineAI] = useState<{ note: { measure: number; beat: number; pitch: string; staffIndex: number }; position: { x: number; y: number } } | null>(null);
   const printFnRef = useRef<(() => Promise<void>) | null>(null);
@@ -665,6 +667,7 @@ export default function Home() {
           onOpenAutosave={() => setAutosaveDialogOpen(true)}
           onPasteLyrics={() => setPasteLyricsOpen(true)}
           onMySongs={() => setMySongsOpen(true)}
+          onSendFeedback={() => setFeedbackOpen(true)}
         />
       </div>
 
@@ -1213,6 +1216,22 @@ export default function Home() {
           onExit={() => setUIState({ appMode: "edit" })}
           onOpenMySongs={() => setMySongsOpen(true)}
         />
+      )}
+
+      {/* Floating feedback button — visible in all modes, above status bar. */}
+      <button
+        type="button"
+        onClick={() => setFeedbackOpen(true)}
+        title="Send feedback"
+        aria-label="Send feedback"
+        className="print-hide fixed bottom-12 right-4 z-40 w-10 h-10 rounded-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white shadow-lg flex items-center justify-center text-lg font-semibold transition-colors"
+      >
+        ?
+      </button>
+
+      {/* Feedback modal */}
+      {feedbackOpen && (
+        <FeedbackModal onClose={() => setFeedbackOpen(false)} />
       )}
     </div>
   );
