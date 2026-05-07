@@ -172,6 +172,85 @@ const SECTIONS: Section[] = [
     ),
   },
   {
+    id: "how-to-chords-above-lyrics",
+    title: "How To: Add Chords Above Lyrics",
+    body: (
+      <>
+        <p>
+          A quick walkthrough using the song{" "}
+          <em>&quot;You Play the Trombone, I&apos;ll Blow the Smoke Rings.&quot;</em>{" "}
+          We&apos;ll get from a blank chart to chord names sitting in their
+          right places — anchored either to bar lines or to specific syllables
+          of a lyric.
+        </p>
+        <div className="rounded-md border border-amber-300/30 bg-amber-300/5 px-4 py-3 text-[13px] text-amber-100/90 my-3">
+          <strong className="text-amber-200">Author&apos;s note —</strong>{" "}
+          the song was recorded with the guitar tuned down a half step and a
+          capo at fret III. The chord names below are the shapes the player
+          fingers (concert pitch comes out a minor third above what&apos;s
+          written, given the down-tuning).
+        </div>
+        <ol>
+          <li>
+            <strong>Create the chart.</strong> <em>File → New Chord Chart</em>.
+            You&apos;ll land in an empty <em>Verse 1</em> with a chord row and a
+            lyric row. Rename it <em>Intro</em> from the section header
+            right-click menu.
+          </li>
+          <li>
+            <strong>Lay down the bar lines.</strong> The intro is six bars with
+            no lyrics, so click in the <em>chord row</em> at the position you
+            want each bar to start and type <code>|</code> + <Kbd>Enter</Kbd>.
+            Each <code>|</code> anchors a column you can hang a chord on.
+          </li>
+          <li>
+            <strong>Drop a chord on each bar.</strong> Click just to the right
+            of a bar line — a small input opens at that column. Type the chord
+            name and press <Kbd>Enter</Kbd>. For this song&apos;s intro, place:
+            <ul>
+              <li><code>Am</code>, <code>G</code>, <code>F</code>, <code>Am</code>, <code>G</code>, <code>Am7</code></li>
+            </ul>
+          </li>
+          <li>
+            <strong>Anchor a chord to a syllable</strong> (when you do have
+            lyrics — e.g. when the verse comes in). Type the lyric in the
+            lyric row, then click in the chord row directly{" "}
+            <em>above the syllable</em> the chord falls on. Column N of the
+            chord row sits exactly above column N of the lyric row, so what you
+            see is what you get.
+          </li>
+          <li>
+            <strong>Tweak.</strong> Click any chord to re-edit it.{" "}
+            <Kbd>Shift</Kbd> <Kbd>←</Kbd>/<Kbd>→</Kbd> nudges its column one
+            character at a time. Submit an empty chord to delete it.
+          </li>
+        </ol>
+        <h3>What it should look like</h3>
+        <p className="text-xs text-gray-500 mb-1">
+          Intro: six bars, one chord per bar.
+        </p>
+        <SmokeRingsIntroExample />
+        <h3>Pasting instead of typing</h3>
+        <p>
+          If you already have the chart in text, use{" "}
+          <em>Edit → Paste Lyrics / Chords…</em>. Both common formats parse:
+        </p>
+        <p className="text-gray-400 text-sm mb-1">ChordPro-style brackets:</p>
+        <pre className="rounded-md bg-black/40 border border-white/10 p-3 text-[13px] leading-relaxed overflow-x-auto"><code>{`{title: You Play the Trombone, I'll Blow the Smoke Rings}
+{capo: 3}
+{comment: Tuned down 1/2 step}
+
+{start_of_part: Intro}
+| [Am] | [G] | [F] | [Am] | [G] | [Am7] |
+{end_of_part}`}</code></pre>
+        <p className="text-gray-400 text-sm mb-1 mt-3">Two-line format:</p>
+        <pre className="rounded-md bg-black/40 border border-white/10 p-3 text-[13px] leading-relaxed overflow-x-auto"><code>{`Intro  (tuned down 1/2 step, capo III)
+Am      G       F       Am      G       Am7
+|       |       |       |       |       |`}</code></pre>
+      </>
+    ),
+  },
+  {
     id: "blended-documents",
     title: "Blended Documents (coming soon)",
     body: (
@@ -543,6 +622,93 @@ function Kbd({ children }: { children: React.ReactNode }) {
     <kbd className="inline-block px-1.5 py-0.5 mx-0.5 text-[11px] font-mono rounded border border-white/20 bg-white/10 text-gray-100">
       {children}
     </kbd>
+  );
+}
+
+function SmokeRingsIntroExample() {
+  // Renders the intro of "You Play the Trombone, I'll Blow the Smoke Rings":
+  // six bars, one chord per bar. Layout mirrors the real ChordChartView —
+  // monospace, chord row above bar/lyric row, column-aligned. Chord color
+  // matches text-yellow-300 in the app.
+  const intro = ["Am", "G", "F", "Am", "G", "Am7"];
+  const BAR_W = 80; // px between bar lines
+  const X0 = 32;
+  const Y_CHORD = 70;
+  const Y_BAR = 100;
+  const W = X0 * 2 + BAR_W * intro.length;
+  return (
+    <svg
+      viewBox={`0 0 ${W} 140`}
+      className="w-full mt-3 rounded-md border border-white/10 bg-[#1a1a3a]"
+      role="img"
+      aria-label="Chord chart intro example: six bars with chords Am, G, F, Am, G, Am7 — one chord per bar."
+    >
+      <text
+        x={X0}
+        y={28}
+        fill="#9ca3af"
+        fontFamily="ui-sans-serif, system-ui, sans-serif"
+        fontSize={11}
+        letterSpacing="0.08em"
+      >
+        INTRO &nbsp;&nbsp;·&nbsp;&nbsp; tuned down 1/2 step, capo III
+      </text>
+      <g
+        fill="#fde047"
+        fontFamily="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace"
+        fontWeight={600}
+        fontSize={20}
+      >
+        {intro.map((name, i) => (
+          <text
+            key={i}
+            x={X0 + i * BAR_W + BAR_W / 2}
+            y={Y_CHORD}
+            textAnchor="middle"
+          >
+            {name}
+          </text>
+        ))}
+      </g>
+      <g
+        stroke="#9ca3af"
+        strokeOpacity={0.55}
+        strokeWidth={1.5}
+      >
+        {Array.from({ length: intro.length + 1 }).map((_, i) => (
+          <line
+            key={i}
+            x1={X0 + i * BAR_W}
+            x2={X0 + i * BAR_W}
+            y1={Y_BAR - 14}
+            y2={Y_BAR + 6}
+          />
+        ))}
+        <line
+          x1={X0}
+          x2={X0 + intro.length * BAR_W}
+          y1={Y_BAR}
+          y2={Y_BAR}
+          strokeOpacity={0.25}
+        />
+      </g>
+      <g
+        fill="#9ca3af"
+        fontFamily="ui-sans-serif, system-ui, sans-serif"
+        fontSize={11}
+      >
+        {intro.map((_, i) => (
+          <text
+            key={i}
+            x={X0 + i * BAR_W + BAR_W / 2}
+            y={Y_BAR + 24}
+            textAnchor="middle"
+          >
+            bar {i + 1}
+          </text>
+        ))}
+      </g>
+    </svg>
   );
 }
 
