@@ -4,12 +4,30 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { useScoreStore } from "@/store/score-store";
 import { ChordSymbol, Note, ScorePatch } from "@/lib/schema";
 import { parseLyricsWithChords, parseToSections } from "@/lib/lyric-parser";
+import { logEvent, scoreTypeOf } from "@/lib/analytics";
 
 export default function PasteLyricsModal({ onClose }: { onClose: () => void }) {
   const score = useScoreStore(s => s.score);
   const applyPatches = useScoreStore(s => s.applyPatches);
   const stepEntry = useScoreStore(s => s.stepEntry);
   const [text, setText] = useState("");
+
+  // Analytics: log open on mount; on unmount, log submit-or-cancel based on
+  // whether handleApply ran. The ref is read in cleanup so the close event
+  // is always paired with the open.
+  const submittedRef = useRef(false);
+  useEffect(() => {
+    logEvent({ event: "paste_lyrics_open", scoreType: scoreTypeOf(score) });
+    return () => {
+      logEvent({
+        event: submittedRef.current ? "paste_lyrics_submit" : "paste_lyrics_cancel",
+        scoreType: scoreTypeOf(score),
+      });
+    };
+    // Open/close are bookended by mount/unmount — we deliberately don't want
+    // re-fires when the score reference changes. eslint: react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Determine staff, voice, sorted notes, and starting index from stepEntry
   const { staffId, voiceId, notes, startIdx } = useMemo((): {
@@ -90,6 +108,7 @@ export default function PasteLyricsModal({ onClose }: { onClose: () => void }) {
       }
       applyPatches(patches);
     }
+    submittedRef.current = true;
     onClose();
   };
 
@@ -129,6 +148,7 @@ export default function PasteLyricsModal({ onClose }: { onClose: () => void }) {
     }
 
     if (allPatches.length > 0) applyPatches(allPatches);
+    submittedRef.current = true;
     onClose();
   };
 

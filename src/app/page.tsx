@@ -29,6 +29,8 @@ import { autosaveToCloud } from "@/lib/cloud-autosave";
 import AnnotationLayer from "@/components/AnnotationLayer";
 import AnnotationFilterBar from "@/components/AnnotationFilterBar";
 import { cleanScoreOverflow } from "@/lib/score-cleanup";
+import DebugOverlay from "@/components/DebugOverlay";
+import { logEvent, scoreTypeOf, type ScoreType } from "@/lib/analytics";
 
 // Dynamic import to prevent SSR for OSMD (uses browser APIs)
 const ScoreRenderer = dynamic(() => import("@/components/ScoreRenderer"), {
@@ -400,6 +402,22 @@ export default function Home() {
     return () => clearTimeout(id);
   }, [score, currentSongId]);
 
+  // Analytics: detect notation↔chord-chart type switches and log them.
+  // We diff against the previous render's type so we only fire when the
+  // category actually changes (not on every score edit). The very first
+  // assignment (none → notation/chord-chart) is also a switch.
+  const prevScoreTypeRef = useRef<ScoreType>("none");
+  useEffect(() => {
+    const next = scoreTypeOf(score);
+    const prev = prevScoreTypeRef.current;
+    if (next !== prev) {
+      if (prev !== "none" && next !== "none") {
+        logEvent({ event: "score_type_switch", name: `${prev}->${next}` });
+      }
+      prevScoreTypeRef.current = next;
+    }
+  }, [score]);
+
   // Songbook share-link: visiting `?join=<deviceId>` prompts to take over
   // that device's songbook. The param is stripped after the user decides
   // (Join or Cancel) so a refresh doesn't re-prompt.
@@ -701,7 +719,15 @@ export default function Home() {
             </DrawerSection>
 
             {/* AI Chat drawer */}
-            <DrawerSection title="AI Assistant" open={uiState.aiDrawerOpen} onToggle={(v) => setUIState({ aiDrawerOpen: v })} flex>
+            <DrawerSection
+              title="AI Assistant"
+              open={uiState.aiDrawerOpen}
+              onToggle={(v) => {
+                logEvent({ event: v ? "ai_panel_open" : "ai_panel_close", scoreType: scoreTypeOf(score) });
+                setUIState({ aiDrawerOpen: v });
+              }}
+              flex
+            >
               <PromptPanel />
             </DrawerSection>
           </div>
@@ -763,6 +789,7 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={() => {
+                    logEvent({ event: "score_new", name: "notation" });
                     resetStore();
                     setScore({
                       id: uuidv4(),
@@ -796,6 +823,7 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={() => {
+                    logEvent({ event: "score_new", name: "chord-chart" });
                     resetStore();
                     setScore({
                       id: uuidv4(),
@@ -1241,6 +1269,9 @@ export default function Home() {
       {feedbackOpen && (
         <FeedbackModal onClose={() => setFeedbackOpen(false)} />
       )}
+
+      {/* Analytics debug overlay (?debug=1 / Ctrl+Shift+D) */}
+      <DebugOverlay />
     </div>
   );
 }

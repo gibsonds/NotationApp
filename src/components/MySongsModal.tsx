@@ -26,6 +26,7 @@ import {
   syncSongbook,
   type SyncStatus as CloudSyncStatus,
 } from "@/lib/song-cloud";
+import { logEvent, scoreTypeOf } from "@/lib/analytics";
 
 type SyncStatus = "idle" | CloudSyncStatus;
 
@@ -35,6 +36,10 @@ type SyncStatus = "idle" | CloudSyncStatus;
 const EMPTY_STRINGS: string[] = [];
 
 export default function MySongsModal({ onClose }: { onClose: () => void }) {
+  // Analytics: log modal open on mount.
+  useEffect(() => {
+    logEvent({ event: "mysongs_open" });
+  }, []);
   const score = useScoreStore(s => s.score);
   const setScore = useScoreStore(s => s.setScore);
   const setUIState = useScoreStore(s => s.setUIState);
@@ -223,10 +228,17 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
     }
   };
 
-  const handleSave = () => performSave(false);
-  const handleSaveAs = () => performSave(true);
+  const handleSave = () => {
+    logEvent({ event: "mysongs_save", scoreType: scoreTypeOf(score) });
+    performSave(false);
+  };
+  const handleSaveAs = () => {
+    logEvent({ event: "mysongs_save_as", scoreType: scoreTypeOf(score) });
+    performSave(true);
+  };
 
   const handleLoad = async (entry: SongBankEntry) => {
+    logEvent({ event: "mysongs_load", scoreType: scoreTypeOf(entry.score) });
     // Take an autosave snapshot of the OUTGOING score before replacing it.
     // Recovery from this snapshot is how we get back from accidental Loads
     // that overwrite unsaved work — exactly what bit us before.
@@ -363,6 +375,7 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
   };
 
   const handleDelete = async (id: string) => {
+    logEvent({ event: "mysongs_delete" });
     deleteSong(id);
     refreshLocal();
     if (!CLOUD_ENABLED) return;

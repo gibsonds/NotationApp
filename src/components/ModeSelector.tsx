@@ -1,6 +1,7 @@
 "use client";
 
 import { useScoreStore, type AppMode } from "@/store/score-store";
+import { logEvent, scoreTypeOf } from "@/lib/analytics";
 
 interface ModeOption {
   mode: AppMode;
@@ -38,6 +39,14 @@ export default function ModeSelector({
 } = {}) {
   const appMode = useScoreStore((s) => s.uiState.appMode);
   const setUIState = useScoreStore((s) => s.setUIState);
+  const score = useScoreStore((s) => s.score);
+
+  const handleSelect = (mode: AppMode) => {
+    if (mode !== appMode) {
+      logEvent({ event: "mode_switch", name: mode, scoreType: scoreTypeOf(score) });
+    }
+    setUIState({ appMode: mode });
+  };
 
   return (
     <div
@@ -55,7 +64,7 @@ export default function ModeSelector({
             role="radio"
             aria-checked={isActive}
             disabled={disabled}
-            onClick={() => setUIState({ appMode: opt.mode })}
+            onClick={() => handleSelect(opt.mode)}
             title={disabled ? "Perform requires a chord-chart song" : opt.title}
             className={`px-4 min-w-[72px] text-sm font-medium transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
               isActive

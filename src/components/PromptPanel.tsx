@@ -6,6 +6,7 @@ import { matchBuiltinCommand, BUILTIN_COMMANDS } from "@/lib/transforms";
 import { IS_STATIC_EXPORT, STATIC_FEATURE_DISABLED_MESSAGE } from "@/lib/api-availability";
 import { getByokHeaders } from "@/lib/api-key-store";
 import { v4 as uuidv4 } from "uuid";
+import { logEvent, scoreTypeOf } from "@/lib/analytics";
 
 export default function PromptPanel() {
   const [input, setInput] = useState("");
@@ -36,6 +37,8 @@ export default function PromptPanel() {
     if (!input.trim() || isGenerating) return;
 
     const prompt = input.trim();
+    // Analytics: log only that a message was sent — NEVER the prompt content.
+    logEvent({ event: "ai_send", scoreType: scoreTypeOf(score) });
     const userMsg: ChatMessage = {
       id: uuidv4(),
       role: "user",
@@ -174,6 +177,7 @@ export default function PromptPanel() {
         timestamp: Date.now(),
       });
     } catch (err: any) {
+      logEvent({ event: "error", name: "ai_request", scoreType: scoreTypeOf(score) });
       addMessage({
         id: uuidv4(),
         role: "assistant",
