@@ -127,7 +127,6 @@ export default function MenuBar({
 
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const audioInputRef = useRef<HTMLInputElement>(null);
   const projectInputRef = useRef<HTMLInputElement>(null);
 
   const canUndo = historyIndex > 0;
@@ -344,32 +343,6 @@ export default function MenuBar({
     }
   };
 
-  const handleTranscribe = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (IS_STATIC_EXPORT) {
-      addMessage({ id: uuidv4(), role: "assistant", content: STATIC_FEATURE_DISABLED_MESSAGE, timestamp: Date.now() });
-      return;
-    }
-    setIsGenerating(true);
-    addMessage({ id: uuidv4(), role: "assistant", content: `Transcribing ${file.name}... This may take a minute.`, timestamp: Date.now() });
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const res = await fetch("/api/score/transcribe", { method: "POST", body: formData });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Transcription failed");
-      setScore(data.score);
-      addMessage({ id: uuidv4(), role: "assistant", content: data.message || `Transcribed ${file.name}.`, timestamp: Date.now() });
-    } catch (err: any) {
-      logEvent({ event: "error", name: "transcribe" });
-      addMessage({ id: uuidv4(), role: "assistant", content: `Transcription error: ${err.message}`, timestamp: Date.now() });
-    } finally {
-      setIsGenerating(false);
-      if (audioInputRef.current) audioInputRef.current.value = "";
-    }
-  };
-
   // ── Menu definitions ──────────────────────────────────────────────
 
   const fileMenu: MenuItem[] = [
@@ -418,8 +391,6 @@ export default function MenuBar({
   ];
 
   const toolsMenu: MenuItem[] = [
-    { label: "Transcribe Audio...", action: () => audioInputRef.current?.click() },
-    { separator: true },
     { label: "User Guide", action: () => { if (typeof window !== "undefined") window.open("/docs", "_blank"); } },
   ];
 
@@ -427,7 +398,6 @@ export default function MenuBar({
     <>
       {/* Hidden file inputs */}
       <input ref={fileInputRef} type="file" accept=".mid,.midi,.snt,.musicxml,.mxl,.xml,.json" onChange={handleImport} className="hidden" />
-      <input ref={audioInputRef} type="file" accept=".mp3,.m4a,.wav,.aif,.aiff,.ogg,.flac,.mp4" onChange={handleTranscribe} className="hidden" />
       <input ref={projectInputRef} type="file" accept=".notation,.json" onChange={handleOpenProject} className="hidden" />
 
       <div className="flex items-center gap-0.5 px-2 py-1 bg-[#0f0f23] border-b border-white/10 text-gray-300">
