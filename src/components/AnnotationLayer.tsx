@@ -28,7 +28,7 @@ export default function AnnotationLayer() {
   const applyPatches = useScoreStore((s) => s.applyPatches);
   const uiState = useScoreStore((s) => s.uiState);
 
-  const annotationMode = uiState.appMode === "annotate";
+  const annotationMode = uiState.annotationMode;
   const { annotationFilters } = uiState;
   const annotations: Annotation[] = score?.annotations ?? [];
 

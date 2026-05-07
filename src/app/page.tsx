@@ -27,6 +27,7 @@ import FeedbackModal from "@/components/FeedbackModal";
 import { CLOUD_ENABLED, getDeviceId } from "@/lib/song-cloud";
 import { autosaveToCloud } from "@/lib/cloud-autosave";
 import AnnotationLayer from "@/components/AnnotationLayer";
+import AnnotateToggle from "@/components/AnnotateToggle";
 import AnnotationFilterBar from "@/components/AnnotationFilterBar";
 import { cleanScoreOverflow } from "@/lib/score-cleanup";
 import DebugOverlay from "@/components/DebugOverlay";
@@ -337,7 +338,7 @@ export default function Home() {
   // floating font/leading buttons, and the global zoom shortcut would
   // block the browser's own page zoom (which the user often wants in
   // perform mode to scale the whole UI for far-away viewing).
-  const inPerformMode = uiState.appMode === "perform";
+  const inPerformMode = uiState.performMode;
   useEffect(() => {
     if (inPerformMode) return;
 
@@ -747,7 +748,7 @@ export default function Home() {
         )}
 
         {/* Center: Score View — chord chart if `sections` is populated, else notation */}
-        <div className="flex-1 overflow-auto p-4 print-full bg-[#f8f9fa]">
+        <div className="flex-1 overflow-auto print-full bg-[#f8f9fa]">
           {score ? (
             score.sections && score.sections.length > 0 ? (
               <div className="score-container h-full relative">
@@ -1246,12 +1247,35 @@ export default function Home() {
       )}
 
       {/* Perform view — full-screen overlay, chord-chart only */}
-      {uiState.appMode === "perform" && score?.sections && score.sections.length > 0 && (
+      {uiState.performMode && score?.sections && score.sections.length > 0 && (
         <PerformView
           score={score}
-          onExit={() => setUIState({ appMode: "edit" })}
+          onExit={() => setUIState({ performMode: false, annotationMode: false })}
           onOpenMySongs={() => setMySongsOpen(true)}
         />
+      )}
+
+      {/* Mode cluster — pinned top-right in the SAME screen position used
+          in PerformView. In edit mode the neighbor of Annotate is Perform;
+          in perform mode it's Edit (rendered by PerformView). The Perform
+          button is disabled unless the score has chord-chart sections. */}
+      {!uiState.performMode && score && (
+        <div className="fixed top-3 right-3 z-40 flex items-center gap-1 rounded-xl bg-gray-900/80 backdrop-blur-sm shadow border border-white/10 p-1 print-hide">
+          <AnnotateToggle />
+          <button
+            type="button"
+            onClick={() => {
+              if (!(score.sections && score.sections.length > 0)) return;
+              setUIState({ performMode: true });
+            }}
+            disabled={!(score.sections && score.sections.length > 0)}
+            className="px-3 h-11 rounded-lg bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-blue-600"
+            title={(score.sections && score.sections.length > 0) ? "Open the perform view" : "Perform mode requires a chord-chart score"}
+            aria-label="Perform"
+          >
+            Perform
+          </button>
+        </div>
       )}
 
       {/* Floating feedback button — visible in all modes, above status bar. */}

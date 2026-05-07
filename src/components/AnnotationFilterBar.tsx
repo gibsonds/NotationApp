@@ -7,7 +7,7 @@ export default function AnnotationFilterBar() {
   const uiState = useScoreStore((s) => s.uiState);
   const setUIState = useScoreStore((s) => s.setUIState);
 
-  const annotationMode = uiState.appMode === "annotate";
+  const annotationMode = uiState.annotationMode;
   const { annotationFilters } = uiState;
   const annotations = score?.annotations ?? [];
 

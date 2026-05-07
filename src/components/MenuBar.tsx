@@ -5,7 +5,6 @@ import { useScoreStore } from "@/store/score-store";
 import { scoreToMusicXML } from "@/lib/musicxml";
 import { ScoreSchema } from "@/lib/schema";
 import CloudSaveIndicator from "@/components/CloudSaveIndicator";
-import ModeSelector from "@/components/ModeSelector";
 import { CLOUD_ENABLED, cloudCreateNamedRevision } from "@/lib/song-cloud";
 import { getSongs } from "@/lib/song-bank";
 import { IS_STATIC_EXPORT, STATIC_FEATURE_DISABLED_MESSAGE } from "@/lib/api-availability";
@@ -471,16 +470,10 @@ export default function MenuBar({
 
         <CloudSaveIndicator />
 
-        {/* Spacer */}
+        {/* Spacer — mode + annotate toggles live in the upper-right
+            cluster rendered from page.tsx so they hold the same screen
+            position across Edit and Perform. */}
         <div className="flex-1" />
-
-        {/* Mode selector — Edit | Perform | Annotate. Perform requires
-            a chord-chart song (sections); for staff-only scores it's disabled. */}
-        <div className="mr-2">
-          <ModeSelector
-            performAvailable={!!(score?.sections && score.sections.length > 0)}
-          />
-        </div>
 
 
         {/* Quick-access icons: Undo/Redo + Zoom */}

@@ -5,6 +5,7 @@ import type { Score } from "@/lib/schema";
 import ChordChartView from "@/components/ChordChartView";
 import PaginatedPerformChart from "@/components/PaginatedPerformChart";
 import AnnotationLayer from "@/components/AnnotationLayer";
+import AnnotateToggle from "@/components/AnnotateToggle";
 import { useScoreStore } from "@/store/score-store";
 import { getSongs, type SongBankEntry } from "@/lib/song-bank";
 
@@ -65,7 +66,7 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
   // toggles uiState.annotationMode without leaving perform — same scroll
   // position, same chrome — so the user can drop a note where they're
   // already looking on the chart.
-  const annotationMode = useScoreStore(s => s.uiState.appMode === "annotate");
+  const annotationMode = useScoreStore(s => s.uiState.annotationMode);
   // 1-col scrolls the outer container vertically; 2-col scrolls the
   // PaginatedPerformChart's inner pages strip horizontally. They live in
   // different DOM nodes so we need separate refs.
@@ -189,7 +190,7 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
       {prefs.columns === 1 ? (
         <div
           ref={scrollRef}
-          className="absolute inset-0 overflow-auto pt-[7vh] pb-[9vh]"
+          className="absolute inset-0 overflow-auto pt-[7vh] pb-16"
         >
           <div className="relative">
             <ChordChartView score={score} performMode performColumns={1} />
@@ -204,43 +205,42 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
         />
       )}
 
-      {/* Top tap zone — page up. Shrunk to free vertical real estate;
-          still well above Apple HIG's 44pt minimum on iPad. */}
-      <button
-        type="button"
-        onClick={() => pageBy(-1)}
-        className="absolute top-0 left-0 right-0 h-[7vh] flex items-start justify-center pt-1 text-gray-400 hover:bg-white/5 active:bg-white/10 transition-colors"
-        aria-label="Scroll up"
-      >
-        <svg
-          className="w-7 h-7 opacity-40"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth={2}
+      {/* Pager — compact bidirectional control floated at bottom-center.
+          Replaces the full-width top/bottom tap zones that obscured
+          lyrics. Arrow direction tracks the column mode: ↑/↓ in 1-col
+          (vertical paging), ←/→ in 2-col (horizontal page-turn). */}
+      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1 rounded-xl bg-gray-900/70 backdrop-blur-sm shadow border border-white/10 p-1">
+        <button
+          type="button"
+          onClick={() => pageBy(-1)}
+          className={btn}
+          aria-label="Previous page"
+          title="Previous page"
         >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
-        </svg>
-      </button>
-
-      {/* Bottom tap zone — page down. Slightly larger than the top zone
-          since it gets the most use during performance. */}
-      <button
-        type="button"
-        onClick={() => pageBy(1)}
-        className="absolute bottom-0 left-0 right-0 h-[9vh] flex items-end justify-center pb-2 text-gray-400 hover:bg-white/5 active:bg-white/10 transition-colors"
-        aria-label="Scroll down"
-      >
-        <svg
-          className="w-8 h-8 opacity-40"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth={2}
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            {prefs.columns === 2 ? (
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+            ) : (
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+            )}
+          </svg>
+        </button>
+        <button
+          type="button"
+          onClick={() => pageBy(1)}
+          className={btn}
+          aria-label="Next page"
+          title="Next page"
         >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            {prefs.columns === 2 ? (
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+            ) : (
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            )}
+          </svg>
+        </button>
+      </div>
 
       {/* Top-left nav cluster — Prev / Title (opens picker) / Next */}
       {songs.length > 0 && (
@@ -361,31 +361,16 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
         </>
       )}
 
-      {/* Mode buttons — pinned to the top-right, never wrap off-screen.
-          Annotate toggles annotationMode while staying in perform (same
-          scroll position, same chrome) so the user can drop a sticky
-          note where they're already looking. Edit exits perform back to
-          the full editor. */}
+      {/* Mode cluster — pinned top-right in the SAME screen position used
+          in edit mode (see <AnnotateToggle /> rendered from page.tsx).
+          Annotate stays in place whether you're in Edit or Perform; only
+          the neighbor changes (Perform shows an Edit-out button here). */}
       <div className="absolute top-3 right-3 z-30 flex items-center gap-1 rounded-xl bg-gray-900/80 backdrop-blur-sm shadow border border-white/10 p-1">
-        <button
-          type="button"
-          onClick={() => setUIState({ appMode: annotationMode ? "perform" : "annotate" })}
-          className={`px-3 h-11 rounded-lg text-sm font-medium transition-colors ${
-            annotationMode
-              ? "bg-yellow-400 text-gray-900 hover:bg-yellow-300"
-              : "text-gray-100 hover:bg-gray-800 active:bg-gray-700"
-          }`}
-          aria-pressed={annotationMode}
-          aria-label={annotationMode ? "Stop annotating" : "Annotate"}
-          title={annotationMode ? "Tap the chart to add a note. Tap Annotating to stop." : "Annotate — drop sticky notes on the chart"}
-        >
-          {annotationMode ? "Annotating" : "Annotate"}
-        </button>
+        <AnnotateToggle />
         <button
           type="button"
           onClick={() => {
-            // Leaving perform also clears annotate so the editor opens in
-            // its normal edit state, not in annotate-while-edit.
+            if (annotationMode) setUIState({ annotationMode: false });
             onExit();
           }}
           className="px-3 h-11 rounded-lg bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-sm font-medium"

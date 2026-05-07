@@ -229,15 +229,18 @@ export const DEFAULT_ANNOTATION_FILTERS: AnnotationFilters = {
   hideInPerformance: false,
 };
 
-export type AppMode = "edit" | "perform" | "annotate";
+export type AppMode = "edit" | "perform";
 
 export interface UIState {
   sidebarOpen: boolean;
   aiDrawerOpen: boolean;
   propsDrawerOpen: boolean;
-  /** Top-level interaction mode. Drives the perform overlay (`appMode === "perform"`)
-   *  and the annotation click-layer (`appMode === "annotate"`). */
-  appMode: AppMode;
+  /** Top-level view mode. Annotate is a sub-mode that overlays either —
+   *  see `annotationMode`. */
+  performMode: boolean;
+  /** Annotate sub-mode. Independent of `performMode` so the user can
+   *  annotate from inside Edit OR Perform without leaving their view. */
+  annotationMode: boolean;
   /** Song-bank entry id of the currently loaded score, or null if the
    *  score isn't from the bank (e.g. fresh creation, AI-generated). Used
    *  by PerformView to find prev/next songs in the user's list. */
@@ -256,7 +259,8 @@ export const DEFAULT_UI_STATE: UIState = {
   sidebarOpen: true,
   aiDrawerOpen: false,
   propsDrawerOpen: true,
-  appMode: "edit",
+  performMode: false,
+  annotationMode: false,
   currentSongId: null,
   collapsedFolders: [],
   performFolder: null,
@@ -753,7 +757,7 @@ export const useScoreStore = create<ProjectState>()(
     }),
     {
       name: "notation-app-store",
-      version: 12,
+      version: 13,
       migrate: (persisted: any, version: number) => {
         if (version < 2) {
           persisted = { ...persisted, savedRevisions: persisted.savedRevisions ?? [] };
@@ -806,20 +810,22 @@ export const useScoreStore = create<ProjectState>()(
             uiState: persisted.uiState ?? DEFAULT_UI_STATE,
           };
         }
-        if (version < 12) {
-          // Fold the old performMode / annotationMode booleans into the
-          // unified appMode tri-state. Both can't be true at once, but if
-          // somehow both are set, perform wins (matches the old precedence
-          // where the perform overlay covered annotation UI).
+        if (version < 13) {
+          // A short-lived v11/v12 build used a unified `appMode` tri-state.
+          // v13 splits it back into `performMode` + `annotationMode`
+          // booleans so Annotate can overlay either Edit or Perform —
+          // see UIState. Old tri-state values get unfolded; pre-v11
+          // boolean state passes through unchanged.
           const ui = (persisted.uiState ?? {}) as Record<string, unknown>;
-          let appMode: AppMode = "edit";
-          if (ui.performMode) appMode = "perform";
-          else if (ui.annotationMode) appMode = "annotate";
-          const { performMode, annotationMode, ...rest } = ui;
-          void performMode; void annotationMode;
+          const next: Record<string, unknown> = { ...ui };
+          if (typeof ui.appMode === "string") {
+            next.performMode = ui.appMode === "perform";
+            next.annotationMode = ui.appMode === "annotate";
+            delete next.appMode;
+          }
           persisted = {
             ...persisted,
-            uiState: { ...rest, appMode },
+            uiState: next,
           };
         }
         // Always reconcile UIState with current defaults so newly-added
