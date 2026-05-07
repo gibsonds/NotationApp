@@ -1,0 +1,52 @@
+name: Auto-update docs changelog
+
+# After every push to main that touches user-facing code or assets, append a
+# changelog entry to docs/CHANGELOG.md so the docs site reflects what shipped.
+# The bot commits with `[skip ci]` so this workflow does not retrigger itself.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "public/**"
+      - "package.json"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-docs
+  cancel-in-progress: false
+
+jobs:
+  changelog:
+    runs-on: ubuntu-latest
+    # Defensive: if the previous commit was already a changelog bump, skip.
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Need at least the previous commit so `git diff HEAD~1 HEAD` works.
+          fetch-depth: 2
+          persist-credentials: true
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Generate changelog entry
+        run: node scripts/update-changelog.mjs
+
+      - name: Commit and push if changed
+        run: |
+          if git diff --quiet docs/CHANGELOG.md; then
+            echo "No changelog changes — nothing to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/CHANGELOG.md
+          git commit -m "docs: changelog for ${GITHUB_SHA::7} [skip ci]"
+          git push
