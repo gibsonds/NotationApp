@@ -8,7 +8,6 @@ import { downloadScoreAsChordPro } from "@/lib/chordpro-export";
 import { parseChordPro } from "@/lib/chordpro-import";
 import { ScoreSchema } from "@/lib/schema";
 import CloudSaveIndicator from "@/components/CloudSaveIndicator";
-import ModeSelector from "@/components/ModeSelector";
 import { CLOUD_ENABLED, cloudCreateNamedRevision } from "@/lib/song-cloud";
 import { getSongs } from "@/lib/song-bank";
 import { IS_STATIC_EXPORT, STATIC_FEATURE_DISABLED_MESSAGE } from "@/lib/api-availability";
@@ -463,14 +462,9 @@ export default function MenuBar({
 
         <CloudSaveIndicator />
 
-        {/* Mode selector — absolutely centered in the bar */}
-        <div className="absolute left-1/2 -translate-x-1/2 pointer-events-none flex items-center">
-          <div className="pointer-events-auto">
-            <ModeSelector />
-          </div>
-        </div>
-
-        {/* Spacer */}
+        {/* Spacer — mode + annotate toggles now live in the upper-right
+         *  cluster rendered from page.tsx (consistent screen position
+         *  across Edit and Perform). */}
         <div className="flex-1" />
 
         {/* Quick-access icons: Undo/Redo + Zoom */}
