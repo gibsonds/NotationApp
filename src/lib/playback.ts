@@ -113,6 +113,7 @@ export async function playScore(
 
   for (const staff of score.staves) {
     if (staffFilter && !staffFilter.includes(staff.id)) continue;
+    if (staff.muted || staff.hidden) continue;
     for (const voice of staff.voices) {
       // Sort notes by position for tie resolution
       const sorted = [...voice.notes]

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useScoreStore, DEFAULT_LAYOUT, PRINT_LAYOUT, REALBOOK_LAYOUT, STYLE_PRESETS, StylePreset, LayoutSettings, MusicFont, TextFont, PageSize } from "@/store/score-store";
+import { downloadScoreAsMidi } from "@/lib/midi-export";
 import { KeySignature, Clef } from "@/lib/schema";
 import { v4 as uuidv4 } from "uuid";
 import RevisionPanel from "./RevisionPanel";
@@ -65,9 +66,32 @@ export default function PropertiesPanel({ embedded = false }: PropertiesPanelPro
                   onChange={(v) => applyPatches([{ op: "update_staff", staffId: staff.id, clef: v as Clef }])} />
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] text-gray-500">{staff.voices.length}v, {staff.voices.reduce((n, v) => n + v.notes.length, 0)} notes</span>
-                  {score.staves.length > 1 && (
-                    <button onClick={() => applyPatches([{ op: "remove_staff", staffId: staff.id }])} className="text-[10px] text-red-400/60 hover:text-red-400">Remove</button>
-                  )}
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => applyPatches([{ op: "update_staff", staffId: staff.id, muted: !staff.muted }])}
+                      className={`px-1.5 py-0.5 text-[10px] font-medium rounded transition-colors ${staff.muted ? "bg-orange-500/30 text-orange-200" : "bg-white/10 text-gray-300 hover:bg-white/15"}`}
+                      title={staff.muted ? "Unmute (include this staff in playback)" : "Mute (silent during playback)"}
+                    >
+                      {staff.muted ? "Muted" : "Mute"}
+                    </button>
+                    <button
+                      onClick={() => applyPatches([{ op: "update_staff", staffId: staff.id, hidden: !staff.hidden }])}
+                      className={`px-1.5 py-0.5 text-[10px] font-medium rounded transition-colors ${staff.hidden ? "bg-purple-500/30 text-purple-200" : "bg-white/10 text-gray-300 hover:bg-white/15"}`}
+                      title={staff.hidden ? "Show this staff in the score" : "Hide this staff from the score (data preserved)"}
+                    >
+                      {staff.hidden ? "Hidden" : "Hide"}
+                    </button>
+                    <button
+                      onClick={() => downloadScoreAsMidi(score, { staffId: staff.id })}
+                      className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-white/10 text-gray-300 hover:bg-white/15 transition-colors"
+                      title={`Export this staff as a single-track MIDI file`}
+                    >
+                      .mid
+                    </button>
+                    {score.staves.length > 1 && (
+                      <button onClick={() => applyPatches([{ op: "remove_staff", staffId: staff.id }])} className="text-[10px] text-red-400/60 hover:text-red-400">Remove</button>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}
@@ -76,7 +100,7 @@ export default function PropertiesPanel({ embedded = false }: PropertiesPanelPro
 
         {/* Style & Layout */}
         <PropSection title="Style" defaultOpen>
-          <div className="flex gap-1 mb-3">
+          <div className="flex flex-wrap gap-1 mb-3">
             {(Object.entries(STYLE_PRESETS) as [StylePreset, { label: string; layout: LayoutSettings }][]).map(([key, preset]) => {
               const isActive = layout.musicFont === preset.layout.musicFont && layout.textFont === preset.layout.textFont;
               return (
@@ -305,7 +329,7 @@ export default function PropertiesPanel({ embedded = false }: PropertiesPanelPro
           <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
             Style
           </h3>
-          <div className="flex gap-1 mb-3">
+          <div className="flex flex-wrap gap-1 mb-3">
             {(Object.entries(STYLE_PRESETS) as [StylePreset, { label: string; layout: LayoutSettings }][]).map(([key, preset]) => {
               const isActive = layout.musicFont === preset.layout.musicFont && layout.textFont === preset.layout.textFont;
               return (
@@ -321,7 +345,7 @@ export default function PropertiesPanel({ embedded = false }: PropertiesPanelPro
           <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
             Layout
           </h3>
-          <div className="flex gap-1 mb-3">
+          <div className="flex flex-wrap gap-1 mb-3">
             <button
               onClick={() => setLayout({ compactMode: !layout.compactMode })}
               className={`px-2 py-1 text-[10px] font-medium rounded transition-colors ${

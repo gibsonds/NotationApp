@@ -13,6 +13,7 @@ import MenuBar from "@/components/MenuBar";
 import MidiKeyboard from "@/components/MidiKeyboard";
 import LyricEntryBar from "@/components/LyricEntryBar";
 import NoteContextMenu from "@/components/NoteContextMenu";
+import ArticulationsPalette from "@/components/ArticulationsPalette";
 import CommandPalette, { PaletteCommand } from "@/components/CommandPalette";
 import InlineAIPrompt from "@/components/InlineAIPrompt";
 import ChordChartView from "@/components/ChordChartView";
@@ -723,30 +724,33 @@ export default function Home() {
                 <AnnotationLayer />
               </div>
             ) : (
-              <div className="score-container h-full relative">
-                <ScoreRenderer
-                  score={score}
-                  zoom={zoom}
-                  layout={layout}
-                  onReady={(h) => { printFnRef.current = h.printScore; }}
-                  cursorPosition={cursorPosition}
-                  selectedNote={selectedNote}
-                  onScoreClick={handleScoreClick}
-                  selection={selection}
-                  playbackPosition={
-                    playbackPos
-                      ? {
-                          measure: playbackPos.measure,
-                          beat: playbackPos.beat,
-                          // Show on first staff during playback — most users have
-                          // a single staff anyway. A future improvement: track
-                          // which staff/voice each scheduled event came from.
-                          staffIndex: 0,
-                        }
-                      : null
-                  }
-                />
-                <AnnotationLayer />
+              <div className="score-container h-full flex flex-col relative">
+                <ArticulationsPalette selectedNote={selectedNote} />
+                <div className="flex-1 min-h-0 relative">
+                  <ScoreRenderer
+                    score={score}
+                    zoom={zoom}
+                    layout={layout}
+                    onReady={(h) => { printFnRef.current = h.printScore; }}
+                    cursorPosition={cursorPosition}
+                    selectedNote={selectedNote}
+                    onScoreClick={handleScoreClick}
+                    selection={selection}
+                    playbackPosition={
+                      playbackPos
+                        ? {
+                            measure: playbackPos.measure,
+                            beat: playbackPos.beat,
+                            // Show on first staff during playback — most users have
+                            // a single staff anyway. A future improvement: track
+                            // which staff/voice each scheduled event came from.
+                            staffIndex: 0,
+                          }
+                        : null
+                    }
+                  />
+                  <AnnotationLayer />
+                </div>
               </div>
             )
           ) : (

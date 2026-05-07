@@ -48,6 +48,7 @@ import {
   ChordToken,
 } from "@/lib/chord-line";
 import ChordChartContextMenu, { ChordChartContextMenuItem } from "@/components/ChordChartContextMenu";
+import { transposeChordLine } from "@/lib/chord-transpose";
 
 interface ChordChartViewProps {
   score: Score;
@@ -844,6 +845,22 @@ export default function ChordChartView({ score, performMode = false, performColu
 
   const sectionMap = new Map(score.sections.map(s => [s.id, s]));
 
+  // Shift every chord token in every section by `semitones`. Bars and
+  // non-chord characters are preserved. Sharp/flat preference follows each
+  // token's own flavor (auto) so e.g. "C" → "Db" but "C" with sharp-leaning
+  // context stays sharp.
+  const transposeAllChords = (semitones: number) => {
+    const patches = score.sections.flatMap((section) =>
+      section.lines.map((line, lineIdx) => ({
+        op: "update_section_line" as const,
+        sectionId: section.id,
+        lineIdx,
+        chords: transposeChordLine(line.chords, semitones, "auto"),
+      })),
+    );
+    if (patches.length > 0) applyPatches(patches);
+  };
+
   // Each section has ONE physical position in the chart, in `score.sections`
   // order. The `form` field stays as playback metadata only (rendered at the
   // top of the header). If we ordered display by form, "Add section above
@@ -1361,6 +1378,30 @@ export default function ChordChartView({ score, performMode = false, performColu
           <span className="font-mono font-bold">|</span>
           <span>Bars{barMode ? " on" : ""}</span>
         </button>
+
+        {/* Transpose: shift every chord token in every section by ±1
+         * semitone. Sharp/flat preference follows the input's own
+         * accidental flavor per token (auto). For a key-aware shift the
+         * user can edit the score's keySignature separately. */}
+        <div className="inline-flex items-center gap-0.5 ml-1" title="Transpose all chords">
+          <button
+            type="button"
+            onClick={() => transposeAllChords(-1)}
+            className="px-1.5 py-0.5 rounded border bg-[#1a1a2e] border-gray-700 text-gray-300 hover:bg-[#22223a]"
+            aria-label="Transpose down a half-step"
+          >
+            ♭
+          </button>
+          <span className="text-[10px] uppercase tracking-wider px-1 text-gray-500">Trans</span>
+          <button
+            type="button"
+            onClick={() => transposeAllChords(+1)}
+            className="px-1.5 py-0.5 rounded border bg-[#1a1a2e] border-gray-700 text-gray-300 hover:bg-[#22223a]"
+            aria-label="Transpose up a half-step"
+          >
+            ♯
+          </button>
+        </div>
 
         <span className="font-semibold uppercase tracking-wider">Style:</span>
 

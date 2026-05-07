@@ -193,9 +193,11 @@ export function scoreToMusicXML(score: Score): string {
     lines.push("  </identification>");
   }
 
-  // Part list
+  // Part list — hidden staves are omitted entirely so OSMD doesn't allocate
+  // a system slot for them. Their notes remain in the data model.
+  const visibleStaves = score.staves.filter((s) => !s.hidden);
   lines.push("  <part-list>");
-  for (const staff of score.staves) {
+  for (const staff of visibleStaves) {
     lines.push(`    <score-part id="${esc(staff.id)}">`);
     lines.push(
       `      <part-name>${esc(staff.name)}</part-name>`
@@ -219,9 +221,10 @@ export function scoreToMusicXML(score: Score): string {
   // Measure duration in divisions
   const measureDivisions = beats * (64 / beatType);
 
-  // Parts
-  for (let si = 0; si < score.staves.length; si++) {
-    const staff = score.staves[si];
+  // Parts — iterate visibleStaves so isFirstPart correctly identifies the
+  // first emitted part (used to attach time/key signature attributes).
+  for (let si = 0; si < visibleStaves.length; si++) {
+    const staff = visibleStaves[si];
     const clef = clefToMusicXML(staff.clef);
     const isFirstPart = si === 0;
 
@@ -511,10 +514,16 @@ function emitVoiceNotes(
     const nonFermataArticulations = note.articulations?.filter((a: Articulation) => a !== "fermata") ?? [];
     const hasTupletStart = note.tuplet && isTupletStart(notes, ni);
     const hasTupletStop = note.tuplet && isTupletEnd(notes, ni);
-    if (note.tieStart || note.tieEnd || hasArticulations || hasTupletStart || hasTupletStop) {
+    const hasSlur = note.slurStart || note.slurEnd;
+    if (note.tieStart || note.tieEnd || hasArticulations || hasTupletStart || hasTupletStop || hasSlur) {
       lines.push("        <notations>");
       if (note.tieEnd) lines.push('          <tied type="stop"/>');
       if (note.tieStart) lines.push('          <tied type="start"/>');
+      // Slur — number=1 keeps overlapping slurs distinct in MusicXML; OSMD
+      // pairs each <slur type="start"/> with the next <slur type="stop"/>
+      // by number.
+      if (note.slurEnd) lines.push('          <slur number="1" type="stop"/>');
+      if (note.slurStart) lines.push('          <slur number="1" type="start"/>');
       if (hasTupletStart) lines.push('          <tuplet type="start"/>');
       if (hasTupletStop) lines.push('          <tuplet type="stop"/>');
       if (nonFermataArticulations.length > 0) {

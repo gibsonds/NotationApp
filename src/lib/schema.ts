@@ -84,6 +84,11 @@ export const NoteSchema = z.object({
   accidental: z.enum(["sharp", "flat", "natural", "none"]).default("none"),
   tieStart: z.boolean().default(false),
   tieEnd: z.boolean().default(false),
+  /** Note begins a slur (curved phrase mark) that ends on the next note
+   *  with slurEnd=true. Distinct from a tie: a slur connects different
+   *  pitches into a phrase, a tie joins identical pitches into one. */
+  slurStart: z.boolean().optional(),
+  slurEnd: z.boolean().optional(),
   lyric: z.string().optional(),
   dynamic: DynamicMarking.optional(),
   articulations: z.array(Articulation).optional(),
@@ -127,6 +132,13 @@ export const StaffSchema = z.object({
   transposition: z.number().int().optional(),
   lyricsMode: z.enum(["attached", "none"]).default("attached"),
   voices: z.array(VoiceSchema).default([]),
+  /** When true, the staff is silent during playback. Doesn't affect
+   *  rendering — the notes still appear on screen. */
+  muted: z.boolean().default(false).optional(),
+  /** When true, the staff is omitted from the rendered score (and from
+   *  print/export). The staff still exists in the data model so its
+   *  notes are preserved; toggle off to bring it back. */
+  hidden: z.boolean().default(false).optional(),
 });
 export type Staff = z.infer<typeof StaffSchema>;
 
@@ -330,6 +342,8 @@ export const ScorePatchSchema = z.discriminatedUnion("op", [
     name: z.string().optional(),
     clef: Clef.optional(),
     lyricsMode: z.enum(["attached", "none"]).optional(),
+    muted: z.boolean().optional(),
+    hidden: z.boolean().optional(),
   }),
   z.object({
     op: z.literal("add_staff"),
@@ -361,6 +375,8 @@ export const ScorePatchSchema = z.discriminatedUnion("op", [
     updates: z.object({
       tieStart: z.boolean().optional(),
       tieEnd: z.boolean().optional(),
+      slurStart: z.boolean().optional(),
+      slurEnd: z.boolean().optional(),
       dots: z.number().int().min(0).max(2).optional(),
       accidental: z.enum(["sharp", "flat", "natural", "none"]).optional(),
       duration: NoteDuration.optional(),

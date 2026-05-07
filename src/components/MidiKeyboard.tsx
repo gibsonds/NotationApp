@@ -26,6 +26,42 @@ const DUR_LABELS: Record<string, string> = {
 // Letter-key pitch entry: A-G enter notes at sensible octaves relative to clef
 const PITCH_LETTERS = ["C", "D", "E", "F", "G", "A", "B"];
 
+/** Musical-typing keyboard layout: piano-style chromatic mapping that turns
+ *  a QWERTY keyboard into a one-row keyboard. Values are MIDI offsets from
+ *  the chromatic base octave (C of that octave = +0). */
+const MUSICAL_TYPING_MAP: Record<string, number> = {
+  // Lower-octave row — A through J carries the home-row whites,
+  // W/E/T/Y/U adds the blacks above them. Mirrors GarageBand / StaveNTabs.
+  a: 0,   // C
+  w: 1,   // C#
+  s: 2,   // D
+  e: 3,   // D#
+  d: 4,   // E
+  f: 5,   // F
+  t: 6,   // F#
+  g: 7,   // G
+  y: 8,   // G#
+  h: 9,   // A
+  u: 10,  // A#
+  j: 11,  // B
+  // Upper-octave continuation
+  k: 12,  // C
+  o: 13,  // C#
+  l: 14,  // D
+  p: 15,  // D#
+  ";": 16, // E
+  "'": 17, // F
+};
+
+const CHROMATIC_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+
+function midiOffsetToPitch(offset: number, baseOctave: number): string {
+  const total = baseOctave * 12 + offset;
+  const octave = Math.floor(total / 12);
+  const name = CHROMATIC_NAMES[((total % 12) + 12) % 12];
+  return `${name}${octave}`;
+}
+
 /** Resolve a pitch letter to octave nearest to lastPitch, defaulting by clef */
 function resolvePitch(letter: string, lastPitch: string | null, clef: string): string {
   const defaultOctave = clef === "bass" ? 3 : clef === "alto" ? 4 : 4;
@@ -78,10 +114,32 @@ export default function MidiKeyboard() {
   const [currentDuration, setCurrentDuration] = useState<string>("3"); // default quarter
   const [lastPitch, setLastPitch] = useState<string | null>(null);
 
+  // Musical-typing mode: piano-style chromatic mapping over QWERTY (#36).
+  // When on, A/W/S/E/D/F/T/G/Y/H/U/J/K/O/L/P/;/' enter chromatic pitches at
+  // a configurable base octave; ',' and '.' shift octave; '[' and ']'
+  // change duration. Toggle with the on-screen button or Cmd+Opt+K.
+  const [musicalTyping, setMusicalTyping] = useState(false);
+  const [chromaticOctave, setChromaticOctave] = useState(4);
+
   const midiRef = useRef<MidiKeyboardInput | null>(null);
   const activeKeysRef = useRef<Set<number>>(new Set());
   const stepEntryRef = useRef<StepEntryState | null>(null);
   stepEntryRef.current = stepEntry;
+
+  // Cmd+Opt+K (Mac) / Ctrl+Alt+K (Windows) — toggle musical typing mode.
+  // Lives in its own effect so it works regardless of whether step-entry
+  // is active. The chromatic key intercepts above only fire when step
+  // entry is on, but the user can pre-toggle with this shortcut.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.altKey && (e.key === "k" || e.key === "K")) {
+        e.preventDefault();
+        setMusicalTyping((m) => !m);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const connectMidi = useCallback(async () => {
     if (midiRef.current) {
@@ -343,6 +401,60 @@ export default function MidiKeyboard() {
         return;
       }
 
+      // Musical-typing mode (#36): piano-style chromatic layout takes
+      // precedence over the A-G letter handler, comma/period octave
+      // shift, and the T tuplet shortcut. Numbers (1-7) still set
+      // duration. Disable musical typing to access tuplets.
+      if (musicalTyping && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        const k = e.key;
+        const lower = k.length === 1 ? k.toLowerCase() : k;
+        // Octave shift
+        if (k === ",") {
+          e.preventDefault();
+          setChromaticOctave((o) => Math.max(0, o - 1));
+          return;
+        }
+        if (k === ".") {
+          e.preventDefault();
+          setChromaticOctave((o) => Math.min(8, o + 1));
+          return;
+        }
+        // Duration cycle via brackets
+        if (k === "[" || k === "]") {
+          e.preventDefault();
+          const order = ["1", "2", "3", "4", "5", "6", "7"];
+          const idx = order.indexOf(currentDuration);
+          if (idx >= 0) {
+            const nextIdx = k === "]"
+              ? Math.min(order.length - 1, idx + 1)
+              : Math.max(0, idx - 1);
+            setCurrentDuration(order[nextIdx]);
+          }
+          return;
+        }
+        // Rest
+        if (lower === "x") {
+          e.preventDefault();
+          const durInfo = DURATION_MAP[currentDuration];
+          if (!durInfo) return;
+          const tupletInfo = tupletMode ? { actualNotes: tupletMode.actualNotes, normalNotes: tupletMode.normalNotes } : undefined;
+          placeNote("rest", durInfo.dur, durInfo.beats, tupletInfo);
+          return;
+        }
+        // Chromatic pitch
+        if (Object.prototype.hasOwnProperty.call(MUSICAL_TYPING_MAP, lower)) {
+          e.preventDefault();
+          const durInfo = DURATION_MAP[currentDuration];
+          if (!durInfo) return;
+          const offset = MUSICAL_TYPING_MAP[lower];
+          const pitch = midiOffsetToPitch(offset, chromaticOctave);
+          const tupletInfo = tupletMode ? { actualNotes: tupletMode.actualNotes, normalNotes: tupletMode.normalNotes } : undefined;
+          placeNote(pitch, durInfo.dur, durInfo.beats, tupletInfo);
+          setLastPitch(pitch);
+          return;
+        }
+      }
+
       // Dot = add dot to last note
       if (e.key === ".") {
         e.preventDefault();
@@ -461,11 +573,22 @@ export default function MidiKeyboard() {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
     };
-  }, [stepEntry, score, spaceHeld, tupletMode, tupletPending, currentDuration, lastPitch, placeNote, addDotToLast, deleteLastNote, setStepEntry, stepBack]);
+  }, [stepEntry, score, spaceHeld, tupletMode, tupletPending, currentDuration, lastPitch, musicalTyping, chromaticOctave, placeNote, addDotToLast, deleteLastNote, setStepEntry, stepBack]);
 
   return (
     <div className="flex items-center gap-2">
       {/* MIDI connect */}
+      <button
+        onClick={() => setMusicalTyping((m) => !m)}
+        className={`px-2 py-1.5 text-xs font-medium rounded transition-colors ${
+          musicalTyping
+            ? "bg-blue-100 text-blue-700 ring-1 ring-blue-300"
+            : "text-gray-600 bg-gray-100 hover:bg-gray-200"
+        }`}
+        title="Musical typing — turn QWERTY into a chromatic piano (A=C, W=C#, S=D, …). Octave: , / .  Duration: [ / ]  Rest: X"
+      >
+        {musicalTyping ? `♪ Type · O${chromaticOctave}` : "♪ Type"}
+      </button>
       {!connected ? (
         <button
           onClick={connectMidi}
