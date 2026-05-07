@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ChordChartSection, ChordChartLine, Score } from "@/lib/schema";
 
 const MONO_FONT_STACK =
@@ -63,14 +63,20 @@ export default function PaginatedPerformChart({
 
   // Flatten the score into per-line blocks. Headers are their own block so
   // we can measure them and decide whether to keep the header attached to
-  // its first line at column boundaries.
-  const blocks: Block[] = [];
-  for (const section of score.sections) {
-    blocks.push({ kind: "header", sectionId: section.id, section });
-    section.lines.forEach((line, lineIdx) => {
-      blocks.push({ kind: "line", sectionId: section.id, lineIdx, line });
-    });
-  }
+  // its first line at column boundaries. Memoized on score.sections so the
+  // recompute callback below doesn't get a fresh identity every render —
+  // a fresh identity caused useLayoutEffect to re-fire on every setPages
+  // and pegged React's max-update-depth guard.
+  const blocks = useMemo<Block[]>(() => {
+    const out: Block[] = [];
+    for (const section of score.sections) {
+      out.push({ kind: "header", sectionId: section.id, section });
+      section.lines.forEach((line, lineIdx) => {
+        out.push({ kind: "line", sectionId: section.id, lineIdx, line });
+      });
+    }
+    return out;
+  }, [score.sections]);
 
   const blockKey = (b: Block) =>
     b.kind === "header" ? `h:${b.sectionId}` : `l:${b.sectionId}:${b.lineIdx}`;
