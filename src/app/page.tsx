@@ -26,6 +26,7 @@ import PersistFailureBanner from "@/components/PersistFailureBanner";
 import { CLOUD_ENABLED, getDeviceId } from "@/lib/song-cloud";
 import { autosaveToCloud } from "@/lib/cloud-autosave";
 import AnnotationLayer from "@/components/AnnotationLayer";
+import AnnotateToggle from "@/components/AnnotateToggle";
 import AnnotationFilterBar from "@/components/AnnotationFilterBar";
 import { cleanScoreOverflow } from "@/lib/score-cleanup";
 
@@ -1218,6 +1219,18 @@ export default function Home() {
           onExit={() => setUIState({ performMode: false })}
           onOpenMySongs={() => setMySongsOpen(true)}
         />
+      )}
+
+      {/* Annotate sub-mode toggle — pinned to the top-right of the
+          viewport in edit mode (PerformView renders its own at the same
+          screen position when active, so this one is hidden behind it).
+          Putting it in a fixed wrapper guarantees it lives in the SAME
+          screen location whether the user is in Edit or Perform — no
+          button-shuffling between modes. */}
+      {!uiState.performMode && score && (
+        <div className="fixed top-3 right-3 z-40 flex items-center gap-1 rounded-xl bg-gray-900/80 backdrop-blur-sm shadow border border-white/10 p-1 print-hide">
+          <AnnotateToggle />
+        </div>
       )}
     </div>
   );

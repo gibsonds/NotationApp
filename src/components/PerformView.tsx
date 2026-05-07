@@ -5,6 +5,7 @@ import type { Score } from "@/lib/schema";
 import ChordChartView from "@/components/ChordChartView";
 import PaginatedPerformChart from "@/components/PaginatedPerformChart";
 import AnnotationLayer from "@/components/AnnotationLayer";
+import AnnotateToggle from "@/components/AnnotateToggle";
 import { useScoreStore } from "@/store/score-store";
 import { getSongs, type SongBankEntry } from "@/lib/song-bank";
 
@@ -361,31 +362,15 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
         </>
       )}
 
-      {/* Mode buttons — pinned to the top-right, never wrap off-screen.
-          Annotate toggles annotationMode while staying in perform (same
-          scroll position, same chrome) so the user can drop a sticky
-          note where they're already looking. Edit exits perform back to
-          the full editor. */}
+      {/* Mode cluster — pinned top-right in the SAME screen position used
+          in edit mode (see <AnnotateToggle /> rendered from page.tsx).
+          Annotate stays in place whether you're in Edit or Perform; only
+          the neighbor changes (Perform shows an Edit-out button here). */}
       <div className="absolute top-3 right-3 z-30 flex items-center gap-1 rounded-xl bg-gray-900/80 backdrop-blur-sm shadow border border-white/10 p-1">
-        <button
-          type="button"
-          onClick={() => setUIState({ annotationMode: !annotationMode })}
-          className={`px-3 h-11 rounded-lg text-sm font-medium transition-colors ${
-            annotationMode
-              ? "bg-yellow-400 text-gray-900 hover:bg-yellow-300"
-              : "text-gray-100 hover:bg-gray-800 active:bg-gray-700"
-          }`}
-          aria-pressed={annotationMode}
-          aria-label={annotationMode ? "Stop annotating" : "Annotate"}
-          title={annotationMode ? "Tap the chart to add a note. Tap Annotating to stop." : "Annotate — drop sticky notes on the chart"}
-        >
-          {annotationMode ? "Annotating" : "Annotate"}
-        </button>
+        <AnnotateToggle />
         <button
           type="button"
           onClick={() => {
-            // Leaving perform also clears annotate so the editor opens in
-            // its normal edit state, not in annotate-while-edit.
             if (annotationMode) setUIState({ annotationMode: false });
             onExit();
           }}
