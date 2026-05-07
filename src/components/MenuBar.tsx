@@ -20,6 +20,7 @@ interface MenuBarProps {
   onOpenAutosave?: () => void;
   onPasteLyrics?: () => void;
   onMySongs?: () => void;
+  onApiKeys?: () => void;
 }
 
 type MenuItem = {
@@ -110,7 +111,7 @@ function MenuDropdown({ label, items, isOpen, onToggle, onClose }: {
 }
 
 export default function MenuBar({
-  zoom, onZoomChange, onPrint, onOpenAutosave, onPasteLyrics, onMySongs,
+  zoom, onZoomChange, onPrint, onOpenAutosave, onPasteLyrics, onMySongs, onApiKeys,
   onToggleSidebar, sidebarOpen,
 }: MenuBarProps) {
   const {
@@ -394,6 +395,8 @@ export default function MenuBar({
     { label: "Clear Selection", shortcut: "Esc", action: () => setSelection(null), enabled: !!selection },
     { separator: true },
     { label: "Paste Lyrics / Chords\u2026", action: () => onPasteLyrics?.(), enabled: !!score },
+    { separator: true },
+    { label: "API Keys\u2026", action: () => onApiKeys?.() },
   ];
 
   const viewMenu: MenuItem[] = [
