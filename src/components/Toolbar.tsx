@@ -47,7 +47,6 @@ export default function Toolbar({ zoom, onZoomChange, onPrint }: ToolbarProps) {
     });
   };
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const audioInputRef = useRef<HTMLInputElement>(null);
 
   const canUndo = historyIndex > 0;
   const canRedo = historyIndex < history.length - 1;
@@ -267,58 +266,6 @@ export default function Toolbar({ zoom, onZoomChange, onPrint }: ToolbarProps) {
     }
   };
 
-  const handleTranscribe = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (IS_STATIC_EXPORT) {
-      addMessage({ id: uuidv4(), role: "assistant", content: STATIC_FEATURE_DISABLED_MESSAGE, timestamp: Date.now() });
-      if (audioInputRef.current) audioInputRef.current.value = "";
-      return;
-    }
-    setIsGenerating(true);
-    addMessage({
-      id: uuidv4(),
-      role: "assistant",
-      content: `Transcribing ${file.name}... This may take a minute.`,
-      timestamp: Date.now(),
-    });
-
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const res = await fetch("/api/score/transcribe", {
-        method: "POST",
-        body: formData,
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || "Transcription failed");
-      }
-
-      setScore(data.score);
-      addMessage({
-        id: uuidv4(),
-        role: "assistant",
-        content: data.message || `Transcribed ${file.name}.`,
-        timestamp: Date.now(),
-      });
-    } catch (err: any) {
-      addMessage({
-        id: uuidv4(),
-        role: "assistant",
-        content: `Transcription error: ${err.message}`,
-        timestamp: Date.now(),
-      });
-    } finally {
-      setIsGenerating(false);
-      if (audioInputRef.current) audioInputRef.current.value = "";
-    }
-  };
-
   return (
     <div className="flex items-center justify-between px-4 py-2 bg-white border-b border-gray-200">
       {/* Left: Brand */}
@@ -385,20 +332,6 @@ export default function Toolbar({ zoom, onZoomChange, onPrint }: ToolbarProps) {
           onChange={handleImport}
           className="hidden"
         />
-        <input
-          ref={audioInputRef}
-          type="file"
-          accept=".mp3,.m4a,.wav,.aif,.aiff,.ogg,.flac,.mp4"
-          onChange={handleTranscribe}
-          className="hidden"
-        />
-        <button
-          onClick={() => audioInputRef.current?.click()}
-          className="px-3 py-1.5 text-xs font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 rounded transition-colors"
-          title="Transcribe audio to notation (MP3, WAV, M4A, AIF)"
-        >
-          Transcribe
-        </button>
         <button
           onClick={() => fileInputRef.current?.click()}
           className="px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded transition-colors"

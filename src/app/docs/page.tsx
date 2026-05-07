@@ -517,9 +517,8 @@ const SECTIONS: Section[] = [
         </p>
         <h3>Can I import a PDF or scan?</h3>
         <p>
-          Not directly. <em>Tools → Transcribe Audio…</em> can convert an audio recording
-          (mp3, m4a, wav, etc.) into a starting score that you then clean up.
-          <em>File → Import…</em> handles MIDI, MusicXML (.mxl/.xml), and JSON projects.
+          Not directly. <em>File → Import…</em> handles MIDI, MusicXML (.mxl/.xml),
+          ChordPro (.cho/.crd/.pro), and JSON projects.
         </p>
         <h3>How do I share a song with someone?</h3>
         <p>
