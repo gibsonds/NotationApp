@@ -476,6 +476,17 @@ export default function MenuBar({
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
             </svg>
           </button>
+          <span className="text-gray-700 mx-1">|</span>
+          <a
+            href="/docs"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-5 h-5 flex items-center justify-center text-[11px] font-bold text-gray-400 hover:bg-white/10 hover:text-gray-200 rounded-full border border-white/15"
+            title="Open documentation in new tab"
+            aria-label="Open documentation"
+          >
+            ?
+          </a>
         </div>
       </div>
     </>
