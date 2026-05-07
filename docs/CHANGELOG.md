@@ -3,6 +3,18 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-07 — a54c004
+
+**Move audio transcribe to dev/audio-transcribe branch (#71)**
+
+- Commit: [`a54c004`](../../commit/a54c0045a9ee25cfbf77f50f5b22f2e1680c3770)
+- Author: gibsonds
+- Files changed:
+  - `src/app/api/score/transcribe/route.ts`
+  - `src/app/docs/page.tsx`
+  - `src/components/MenuBar.tsx`
+  - `src/components/Toolbar.tsx`
+
 ## 2026-05-07 — 325bfb3
 
 **Fix infinite update loop in PaginatedPerformChart (#70)**
