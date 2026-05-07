@@ -177,76 +177,48 @@ const SECTIONS: Section[] = [
     body: (
       <>
         <p>
-          A quick walkthrough using the song{" "}
-          <em>&quot;You Play the Trombone, I&apos;ll Blow the Smoke Rings.&quot;</em>{" "}
-          We&apos;ll get from a blank chart to chord names sitting in their
-          right places — anchored either to bar lines or to specific syllables
-          of a lyric.
+          You&apos;ve already got the lyrics in — pasted, typed, or imported —
+          and now the songwriter just needs to drop the chords above the
+          right words. This walkthrough covers exactly that flow.
         </p>
-        <div className="rounded-md border border-amber-300/30 bg-amber-300/5 px-4 py-3 text-[13px] text-amber-100/90 my-3">
-          <strong className="text-amber-200">Author&apos;s note —</strong>{" "}
-          the song was recorded with the guitar tuned down a half step and a
-          capo at fret III. The chord names below are the shapes the player
-          fingers (concert pitch comes out a minor third above what&apos;s
-          written, given the down-tuning).
-        </div>
         <ol>
           <li>
-            <strong>Create the chart.</strong> <em>File → New Chord Chart</em>.
-            You&apos;ll land in an empty <em>Verse 1</em> with a chord row and a
-            lyric row. Rename it <em>Intro</em> from the section header
-            right-click menu.
+            <strong>Open the song from My Songs.</strong>{" "}
+            <em>File → My Songs</em> (or <Kbd>Cmd&nbsp;K</Kbd> →{" "}
+            <em>My Songs</em>). Click the song. The chart loads with your
+            lyrics in place and an empty chord row sitting above each lyric
+            line — that&apos;s where the chords go.
           </li>
           <li>
-            <strong>Lay down the bar lines.</strong> The intro is six bars with
-            no lyrics, so click in the <em>chord row</em> at the position you
-            want each bar to start and type <code>|</code> + <Kbd>Enter</Kbd>.
-            Each <code>|</code> anchors a column you can hang a chord on.
+            <strong>Click in the chord row above the first chord change.</strong>{" "}
+            The chord row is the empty space directly above the lyric. Click
+            at the column above the syllable where the chord lands — a small
+            input opens at that column.
           </li>
           <li>
-            <strong>Drop a chord on each bar.</strong> Click just to the right
-            of a bar line — a small input opens at that column. Type the chord
-            name and press <Kbd>Enter</Kbd>. For this song&apos;s intro, place:
-            <ul>
-              <li><code>Am</code>, <code>G</code>, <code>F</code>, <code>Am</code>, <code>G</code>, <code>Am7</code></li>
-            </ul>
+            <strong>Type the chord name and press <Kbd>Enter</Kbd>.</strong>{" "}
+            Anything that parses as a chord works — <code>C</code>,{" "}
+            <code>Am</code>, <code>Cmaj7</code>, <code>F#m7b5</code>,{" "}
+            <code>Bb/D</code>. The chord appears anchored to that column,
+            sitting directly over the syllable below it.
           </li>
           <li>
-            <strong>Anchor a chord to a syllable</strong> (when you do have
-            lyrics — e.g. when the verse comes in). Type the lyric in the
-            lyric row, then click in the chord row directly{" "}
-            <em>above the syllable</em> the chord falls on. Column N of the
-            chord row sits exactly above column N of the lyric row, so what you
-            see is what you get.
+            <strong>Nudge the position with arrow keys.</strong> Click the
+            chord to re-open the input, then{" "}
+            <Kbd>Shift</Kbd>&nbsp;<Kbd>←</Kbd>&nbsp;/&nbsp;<Kbd>Shift</Kbd>
+            &nbsp;<Kbd>→</Kbd> moves it one character at a time.{" "}
+            <Kbd>Enter</Kbd> commits, <Kbd>Esc</Kbd> cancels. Submitting an
+            empty input deletes the chord at that column.
           </li>
           <li>
-            <strong>Tweak.</strong> Click any chord to re-edit it.{" "}
-            <Kbd>Shift</Kbd> <Kbd>←</Kbd>/<Kbd>→</Kbd> nudges its column one
-            character at a time. Submit an empty chord to delete it.
+            <strong>Repeat across the line, then the next line.</strong> Click
+            the next column where a chord change happens, type, commit. Move
+            down to the next lyric line and do the same. That&apos;s the whole
+            loop.
           </li>
         </ol>
-        <h3>What it should look like</h3>
-        <p className="text-xs text-gray-500 mb-1">
-          Intro: six bars, one chord per bar.
-        </p>
-        <SmokeRingsIntroExample />
-        <h3>Pasting instead of typing</h3>
-        <p>
-          If you already have the chart in text, use{" "}
-          <em>Edit → Paste Lyrics / Chords…</em>. Both common formats parse:
-        </p>
-        <p className="text-gray-400 text-sm mb-1">ChordPro-style brackets:</p>
-        <pre className="rounded-md bg-black/40 border border-white/10 p-3 text-[13px] leading-relaxed overflow-x-auto"><code>{`{title: You Play the Trombone, I'll Blow the Smoke Rings}
-{capo: 3}
-{comment: Tuned down 1/2 step}
-
-{start_of_part: Intro}
-| [Am] | [G] | [F] | [Am] | [G] | [Am7] |
-{end_of_part}`}</code></pre>
-        <p className="text-gray-400 text-sm mb-1 mt-3">Two-line format:</p>
-        <pre className="rounded-md bg-black/40 border border-white/10 p-3 text-[13px] leading-relaxed overflow-x-auto"><code>{`Intro  (tuned down 1/2 step, capo III)
-Am      G       F       Am      G       Am7
-|       |       |       |       |       |`}</code></pre>
+        <h3>What it should look like, step by step</h3>
+        <ChordsToLyricsPanels />
       </>
     ),
   },
@@ -625,90 +597,157 @@ function Kbd({ children }: { children: React.ReactNode }) {
   );
 }
 
-function SmokeRingsIntroExample() {
-  // Renders the intro of "You Play the Trombone, I'll Blow the Smoke Rings":
-  // six bars, one chord per bar. Layout mirrors the real ChordChartView —
-  // monospace, chord row above bar/lyric row, column-aligned. Chord color
-  // matches text-yellow-300 in the app.
-  const intro = ["Am", "G", "F", "Am", "G", "Am7"];
-  const BAR_W = 80; // px between bar lines
-  const X0 = 32;
-  const Y_CHORD = 70;
-  const Y_BAR = 100;
-  const W = X0 * 2 + BAR_W * intro.length;
+type ChordPlacement = { col: number; name: string };
+
+function ChordChartPanel({
+  lyric,
+  chords,
+  cursorCol,
+  ariaLabel,
+}: {
+  lyric: string;
+  chords: ChordPlacement[];
+  cursorCol?: number;
+  ariaLabel: string;
+}) {
+  // Mirrors ChordChartView: monospace chord row above monospace lyric row,
+  // column-aligned. Chord color matches text-yellow-300; cursor box echoes
+  // the floating chord-input affordance (pink ring on a tinted bg).
+  const CH = 12;
+  const X0 = 24;
+  const W = X0 * 2 + lyric.length * CH;
+  const xAt = (c: number) => X0 + c * CH;
   return (
     <svg
-      viewBox={`0 0 ${W} 140`}
-      className="w-full mt-3 rounded-md border border-white/10 bg-[#1a1a3a]"
+      viewBox={`0 0 ${W} 122`}
+      className="w-full rounded-md border border-white/10 bg-[#1a1a3a]"
       role="img"
-      aria-label="Chord chart intro example: six bars with chords Am, G, F, Am, G, Am7 — one chord per bar."
+      aria-label={ariaLabel}
     >
       <text
         x={X0}
-        y={28}
+        y={24}
         fill="#9ca3af"
         fontFamily="ui-sans-serif, system-ui, sans-serif"
         fontSize={11}
         letterSpacing="0.08em"
       >
-        INTRO &nbsp;&nbsp;·&nbsp;&nbsp; tuned down 1/2 step, capo III
+        VERSE 1
       </text>
+      {cursorCol != null && (
+        <g>
+          <rect
+            x={xAt(cursorCol) - 3}
+            y={42}
+            width={30}
+            height={26}
+            rx={3}
+            fill="#7f1d3f"
+            fillOpacity={0.55}
+            stroke="#f472b6"
+            strokeOpacity={0.9}
+            strokeWidth={1.5}
+          />
+          <line
+            x1={xAt(cursorCol) + 2}
+            x2={xAt(cursorCol) + 2}
+            y1={48}
+            y2={64}
+            stroke="#fde047"
+            strokeOpacity={0.95}
+            strokeWidth={1.5}
+          />
+        </g>
+      )}
       <g
         fill="#fde047"
         fontFamily="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace"
         fontWeight={600}
         fontSize={20}
       >
-        {intro.map((name, i) => (
-          <text
-            key={i}
-            x={X0 + i * BAR_W + BAR_W / 2}
-            y={Y_CHORD}
-            textAnchor="middle"
-          >
-            {name}
+        {chords.map((c) => (
+          <text key={`${c.col}-${c.name}`} x={xAt(c.col)} y={62}>
+            {c.name}
           </text>
         ))}
       </g>
-      <g
-        stroke="#9ca3af"
-        strokeOpacity={0.55}
-        strokeWidth={1.5}
+      <text
+        x={X0}
+        y={100}
+        fill="#f3f4f6"
+        fontFamily="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace"
+        fontSize={20}
+        textLength={lyric.length * CH}
+        lengthAdjust="spacing"
       >
-        {Array.from({ length: intro.length + 1 }).map((_, i) => (
-          <line
-            key={i}
-            x1={X0 + i * BAR_W}
-            x2={X0 + i * BAR_W}
-            y1={Y_BAR - 14}
-            y2={Y_BAR + 6}
-          />
-        ))}
-        <line
-          x1={X0}
-          x2={X0 + intro.length * BAR_W}
-          y1={Y_BAR}
-          y2={Y_BAR}
-          strokeOpacity={0.25}
-        />
-      </g>
-      <g
-        fill="#9ca3af"
-        fontFamily="ui-sans-serif, system-ui, sans-serif"
-        fontSize={11}
-      >
-        {intro.map((_, i) => (
-          <text
-            key={i}
-            x={X0 + i * BAR_W + BAR_W / 2}
-            y={Y_BAR + 24}
-            textAnchor="middle"
-          >
-            bar {i + 1}
-          </text>
-        ))}
-      </g>
+        {lyric}
+      </text>
     </svg>
+  );
+}
+
+function ChordsToLyricsPanels() {
+  // 4-panel progression: lyrics-loaded → click → first chord → all chords.
+  // The placeholder lyric uses dog/bunny/cat for a generic illustration —
+  // syllable positions of "dog" (col 4), "bunny" (col 19), and "cat"
+  // (col 34) are where chord changes will land in the demo.
+  const lyric = "The dog chased the bunny past the cat";
+  const panels: {
+    chords: ChordPlacement[];
+    cursorCol?: number;
+    caption: string;
+    ariaLabel: string;
+  }[] = [
+    {
+      chords: [],
+      caption:
+        "1. Open the song from My Songs. Lyrics are already in place; the chord row above is empty.",
+      ariaLabel:
+        "Step 1: lyric 'The dog chased the bunny past the cat' loaded with empty chord row above it.",
+    },
+    {
+      chords: [],
+      cursorCol: 4,
+      caption:
+        "2. Click in the chord row above the syllable where the first chord change lands. An input opens at that column.",
+      ariaLabel:
+        "Step 2: a chord input cursor has opened above the word 'dog' in the lyric row.",
+    },
+    {
+      chords: [{ col: 4, name: "Am" }],
+      caption:
+        "3. Type the chord name and press Enter. Click the chord to re-open and Shift+←/→ to nudge its column one character at a time.",
+      ariaLabel:
+        "Step 3: chord 'Am' has been entered and now sits directly above 'dog'.",
+    },
+    {
+      chords: [
+        { col: 4, name: "Am" },
+        { col: 19, name: "C" },
+        { col: 34, name: "G" },
+      ],
+      caption:
+        "4. Repeat across the line. Each chord stays anchored to its column. Submit an empty input at any column to delete the chord there.",
+      ariaLabel:
+        "Step 4: chords 'Am' above 'dog', 'C' above 'bunny', and 'G' above 'cat' — all three changes are in place.",
+    },
+  ];
+  return (
+    <div className="mt-3 space-y-5">
+      {panels.map((p, i) => (
+        <figure key={i}>
+          <ChordChartPanel
+            lyric={lyric}
+            chords={p.chords}
+            cursorCol={p.cursorCol}
+            ariaLabel={p.ariaLabel}
+          />
+          <figcaption className="text-xs text-gray-400 mt-2">
+            {p.caption}
+          </figcaption>
+        </figure>
+      ))}
+    </div>
   );
 }
 
