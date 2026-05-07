@@ -172,6 +172,70 @@ const SECTIONS: Section[] = [
     ),
   },
   {
+    id: "how-to-chords-above-lyrics",
+    title: "How To: Add Chords Above Lyrics",
+    body: (
+      <>
+        <p>
+          A quick walkthrough using the line{" "}
+          <em>&quot;You play the trombone, I&apos;ll blow the smoke rings.&quot;</em>{" "}
+          We&apos;ll go from a blank chart to chord names sitting over the right
+          syllables.
+        </p>
+        <ol>
+          <li>
+            <strong>Create the chart.</strong> <em>File → New Chord Chart</em>.
+            You&apos;ll land in an empty <em>Verse 1</em> with a chord row and a
+            lyric row.
+          </li>
+          <li>
+            <strong>Type the lyric.</strong> Click the lyric row and type{" "}
+            <code>You play the trombone, I&apos;ll blow the smoke rings</code>.
+            Press <Kbd>Enter</Kbd> to commit.
+          </li>
+          <li>
+            <strong>Drop a chord.</strong> Click directly above the syllable you
+            want the chord to land on — a small input opens at that column.
+            Type the chord name and press <Kbd>Enter</Kbd>. The chord is
+            anchored to that column and stays aligned with the syllable below
+            it.
+          </li>
+          <li>
+            <strong>Repeat for each change.</strong> For our line, place:
+            <ul>
+              <li><code>C</code> above <em>You</em></li>
+              <li><code>Am</code> above <em>trom</em>bone</li>
+              <li><code>F</code> above <em>blow</em></li>
+              <li><code>G</code> above <em>smoke</em></li>
+            </ul>
+          </li>
+          <li>
+            <strong>Tweak.</strong> Click any chord to re-edit it. <Kbd>Shift</Kbd>
+            <Kbd>←</Kbd>/<Kbd>→</Kbd> nudges its column one character at a time.
+            Submit an empty chord to delete it.
+          </li>
+        </ol>
+        <h3>What it should look like</h3>
+        <ChordsAboveLyricsExample />
+        <p className="text-xs text-gray-500 mt-2">
+          The chord row and lyric row are both monospace — column N of the chord
+          row sits exactly above column N of the lyric row. That&apos;s how the
+          chord stays anchored to its syllable.
+        </p>
+        <h3>Pasting instead of typing</h3>
+        <p>
+          If you already have the song in text, use{" "}
+          <em>Edit → Paste Lyrics / Chords…</em>. Both common formats parse:
+        </p>
+        <p className="text-gray-400 text-sm mb-1">ChordPro-style brackets:</p>
+        <pre className="rounded-md bg-black/40 border border-white/10 p-3 text-[13px] leading-relaxed overflow-x-auto"><code>{`[C]You play the [Am]trombone, I'll [F]blow the [G]smoke rings`}</code></pre>
+        <p className="text-gray-400 text-sm mb-1 mt-3">Two-line format:</p>
+        <pre className="rounded-md bg-black/40 border border-white/10 p-3 text-[13px] leading-relaxed overflow-x-auto"><code>{`C            Am             F        G
+You play the trombone, I'll blow the smoke rings`}</code></pre>
+      </>
+    ),
+  },
+  {
     id: "blended-documents",
     title: "Blended Documents (coming soon)",
     body: (
@@ -543,6 +607,77 @@ function Kbd({ children }: { children: React.ReactNode }) {
     <kbd className="inline-block px-1.5 py-0.5 mx-0.5 text-[11px] font-mono rounded border border-white/20 bg-white/10 text-gray-100">
       {children}
     </kbd>
+  );
+}
+
+function ChordsAboveLyricsExample() {
+  // Mirrors the real ChordChartView layout: monospace chord row above
+  // monospace lyric row, where column N of the chord row sits directly above
+  // column N of the lyric row. Chord color matches text-yellow-300 in the app.
+  const lyric = "You play the trombone, I'll blow the smoke rings";
+  const CH = 12; // monospace advance at fontSize=20
+  const X0 = 24;
+  const chords: { col: number; name: string }[] = [
+    { col: 0, name: "C" },
+    { col: 13, name: "Am" },
+    { col: 28, name: "F" },
+    { col: 37, name: "G" },
+  ];
+  const xAt = (c: number) => X0 + c * CH;
+  const W = X0 * 2 + lyric.length * CH;
+  return (
+    <svg
+      viewBox={`0 0 ${W} 132`}
+      className="w-full mt-3 rounded-md border border-white/10 bg-[#1a1a3a]"
+      role="img"
+      aria-label="Chord chart example: chord names C, Am, F, G floating above the lyric 'You play the trombone, I'll blow the smoke rings.'"
+    >
+      <text
+        x={X0}
+        y={26}
+        fill="#9ca3af"
+        fontFamily="ui-sans-serif, system-ui, sans-serif"
+        fontSize={11}
+        letterSpacing="0.08em"
+      >
+        VERSE 1
+      </text>
+      <g
+        fill="#fde047"
+        fontFamily="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace"
+        fontWeight={600}
+        fontSize={20}
+      >
+        {chords.map((c) => (
+          <text key={c.col} x={xAt(c.col)} y={66}>
+            {c.name}
+          </text>
+        ))}
+      </g>
+      {chords.map((c) => (
+        <line
+          key={c.col}
+          x1={xAt(c.col) + 4}
+          x2={xAt(c.col) + 4}
+          y1={72}
+          y2={88}
+          stroke="#fde047"
+          strokeOpacity={0.4}
+          strokeDasharray="2 3"
+        />
+      ))}
+      <text
+        x={X0}
+        y={108}
+        fill="#f3f4f6"
+        fontFamily="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace"
+        fontSize={20}
+        textLength={lyric.length * CH}
+        lengthAdjust="spacing"
+      >
+        {lyric}
+      </text>
+    </svg>
   );
 }
 
