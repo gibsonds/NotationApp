@@ -3,6 +3,15 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-07 — 3aa3ca1
+
+**fix: apply basePath to MenuBar docs links so they resolve on Pages (#79)**
+
+- Commit: [`3aa3ca1`](../../commit/3aa3ca11c54153c179c7f26f9f82cbc9a346377a)
+- Author: gibsonds
+- Files changed:
+  - `src/components/MenuBar.tsx`
+
 ## 2026-05-07 — 357e1bf
 
 **docs: rewrite chord how-to for songwriter "lyrics already loaded" flow (#78)**
