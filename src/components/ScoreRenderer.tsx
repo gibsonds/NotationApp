@@ -151,7 +151,6 @@ function applyLayout(osmd: any, layout: LayoutSettings, zoomLevel: number) {
     rules.StaffLineWidth = 0.12;
     rules.StemWidth = 0.15;
     rules.BeamWidth = 0.6;
-    rules.LedgerLineWidth = 0.14;
     rules.WedgeLineWidth = 0.14;
     rules.TupletLineWidth = 0.14;
     rules.LyricUnderscoreLineWidth = 0.12;
@@ -167,7 +166,6 @@ function applyLayout(osmd: any, layout: LayoutSettings, zoomLevel: number) {
     rules.StaffLineWidth = 0.1;
     rules.StemWidth = 0.13;
     rules.BeamWidth = 0.5;
-    rules.LedgerLineWidth = 0.12;
     rules.WedgeLineWidth = 0.12;
     rules.TupletLineWidth = 0.12;
     rules.LyricUnderscoreLineWidth = 0.1;
@@ -179,6 +177,7 @@ function applyLayout(osmd: any, layout: LayoutSettings, zoomLevel: number) {
     rules.TieHeightMaximum = 1.4;
     rules.BeamSlopeMaxAngle = 10;
   }
+  rules.LedgerLineWidth = rules.StaffLineWidth * layout.ledgerLineWeight;
 
   rules.SlurPlacementUseSkyBottomLine = true;
 

@@ -58,6 +58,7 @@ export interface LayoutSettings {
   pageBreaks: boolean;      // enable page-height pagination
   pageSize: PageSize;       // page dimensions for print/pagination
   noteSize: number;         // notation scale factor (1.0 = default, 0.7 = smaller)
+  ledgerLineWeight: number; // multiplier on the staff line stroke width used for ledger lines (1.0 = match staff lines)
   musicFont: MusicFont;     // VexFlow music notation font
   textFont: TextFont;       // CSS text font for lyrics, titles, etc.
   printPageNumbers: boolean; // show page numbers in print output
@@ -79,6 +80,7 @@ export const DEFAULT_LAYOUT: LayoutSettings = {
   pageBreaks: false,
   pageSize: "letter",
   noteSize: 1.0,
+  ledgerLineWeight: 1.0,
   musicFont: "bravura",
   textFont: "georgia",
   printPageNumbers: true,
@@ -100,6 +102,7 @@ export const PRINT_LAYOUT: LayoutSettings = {
   pageBreaks: true,
   pageSize: "letter",
   noteSize: 0.65,
+  ledgerLineWeight: 1.0,
   musicFont: "bravura",
   textFont: "palatino",
   printPageNumbers: true,
@@ -123,6 +126,7 @@ export const MANUSCRIPT_LAYOUT: LayoutSettings = {
   pageBreaks: true,
   pageSize: "letter",
   noteSize: 0.85,
+  ledgerLineWeight: 1.0,
   musicFont: "gonville",
   textFont: "garamond",
   printPageNumbers: true,
@@ -146,6 +150,7 @@ export const LEAD_SHEET_LAYOUT: LayoutSettings = {
   pageBreaks: false,
   pageSize: "letter",
   noteSize: 1.05,
+  ledgerLineWeight: 1.0,
   musicFont: "bravura",
   textFont: "helvetica",
   printPageNumbers: false,
@@ -169,6 +174,7 @@ export const CLASSROOM_LAYOUT: LayoutSettings = {
   pageBreaks: false,
   pageSize: "letter",
   noteSize: 1.2,
+  ledgerLineWeight: 1.0,
   musicFont: "bravura",
   textFont: "noto",
   printPageNumbers: false,
@@ -191,6 +197,7 @@ export const REALBOOK_LAYOUT: LayoutSettings = {
   pageBreaks: false,
   pageSize: "letter",
   noteSize: 1.0,
+  ledgerLineWeight: 1.0,
   musicFont: "petaluma",
   textFont: "handwritten",
   printPageNumbers: false,
@@ -757,7 +764,7 @@ export const useScoreStore = create<ProjectState>()(
     }),
     {
       name: "notation-app-store",
-      version: 13,
+      version: 14,
       migrate: (persisted: any, version: number) => {
         if (version < 2) {
           persisted = { ...persisted, savedRevisions: persisted.savedRevisions ?? [] };
@@ -826,6 +833,16 @@ export const useScoreStore = create<ProjectState>()(
           persisted = {
             ...persisted,
             uiState: next,
+          };
+        }
+        if (version < 14) {
+          const layout = persisted.layout ?? DEFAULT_LAYOUT;
+          persisted = {
+            ...persisted,
+            layout: {
+              ...layout,
+              ledgerLineWeight: layout.ledgerLineWeight ?? 1.0,
+            },
           };
         }
         // Always reconcile UIState with current defaults so newly-added
