@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from "uuid";
 import { useScoreStore } from "@/store/score-store";
 import type { Annotation } from "@/lib/schema";
 import AnnotationPopover from "./AnnotationPopover";
+import { logEvent, scoreTypeOf } from "@/lib/analytics";
 
 type Color = Annotation["color"];
 type Visibility = Annotation["visibility"];
@@ -62,6 +63,7 @@ export default function AnnotationLayer() {
     text: string; color: Color; visibility: Visibility; label: string;
   }) => {
     if (!pendingAnchor) return;
+    logEvent({ event: "annotation_create", scoreType: scoreTypeOf(score) });
     applyPatches([{
       op: "add_annotation",
       annotation: {
@@ -82,11 +84,13 @@ export default function AnnotationLayer() {
     id: string,
     updates: { text?: string; color?: Color; visibility?: Visibility; label?: string }
   ) => {
+    logEvent({ event: "annotation_edit", scoreType: scoreTypeOf(score) });
     applyPatches([{ op: "update_annotation", id, updates }]);
     setEditingId(null);
   };
 
   const handleDelete = (id: string) => {
+    logEvent({ event: "annotation_delete", scoreType: scoreTypeOf(score) });
     applyPatches([{ op: "remove_annotation", id }]);
     setEditingId(null);
   };

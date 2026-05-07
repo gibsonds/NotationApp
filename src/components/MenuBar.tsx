@@ -10,6 +10,7 @@ import { CLOUD_ENABLED, cloudCreateNamedRevision } from "@/lib/song-cloud";
 import { getSongs } from "@/lib/song-bank";
 import { IS_STATIC_EXPORT, STATIC_FEATURE_DISABLED_MESSAGE } from "@/lib/api-availability";
 import { v4 as uuidv4 } from "uuid";
+import { logEvent, scoreTypeOf } from "@/lib/analytics";
 
 interface MenuBarProps {
   zoom: number;
@@ -34,12 +35,13 @@ type MenuItem = {
   label?: never;
 };
 
-function MenuDropdown({ label, items, isOpen, onToggle, onClose }: {
+function MenuDropdown({ label, items, isOpen, onToggle, onClose, onItemClick }: {
   label: string;
   items: MenuItem[];
   isOpen: boolean;
   onToggle: () => void;
   onClose: () => void;
+  onItemClick?: (itemLabel: string) => void;
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -83,6 +85,7 @@ function MenuDropdown({ label, items, isOpen, onToggle, onClose }: {
                 key={i}
                 onClick={() => {
                   if (item.enabled === false) return;
+                  onItemClick?.(item.label);
                   item.action?.();
                   onClose();
                 }}
@@ -138,6 +141,7 @@ export default function MenuBar({
   // ── Handlers (moved from Toolbar) ─────────────────────────────────
 
   const handleNew = () => {
+    logEvent({ event: "score_new", name: "notation" });
     reset();
     setScore({
       id: uuidv4(),
@@ -169,6 +173,7 @@ export default function MenuBar({
    *  empty line — the user fills in lyrics and chords from there. No
    *  staves, so the renderer switches to ChordChartView. */
   const handleNewChordChart = () => {
+    logEvent({ event: "score_new", name: "chord-chart" });
     reset();
     setScore({
       id: uuidv4(),
@@ -278,6 +283,7 @@ export default function MenuBar({
         setScore(result.data);
         addMessage({ id: uuidv4(), role: "assistant", content: `Loaded ${file.name}.`, timestamp: Date.now() });
       } catch (err: any) {
+        logEvent({ event: "error", name: "import_json" });
         addMessage({ id: uuidv4(), role: "assistant", content: `Import error: ${err.message}`, timestamp: Date.now() });
       } finally {
         if (fileInputRef.current) fileInputRef.current.value = "";
@@ -301,6 +307,7 @@ export default function MenuBar({
       if (data.warnings?.length) setWarnings(data.warnings);
       addMessage({ id: uuidv4(), role: "assistant", content: data.message || `Imported ${file.name}.`, timestamp: Date.now() });
     } catch (err: any) {
+      logEvent({ event: "error", name: "import" });
       addMessage({ id: uuidv4(), role: "assistant", content: `Import error: ${err.message}`, timestamp: Date.now() });
     } finally {
       setIsGenerating(false);
@@ -329,6 +336,7 @@ export default function MenuBar({
       });
       addMessage({ id: uuidv4(), role: "assistant", content: `Opened project "${file.name}" \u2014 "${result.data.title}".`, timestamp: Date.now() });
     } catch (err: any) {
+      logEvent({ event: "error", name: "open_project" });
       addMessage({ id: uuidv4(), role: "assistant", content: `Open project error: ${err.message}`, timestamp: Date.now() });
     } finally {
       if (projectInputRef.current) projectInputRef.current.value = "";
@@ -353,6 +361,7 @@ export default function MenuBar({
       setScore(data.score);
       addMessage({ id: uuidv4(), role: "assistant", content: data.message || `Transcribed ${file.name}.`, timestamp: Date.now() });
     } catch (err: any) {
+      logEvent({ event: "error", name: "transcribe" });
       addMessage({ id: uuidv4(), role: "assistant", content: `Transcription error: ${err.message}`, timestamp: Date.now() });
     } finally {
       setIsGenerating(false);
@@ -420,10 +429,38 @@ export default function MenuBar({
         <span className="text-sm font-bold text-gray-100 mr-3 tracking-wide">\u2669 NotationApp</span>
 
         {/* Menus */}
-        <MenuDropdown label="File" items={fileMenu} isOpen={openMenu === "file"} onToggle={() => toggleMenu("file")} onClose={closeMenu} />
-        <MenuDropdown label="Edit" items={editMenu} isOpen={openMenu === "edit"} onToggle={() => toggleMenu("edit")} onClose={closeMenu} />
-        <MenuDropdown label="View" items={viewMenu} isOpen={openMenu === "view"} onToggle={() => toggleMenu("view")} onClose={closeMenu} />
-        <MenuDropdown label="Tools" items={toolsMenu} isOpen={openMenu === "tools"} onToggle={() => toggleMenu("tools")} onClose={closeMenu} />
+        <MenuDropdown
+          label="File"
+          items={fileMenu}
+          isOpen={openMenu === "file"}
+          onToggle={() => toggleMenu("file")}
+          onClose={closeMenu}
+          onItemClick={(name) => logEvent({ event: "menu", name: `File>${name}`, scoreType: scoreTypeOf(score) })}
+        />
+        <MenuDropdown
+          label="Edit"
+          items={editMenu}
+          isOpen={openMenu === "edit"}
+          onToggle={() => toggleMenu("edit")}
+          onClose={closeMenu}
+          onItemClick={(name) => logEvent({ event: "menu", name: `Edit>${name}`, scoreType: scoreTypeOf(score) })}
+        />
+        <MenuDropdown
+          label="View"
+          items={viewMenu}
+          isOpen={openMenu === "view"}
+          onToggle={() => toggleMenu("view")}
+          onClose={closeMenu}
+          onItemClick={(name) => logEvent({ event: "menu", name: `View>${name}`, scoreType: scoreTypeOf(score) })}
+        />
+        <MenuDropdown
+          label="Tools"
+          items={toolsMenu}
+          isOpen={openMenu === "tools"}
+          onToggle={() => toggleMenu("tools")}
+          onClose={closeMenu}
+          onItemClick={(name) => logEvent({ event: "menu", name: `Tools>${name}`, scoreType: scoreTypeOf(score) })}
+        />
 
         <CloudSaveIndicator />
 

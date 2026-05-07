@@ -1,6 +1,7 @@
 "use client";
 
 import { useScoreStore } from "@/store/score-store";
+import { logEvent, scoreTypeOf } from "@/lib/analytics";
 
 type Mode = "edit" | "perform" | "annotate";
 
@@ -17,6 +18,9 @@ export default function ModeSelector() {
 
   function selectMode(mode: Mode) {
     if (mode === "perform" && !hasChordChart) return;
+    if (mode !== currentMode) {
+      logEvent({ event: "mode_switch", name: mode, scoreType: scoreTypeOf(score) });
+    }
     setUIState({
       performMode: mode === "perform",
       annotationMode: mode === "annotate",
