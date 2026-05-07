@@ -1121,7 +1121,7 @@ export default function ScoreRenderer({
   }, []);
 
   return (
-    <div className="relative w-full h-full overflow-auto bg-white rounded-lg">
+    <div className="relative w-full h-full overflow-auto bg-white">
       {loading && (
         <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
           <div className="flex items-center gap-2 text-gray-500">

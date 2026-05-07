@@ -717,7 +717,7 @@ export default function Home() {
         )}
 
         {/* Center: Score View — chord chart if `sections` is populated, else notation */}
-        <div className="flex-1 overflow-auto p-4 print-full bg-[#f8f9fa]">
+        <div className="flex-1 overflow-auto print-full bg-[#f8f9fa]">
           {score ? (
             score.sections && score.sections.length > 0 ? (
               <div className="score-container h-full relative">
