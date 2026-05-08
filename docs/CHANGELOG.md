@@ -3,6 +3,18 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-08 — fdd88c9
+
+**Score CLI thin slice (#19) (#85)**
+
+- Commit: [`fdd88c9`](../../commit/fdd88c990083288a6b9108ca35fd441361fb8c0c)
+- Author: gibsonds
+- Files changed:
+  - `bin/notation`
+  - `bin/notation.ts`
+  - `package-lock.json`
+  - `package.json`
+
 ## 2026-05-08 — f7a2b9a
 
 **iPad chord-chart: bigger touch targets on coarse pointer (#23) (#84)**
