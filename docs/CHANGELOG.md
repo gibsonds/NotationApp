@@ -3,6 +3,15 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-08 — bf0bee8
+
+**Add Unfiled tab to perform-mode song picker (#96)**
+
+- Commit: [`bf0bee8`](../../commit/bf0bee858db4d0b8910d6c17a9f154cd5706628c)
+- Author: gibsonds
+- Files changed:
+  - `src/components/PerformView.tsx`
+
 ## 2026-05-08 — 603412b
 
 **Perform-mode picker hides folders collapsed in My Songs (#95)**
