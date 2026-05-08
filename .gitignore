@@ -60,3 +60,6 @@ next-env.d.ts
 /e2e/screenshots
 /test-results
 /playwright-report
+
+# Claude Code session-only state
+/.claude
