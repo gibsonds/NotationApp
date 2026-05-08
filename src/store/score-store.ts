@@ -58,7 +58,7 @@ export interface LayoutSettings {
   pageBreaks: boolean;      // enable page-height pagination
   pageSize: PageSize;       // page dimensions for print/pagination
   noteSize: number;         // notation scale factor (1.0 = default, 0.7 = smaller)
-  ledgerLineWeight: number; // multiplier on the staff line stroke width used for ledger lines (1.0 = match staff lines)
+  ledgerLineWeight: number; // multiplier on OSMD's native LedgerLineWidth default (1.0 = OSMD default; >1 = bolder)
   musicFont: MusicFont;     // VexFlow music notation font
   textFont: TextFont;       // CSS text font for lyrics, titles, etc.
   printPageNumbers: boolean; // show page numbers in print output
