@@ -3,6 +3,15 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-08 — 46282c4
+
+**Run sync after Clean up duplicates so merged cloud content lands (#94)**
+
+- Commit: [`46282c4`](../../commit/46282c4ee0ffcd649951f5b5df30c9d61d97b695)
+- Author: gibsonds
+- Files changed:
+  - `src/components/MySongsModal.tsx`
+
 ## 2026-05-08 — 4d62bef
 
 **Sync perform-mode song picker with My Songs via SongsUpdatedEvent (#93)**
