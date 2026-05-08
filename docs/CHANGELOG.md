@@ -3,6 +3,15 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-08 — dccfe91
+
+**Refresh perform-mode song picker on open (#92)**
+
+- Commit: [`dccfe91`](../../commit/dccfe9132b87b23f57a2f614ba480e506ccee903)
+- Author: gibsonds
+- Files changed:
+  - `src/components/PerformView.tsx`
+
 ## 2026-05-08 — 03c03fd
 
 **Tier 1: cloud versioning + 409 conflict modal (#87) (#90)**
