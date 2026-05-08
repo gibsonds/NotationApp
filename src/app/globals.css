@@ -117,6 +117,26 @@ body {
     "Liberation Mono", "Courier New", monospace !important;
 }
 
+/* Bigger touch targets on iPad / phone (#23). The chord and lyric lines
+ * are read-only-thin on desktop where mouse precision is exact, but a
+ * 16px line is impossible to tap with a finger. On any pointer:coarse
+ * device we pad every clickable line to ~36px so finger taps land
+ * reliably without doubling vertical space on desktop.
+ *
+ * The selector reaches the chord / lyric / empty line divs that
+ * carry click handlers; the wrapper section keeps its own spacing. */
+@media (pointer: coarse) {
+  .chord-chart-line-body [role="button"],
+  .chord-chart-line-body .cursor-text {
+    min-height: 36px;
+    padding-top: 6px;
+    padding-bottom: 6px;
+    /* touch-action: pan-y so vertical scroll keeps working — only the
+     * tap (no movement) registers as a click. */
+    touch-action: pan-y;
+  }
+}
+
 /* Perform-view chrome trim — applies to both 1- and 2-col modes. */
 .chord-chart-perform section {
   /* Was mb-8 (32px). Tighten to recover vertical real estate without
