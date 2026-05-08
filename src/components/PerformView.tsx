@@ -108,26 +108,32 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
     return Array.from(set).sort();
   }, [songs]);
 
-  // Songs in the active scope. Two filters compose:
-  //  1. performFolder (explicit user pick): when set, restrict to that one
-  //     folder. Picking 'Set 1' once locks the prev/next walk into Set 1.
-  //  2. collapsedFolders (shared with My Songs): folders the user has
-  //     hidden in the editor stay hidden here too — the "old" archive
-  //     folder shouldn't show up in the perform picker if it's tucked
-  //     away in My Songs. The "(unfiled)" pseudo-folder uses the
-  //     "_unfiled" key to match MySongsModal's collapse state.
+  // Sentinel value for the unfiled pseudo-folder. Stored in performFolder
+  // when the user explicitly picks the (Unfiled) tab so the filter is
+  // distinguishable from null ("All non-collapsed").
+  const UNFILED_FOLDER = "_unfiled" as const;
+
+  // Songs in the active scope. Three filters compose:
+  //  1. performFolder === UNFILED_FOLDER: only songs with no folder.
+  //  2. performFolder = a real folder name: only that folder.
+  //  3. performFolder null: all songs minus collapsed-in-My-Songs folders.
   const songsInScope = useMemo(() => {
-    let out = songs;
-    if (performFolder) {
-      out = out.filter(s => s.folder === performFolder);
-    } else {
-      out = out.filter(s => {
-        const key = s.folder || "_unfiled";
-        return !collapsedFolders.includes(key);
-      });
+    if (performFolder === UNFILED_FOLDER) {
+      return songs.filter(s => !s.folder);
     }
-    return out;
+    if (performFolder) {
+      return songs.filter(s => s.folder === performFolder);
+    }
+    return songs.filter(s => {
+      const key = s.folder || UNFILED_FOLDER;
+      return !collapsedFolders.includes(key);
+    });
   }, [songs, performFolder, collapsedFolders]);
+
+  const unfiledCount = useMemo(
+    () => songs.filter(s => !s.folder).length,
+    [songs],
+  );
 
   // Find the position of the current song in the SCOPED list. Falls back
   // to 0 if the loaded song isn't in scope (so prev/next still work).
@@ -334,7 +340,7 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
             onClick={() => setPickerOpen(false)}
           />
           <div className="absolute top-[68px] left-3 z-20 bg-white text-gray-800 rounded-xl shadow-2xl border border-gray-200 w-[min(360px,calc(100vw-1.5rem))] max-h-[60vh] overflow-hidden flex flex-col">
-            {folderNames.length > 0 && (
+            {(folderNames.length > 0 || unfiledCount > 0) && (
               <div className="px-3 py-2 border-b border-gray-100 bg-gray-50 flex flex-wrap gap-1">
                 <button
                   type="button"
@@ -346,8 +352,22 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
                   }`}
                   title="Songs from all non-archived folders"
                 >
-                  All ({songs.filter(s => !collapsedFolders.includes(s.folder || "_unfiled")).length})
+                  All ({songs.filter(s => !collapsedFolders.includes(s.folder || UNFILED_FOLDER)).length})
                 </button>
+                {unfiledCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setUIState({ performFolder: UNFILED_FOLDER })}
+                    className={`px-2 py-1 text-xs rounded-md transition-colors ${
+                      performFolder === UNFILED_FOLDER
+                        ? "bg-blue-600 text-white"
+                        : "bg-white border border-gray-200 text-gray-700 hover:bg-gray-100"
+                    }`}
+                    title="Songs without a folder"
+                  >
+                    Unfiled ({unfiledCount})
+                  </button>
+                )}
                 {folderNames.map(f => {
                   const count = songs.filter(s => s.folder === f).length;
                   return (
