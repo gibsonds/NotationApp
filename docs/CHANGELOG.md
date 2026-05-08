@@ -3,6 +3,24 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-08 — 03c03fd
+
+**Tier 1: cloud versioning + 409 conflict modal (#87) (#90)**
+
+- Commit: [`03c03fd`](../../commit/03c03fd2599d003dbb57295fc33f57759a892084)
+- Author: gibsonds
+- Files changed:
+  - `infra/lambda/handler.ts`
+  - `infra/lambda/repo.ts`
+  - `infra/lambda/types.ts`
+  - `src/app/page.tsx`
+  - `src/components/ConflictModal.tsx`
+  - `src/components/MySongsModal.tsx`
+  - `src/lib/cloud-autosave.ts`
+  - `src/lib/song-bank.ts`
+  - `src/lib/song-cloud-types.ts`
+  - `src/lib/song-cloud.ts`
+
 ## 2026-05-08 — f03283e
 
 **My Songs: refresh open editor when cloud has newer content (#86)**
