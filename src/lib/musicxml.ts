@@ -1,4 +1,4 @@
-import { Score, Note, Clef, KeySignature, ChordSymbol, Articulation } from "./schema";
+import { Score, Note, Clef, KeySignature, ChordSymbol, Articulation, MeasureChange } from "./schema";
 
 // ── Key signature fifths map ───────────────────────────────────────────────
 
@@ -206,20 +206,27 @@ export function scoreToMusicXML(score: Score): string {
   }
   lines.push("  </part-list>");
 
-  // Time signature parsing
+  // Time signature parsing — initial values; mid-score changes override
+  // per measure inside the loop.
   const [beatsStr, beatTypeStr] = score.timeSignature.split("/");
-  const beats = parseInt(beatsStr, 10);
-  const beatType = parseInt(beatTypeStr, 10);
+  const initialBeats = parseInt(beatsStr, 10);
+  const initialBeatType = parseInt(beatTypeStr, 10);
 
   // Key
-  const fifths = KEY_FIFTHS[score.keySignature] ?? 0;
-  const mode = score.keySignature.endsWith("m") ? "minor" : "major";
+  const initialFifths = KEY_FIFTHS[score.keySignature] ?? 0;
+  const initialMode = score.keySignature.endsWith("m") ? "minor" : "major";
 
   // Chord lookup
   const chordLookup = buildChordLookup(score.chordSymbols);
 
-  // Measure duration in divisions
-  const measureDivisions = beats * (64 / beatType);
+  // Mid-score override lookup: measure → MeasureChange. Used inside the
+  // per-measure loop to emit <attributes> + <sound tempo> at the change
+  // boundary and to keep beats/beatType/divisions in sync for subsequent
+  // measures so rest-filling math still adds up.
+  const changeAt = new Map<number, MeasureChange>();
+  for (const c of score.measureChanges ?? []) {
+    changeAt.set(c.measure, c);
+  }
 
   // Parts — iterate visibleStaves so isFirstPart correctly identifies the
   // first emitted part (used to attach time/key signature attributes).
@@ -227,6 +234,14 @@ export function scoreToMusicXML(score: Score): string {
     const staff = visibleStaves[si];
     const clef = clefToMusicXML(staff.clef);
     const isFirstPart = si === 0;
+
+    // Per-staff mutable signature state — gets overwritten by mid-score
+    // changes inside the per-measure loop. Reset to score defaults at the
+    // start of each staff so every part stays in sync.
+    let beats = initialBeats;
+    let beatType = initialBeatType;
+    let fifths = initialFifths;
+    let mode = initialMode;
 
     lines.push(`  <part id="${esc(staff.id)}">`);
 
@@ -258,6 +273,34 @@ export function scoreToMusicXML(score: Score): string {
       const displayNumber = score.anacrusis ? m - 1 : m;
       lines.push(`    <measure number="${displayNumber}">`);
 
+      // Mid-score change at this measure (#42). On m===1 the change folds
+      // into the initial attributes block below; on m>1 we emit a fresh
+      // <attributes> + tempo direction.
+      const change = changeAt.get(m);
+      let timeChanged = false;
+      let keyChanged = false;
+      let tempoChanged = false;
+      if (change) {
+        if (change.timeSignature) {
+          const [tb, tbt] = change.timeSignature.split("/").map(Number);
+          if (tb !== beats || tbt !== beatType) {
+            beats = tb;
+            beatType = tbt;
+            timeChanged = true;
+          }
+        }
+        if (change.keySignature) {
+          const newFifths = KEY_FIFTHS[change.keySignature] ?? 0;
+          const newMode = change.keySignature.endsWith("m") ? "minor" : "major";
+          if (newFifths !== fifths || newMode !== mode) {
+            fifths = newFifths;
+            mode = newMode;
+            keyChanged = true;
+          }
+        }
+        if (change.tempo) tempoChanged = true;
+      }
+
       // Attributes on first measure
       if (m === 1) {
         lines.push("      <attributes>");
@@ -287,6 +330,38 @@ export function scoreToMusicXML(score: Score): string {
           lines.push("        <sound tempo=\"" + score.tempo + "\"/>");
           lines.push("      </direction>");
         }
+      } else if (timeChanged || keyChanged) {
+        // Mid-score key / time-signature change. Emit only the changed
+        // sub-elements; OSMD draws a key/time change marker at the start
+        // of this measure on every staff.
+        lines.push("      <attributes>");
+        if (keyChanged) {
+          lines.push("        <key>");
+          lines.push(`          <fifths>${fifths}</fifths>`);
+          lines.push(`          <mode>${mode}</mode>`);
+          lines.push("        </key>");
+        }
+        if (timeChanged) {
+          lines.push("        <time>");
+          lines.push(`          <beats>${beats}</beats>`);
+          lines.push(`          <beat-type>${beatType}</beat-type>`);
+          lines.push("        </time>");
+        }
+        lines.push("      </attributes>");
+      }
+
+      // Mid-score tempo change. Renders as a metronome direction above
+      // this measure on the first part only (avoids stacking on every
+      // staff).
+      if (m > 1 && tempoChanged && isFirstPart && change?.tempo) {
+        lines.push("      <direction placement=\"above\">");
+        lines.push("        <direction-type>");
+        lines.push(
+          `          <metronome><beat-unit>quarter</beat-unit><per-minute>${change.tempo}</per-minute></metronome>`
+        );
+        lines.push("        </direction-type>");
+        lines.push(`        <sound tempo="${change.tempo}"/>`);
+        lines.push("      </direction>");
       }
 
       // Chord symbols (only on first part typically, but we attach to first)

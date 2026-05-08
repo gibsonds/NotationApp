@@ -43,6 +43,27 @@ export function applyPatch(score: Score, patch: ScorePatch): Score {
     case "set_anacrusis":
       return { ...score, anacrusis: patch.value };
 
+    case "set_measure_change": {
+      const existing = score.measureChanges ?? [];
+      const others = existing.filter((c) => c.measure !== patch.measure);
+      const change = {
+        measure: patch.measure,
+        ...(patch.tempo !== undefined && { tempo: patch.tempo }),
+        ...(patch.timeSignature !== undefined && { timeSignature: patch.timeSignature }),
+        ...(patch.keySignature !== undefined && { keySignature: patch.keySignature }),
+      };
+      return {
+        ...score,
+        measureChanges: [...others, change].sort((a, b) => a.measure - b.measure),
+      };
+    }
+
+    case "remove_measure_change":
+      return {
+        ...score,
+        measureChanges: (score.measureChanges ?? []).filter((c) => c.measure !== patch.measure),
+      };
+
     case "update_staff":
       return {
         ...score,

@@ -186,6 +186,7 @@ export function expandIntentToScore(intent: ScoreIntent): Score {
     keySignature,
     measures,
     anacrusis: false,
+      measureChanges: [],
     staves,
     chordSymbols: intent.chordSymbols ?? [],
     rehearsalMarks: intent.rehearsalMarks ?? [],

@@ -222,6 +222,7 @@ export function parseMusicXML(xmlString: string): Score {
     keySignature: keySignature as any,
     measures: maxMeasure,
     anacrusis: false,
+      measureChanges: [],
     staves,
     chordSymbols,
     rehearsalMarks: [],

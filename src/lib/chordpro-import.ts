@@ -179,6 +179,7 @@ export function parseChordPro(text: string): ChordProImportResult {
     keySignature: key,
     measures: 1,
     anacrusis: false,
+      measureChanges: [],
     staves: [],
     chordSymbols: [],
     rehearsalMarks: [],

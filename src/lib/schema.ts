@@ -235,6 +235,23 @@ export const AnnotationSchema = z.object({
 });
 export type Annotation = z.infer<typeof AnnotationSchema>;
 
+// ── Mid-score changes ─────────────────────────────────────────────────────
+//
+// At a given measure, override the score's tempo / time signature / key
+// signature. Multiple changes at the same measure stack into one (later
+// fields win). Renderer reads these as MusicXML <sound tempo>, <time>,
+// and <key> elements emitted at the measure boundary. Playback honors
+// the tempo override starting at that measure.
+
+export const MeasureChangeSchema = z.object({
+  /** 1-indexed bar number where the change takes effect. */
+  measure: z.number().int().min(1),
+  tempo: z.number().int().min(20).max(300).optional(),
+  timeSignature: z.string().regex(/^\d+\/\d+$/).optional(),
+  keySignature: KeySignature.optional(),
+});
+export type MeasureChange = z.infer<typeof MeasureChangeSchema>;
+
 // ── Score (top-level) ──────────────────────────────────────────────────────
 
 export const ScoreSchema = z.object({
@@ -256,6 +273,10 @@ export const ScoreSchema = z.object({
   chordSymbols: z.array(ChordSymbolSchema).default([]),
   rehearsalMarks: z.array(RehearsalMarkSchema).default([]),
   repeats: z.array(RepeatSchema).default([]),
+  /** Mid-score overrides for tempo / time signature / key signature.
+   *  Each entry takes effect at its `measure` and stays until the next
+   *  override of the same field (or the end of the score). */
+  measureChanges: z.array(MeasureChangeSchema).default([]),
   // Songbook / chord-chart structure. When `form` is non-empty, the app
   // renders a chord chart instead of staff notation. `form` is the ordered
   // sequence of section IDs that play (e.g. ["intro","V","V","C","V","C","B","V","C","C"]);
@@ -335,6 +356,21 @@ export const ScorePatchSchema = z.discriminatedUnion("op", [
   z.object({
     op: z.literal("set_anacrusis"),
     value: z.boolean(),
+  }),
+  /** Insert or update the mid-score change at `measure`. Fields that are
+   *  undefined are cleared (so passing only `tempo` produces a
+   *  tempo-only change at that measure). */
+  z.object({
+    op: z.literal("set_measure_change"),
+    measure: z.number().int().min(1),
+    tempo: z.number().int().min(20).max(300).optional(),
+    timeSignature: z.string().regex(/^\d+\/\d+$/).optional(),
+    keySignature: KeySignature.optional(),
+  }),
+  /** Remove every change at the given measure. */
+  z.object({
+    op: z.literal("remove_measure_change"),
+    measure: z.number().int().min(1),
   }),
   z.object({
     op: z.literal("update_staff"),
