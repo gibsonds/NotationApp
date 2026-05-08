@@ -12,11 +12,21 @@ export interface FeedbackEntry {
   category: FeedbackCategory;
   message: string;
   email?: string;
+  images?: string[];
 }
 
 const STORAGE_KEY = "notation-app-feedback";
 const MAX_MESSAGE_LENGTH = 1000;
 const MAX_EMAIL_LENGTH = 200;
+const MAX_IMAGES = 3;
+const IMAGE_DATA_URL_PATTERN = /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/;
+
+function sanitizeImages(input: unknown): string[] {
+  if (!Array.isArray(input)) return [];
+  return input
+    .filter((s): s is string => typeof s === "string" && IMAGE_DATA_URL_PATTERN.test(s))
+    .slice(0, MAX_IMAGES);
+}
 
 /** Strip HTML tags, decode common entities, collapse whitespace, trim, cap length. */
 function sanitizeText(input: string, maxLength: number): string {
@@ -49,15 +59,23 @@ export function getFeedback(): FeedbackEntry[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (e): e is FeedbackEntry =>
-        e &&
-        typeof e === "object" &&
-        typeof e.id === "string" &&
-        typeof e.timestamp === "number" &&
-        (e.category === "bug" || e.category === "feature" || e.category === "other") &&
-        typeof e.message === "string"
-    );
+    return parsed
+      .filter(
+        (e): e is FeedbackEntry =>
+          e &&
+          typeof e === "object" &&
+          typeof e.id === "string" &&
+          typeof e.timestamp === "number" &&
+          (e.category === "bug" || e.category === "feature" || e.category === "other") &&
+          typeof e.message === "string"
+      )
+      .map((e) => {
+        const images = sanitizeImages(e.images);
+        if (images.length > 0) return { ...e, images };
+        const { images: _drop, ...rest } = e;
+        void _drop;
+        return rest;
+      });
   } catch {
     return [];
   }
@@ -67,6 +85,7 @@ export interface FeedbackInput {
   category: FeedbackCategory;
   message: string;
   email?: string;
+  images?: string[];
 }
 
 /**
@@ -79,6 +98,7 @@ export function submitFeedback(entry: FeedbackInput): FeedbackEntry {
     throw new Error("Message is required.");
   }
   const emailRaw = entry.email ? sanitizeText(entry.email, MAX_EMAIL_LENGTH) : "";
+  const images = sanitizeImages(entry.images);
   const stored: FeedbackEntry = {
     id:
       typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
@@ -88,6 +108,7 @@ export function submitFeedback(entry: FeedbackInput): FeedbackEntry {
     category: entry.category,
     message,
     ...(emailRaw ? { email: emailRaw } : {}),
+    ...(images.length > 0 ? { images } : {}),
   };
 
   const existing = getFeedback();
