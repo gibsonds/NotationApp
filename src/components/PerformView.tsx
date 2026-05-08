@@ -7,7 +7,7 @@ import PaginatedPerformChart from "@/components/PaginatedPerformChart";
 import AnnotationLayer from "@/components/AnnotationLayer";
 import AnnotateToggle from "@/components/AnnotateToggle";
 import { useScoreStore } from "@/store/score-store";
-import { getSongs, type SongBankEntry } from "@/lib/song-bank";
+import { getSongs, SongsUpdatedEvent, type SongBankEntry } from "@/lib/song-bank";
 
 const PREFS_KEY = "notation-app-perform-prefs";
 
@@ -74,11 +74,17 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
   const horizScrollRef = useRef<HTMLDivElement | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
 
-  // Song list. We snapshot on mount (so an in-flight cloud sync doesn't
-  // shuffle the picker mid-performance), but ALSO re-read localStorage
-  // every time the picker opens so dedup work done by MySongsModal sync
-  // is reflected here. Newest first matches My Songs modal ordering.
+  // Song list. Subscribe to the SongsUpdatedEvent so any sync, save,
+  // delete, or rename in another surface (My Songs modal especially)
+  // refreshes the picker here. Also re-read on picker-open as a
+  // safety net in case an event was missed during a remount race.
+  // Newest first matches My Songs modal ordering.
   const [songs, setSongs] = useState<SongBankEntry[]>(() => getSongs().slice().reverse());
+  useEffect(() => {
+    const refresh = () => setSongs(getSongs().slice().reverse());
+    window.addEventListener(SongsUpdatedEvent, refresh);
+    return () => window.removeEventListener(SongsUpdatedEvent, refresh);
+  }, []);
   useEffect(() => {
     if (pickerOpen) {
       setSongs(getSongs().slice().reverse());

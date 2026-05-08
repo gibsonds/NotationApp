@@ -15,6 +15,17 @@ export interface SongBankEntry {
 }
 
 const STORAGE_KEY = "notation-app-songs";
+const SONGS_UPDATED_EVENT = "notation-songs-updated";
+
+/** Event name dispatched on the window every time the song bank in
+ *  localStorage is rewritten. Listen for this to keep secondary views
+ *  (perform-mode song picker, sidebar lists) in sync without polling. */
+export const SongsUpdatedEvent = SONGS_UPDATED_EVENT;
+
+function fireSongsUpdated(): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(SONGS_UPDATED_EVENT));
+}
 
 export function getSongs(): SongBankEntry[] {
   try {
@@ -35,6 +46,7 @@ export function saveSong(title: string, score: Score): void {
   });
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(songs));
+    fireSongsUpdated();
   } catch {
     console.warn("[song-bank] localStorage quota exceeded");
   }
@@ -44,6 +56,7 @@ export function deleteSong(id: string): void {
   try {
     const songs = getSongs().filter(s => s.id !== id);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(songs));
+    fireSongsUpdated();
   } catch {
     console.warn("[song-bank] failed to delete song");
   }
@@ -52,6 +65,7 @@ export function deleteSong(id: string): void {
 export function setSongs(songs: SongBankEntry[]): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(songs));
+    fireSongsUpdated();
   } catch {
     console.warn("[song-bank] localStorage quota exceeded");
   }
@@ -65,7 +79,7 @@ export function renameSong(id: string, title: string): SongBankEntry | null {
   if (idx === -1) return null;
   const next: SongBankEntry = { ...songs[idx], title };
   songs[idx] = next;
-  setSongs(songs);
+  setSongs(songs); // dispatches SongsUpdatedEvent
   return next;
 }
 
