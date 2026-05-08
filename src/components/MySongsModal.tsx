@@ -229,13 +229,17 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
     if (!CLOUD_ENABLED || !entry) return;
     setSyncStatus("syncing");
     try {
-      await cloudPutSong({
+      const dto = await cloudPutSong({
         id: entry.id,
         title: entry.title,
         score: entry.score,
         savedAt: entry.savedAt,
         folder: entry.folder ?? null,
+        ...(entry.cloudVersion !== undefined && { expectedVersion: entry.cloudVersion }),
       });
+      // Advance the local entry's cloudVersion so the autosave can keep
+      // sending matching expectedVersion on subsequent edits.
+      updateSong(entry.id, { cloudVersion: dto.version });
       setSyncStatus("ok");
     } catch (err) {
       if (isTransient(err)) {
@@ -272,7 +276,15 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
       try { await saveSnapshot(score); } catch { /* best-effort */ }
     }
     setScore(entry.score);
-    setUIState({ currentSongId: entry.id });
+    // Auto-flip into perform mode when loading a chord-chart song. Bands
+    // typically open a song to play it, not edit it; the Edit button in
+    // the perform-mode top-right cluster is one tap away if they need to
+    // tweak. Notation scores stay in edit mode (no perform view there).
+    const isChordChart = !!(entry.score.sections && entry.score.sections.length > 0);
+    setUIState({
+      currentSongId: entry.id,
+      ...(isChordChart && { performMode: true }),
+    });
     onClose();
   };
 

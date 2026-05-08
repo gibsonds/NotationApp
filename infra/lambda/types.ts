@@ -7,6 +7,11 @@ export interface SongSummary {
   title: string;
   savedAt: number;
   updatedAt: number;
+  /** Opaque concurrency token. Regenerated on every successful write.
+   *  Clients keep the version they last loaded against and pass it on
+   *  subsequent writes; if cloud's current version differs, the write
+   *  fails with 409 Conflict (issue #87 — Tier 1 conflict-aware sync). */
+  version: string;
   /** Optional folder for the My Songs picker. Synced so multiple devices
    *  see the same organization. */
   folder?: string;
@@ -18,6 +23,9 @@ export interface SongDTO extends SongSummary {
 
 export interface ApiError {
   error: string;
+  /** When error === "conflict", the current cloud DTO is included so the
+   *  client can show a side-by-side diff without a second round trip. */
+  current?: SongDTO;
 }
 
 /** Returned by GET /songs/{id}/versions. Each entry is one recovery
