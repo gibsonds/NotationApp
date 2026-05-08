@@ -74,9 +74,16 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
   const horizScrollRef = useRef<HTMLDivElement | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
 
-  // Snapshot the song list on mount — performance shouldn't be interrupted
-  // by sync updates. Newest first matches the My Songs modal ordering.
-  const [songs] = useState<SongBankEntry[]>(() => getSongs().slice().reverse());
+  // Song list. We snapshot on mount (so an in-flight cloud sync doesn't
+  // shuffle the picker mid-performance), but ALSO re-read localStorage
+  // every time the picker opens so dedup work done by MySongsModal sync
+  // is reflected here. Newest first matches My Songs modal ordering.
+  const [songs, setSongs] = useState<SongBankEntry[]>(() => getSongs().slice().reverse());
+  useEffect(() => {
+    if (pickerOpen) {
+      setSongs(getSongs().slice().reverse());
+    }
+  }, [pickerOpen]);
 
   // All folder names (sorted), for the picker's folder selector.
   const folderNames = useMemo(() => {
