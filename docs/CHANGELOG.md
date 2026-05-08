@@ -3,6 +3,16 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-08 — 4d62bef
+
+**Sync perform-mode song picker with My Songs via SongsUpdatedEvent (#93)**
+
+- Commit: [`4d62bef`](../../commit/4d62bef444aa2b8acc46c2f3a2fb6f6cc1306f13)
+- Author: gibsonds
+- Files changed:
+  - `src/components/PerformView.tsx`
+  - `src/lib/song-bank.ts`
+
 ## 2026-05-08 — dccfe91
 
 **Refresh perform-mode song picker on open (#92)**
