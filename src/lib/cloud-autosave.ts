@@ -1,7 +1,8 @@
 "use client";
 
 import type { Score } from "@/lib/schema";
-import { CLOUD_ENABLED, cloudPutSong, isTransient, enqueueOffline } from "@/lib/song-cloud";
+import type { SongDTO } from "@/lib/song-cloud-types";
+import { CLOUD_ENABLED, cloudPutSong, isTransient, enqueueOffline, isConflictError } from "@/lib/song-cloud";
 import { getSongs, updateSong } from "@/lib/song-bank";
 
 /**
@@ -13,11 +14,15 @@ import { getSongs, updateSong } from "@/lib/song-bank";
  *   - notation-cloud-saving — push started
  *   - notation-cloud-saved  — push succeeded (detail: { ts: number })
  *   - notation-cloud-offline — push failed transiently (queued for retry)
+ *   - notation-cloud-conflict — server returned 409; detail.current is
+ *     the cloud DTO, detail.local is the score we tried to push. UI
+ *     opens the conflict modal in response.
  */
 
 const SAVING_EVENT = "notation-cloud-saving";
 const SAVED_EVENT = "notation-cloud-saved";
 const OFFLINE_EVENT = "notation-cloud-offline";
+const CONFLICT_EVENT = "notation-cloud-conflict";
 
 let lastPushedScore: Score | null = null;
 let lastPushedSongId: string | null = null;
@@ -32,27 +37,30 @@ export async function autosaveToCloud(
   // Skip if nothing changed since the last successful push for this song.
   if (lastPushedSongId === songId && lastPushedScore === score) return true;
 
-  // Look up the local entry for its title and folder (in case they were
-  // updated separately). Fall back to score.title.
+  // Look up the local entry for its title, folder, and the cloudVersion
+  // we'll send as expectedVersion. Fall back to score.title.
   const localEntry = getSongs().find(s => s.id === songId);
   const title = localEntry?.title ?? score.title ?? "Untitled Song";
   const folder = localEntry?.folder ?? null;
+  const expectedVersion = localEntry?.cloudVersion;
 
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent(SAVING_EVENT));
   }
   try {
     const now = Date.now();
-    await cloudPutSong({
+    const dto = await cloudPutSong({
       id: songId,
       title,
       score,
       savedAt: now,
       folder,
+      ...(expectedVersion !== undefined && { expectedVersion }),
     });
-    // Mirror to local entry so list views show the latest savedAt.
+    // Mirror to local entry so list views show the latest savedAt and
+    // the cloudVersion advances in lockstep with cloud.
     if (localEntry) {
-      updateSong(songId, { score, savedAt: now });
+      updateSong(songId, { score, savedAt: now, cloudVersion: dto.version });
     }
     lastPushedScore = score;
     lastPushedSongId = songId;
@@ -63,6 +71,19 @@ export async function autosaveToCloud(
     }
     return true;
   } catch (err) {
+    if (isConflictError(err)) {
+      // Concurrent write detected. Surface to the UI; the modal owns
+      // resolution. Don't queue or retry — that would create a loop.
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent<{ current: SongDTO; local: Score; songId: string }>(
+            CONFLICT_EVENT,
+            { detail: { current: err.current, local: score, songId } },
+          ),
+        );
+      }
+      return false;
+    }
     if (isTransient(err)) {
       enqueueOffline({
         type: "put",
@@ -92,4 +113,5 @@ export const CloudSaveEvents = {
   Saving: SAVING_EVENT,
   Saved: SAVED_EVENT,
   Offline: OFFLINE_EVENT,
+  Conflict: CONFLICT_EVENT,
 };

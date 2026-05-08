@@ -24,8 +24,11 @@ import JoinSongbookModal from "@/components/JoinSongbookModal";
 import PerformView from "@/components/PerformView";
 import PersistFailureBanner from "@/components/PersistFailureBanner";
 import FeedbackModal from "@/components/FeedbackModal";
-import { CLOUD_ENABLED, getDeviceId } from "@/lib/song-cloud";
-import { autosaveToCloud } from "@/lib/cloud-autosave";
+import { CLOUD_ENABLED, getDeviceId, cloudPutSong } from "@/lib/song-cloud";
+import { autosaveToCloud, CloudSaveEvents } from "@/lib/cloud-autosave";
+import { updateSong } from "@/lib/song-bank";
+import type { SongDTO } from "@/lib/song-cloud-types";
+import ConflictModal from "@/components/ConflictModal";
 import AnnotationLayer from "@/components/AnnotationLayer";
 import AnnotateToggle from "@/components/AnnotateToggle";
 import AnnotationFilterBar from "@/components/AnnotationFilterBar";
@@ -91,6 +94,12 @@ export default function Home() {
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [apiKeysOpen, setApiKeysOpen] = useState(false);
   const [joinCode, setJoinCode] = useState<string | null>(null);
+  // Conflict-resolution state (#87). Populated when cloudAutosave fires the
+  // notation-cloud-conflict event; cleared by the modal's resolution paths.
+  const [conflict, setConflict] = useState<
+    | { current: SongDTO; local: typeof score; songId: string }
+    | null
+  >(null);
   const [inlineAI, setInlineAI] = useState<{ note: { measure: number; beat: number; pitch: string; staffIndex: number }; position: { x: number; y: number } } | null>(null);
   const printFnRef = useRef<(() => Promise<void>) | null>(null);
   const handlePrint = useCallback(() => {
@@ -445,6 +454,25 @@ export default function Home() {
       // unmounts on full teardown. Leaving the rule in place is harmless.
     };
   }, [layout?.pageSize]);
+
+  // Cloud conflict listener (#87). cloudAutosave dispatches this event
+  // when a 409 comes back from the server; we capture the payload and
+  // open the conflict modal. Resolution paths in the modal handlers
+  // (keep-mine forces a write w/o expectedVersion; discard-mine swaps
+  // the open score for the cloud version).
+  useEffect(() => {
+    if (!CLOUD_ENABLED) return;
+    const onConflict = (e: Event) => {
+      const detail = (e as CustomEvent).detail as {
+        current: SongDTO;
+        local: typeof score;
+        songId: string;
+      } | undefined;
+      if (detail) setConflict(detail);
+    };
+    window.addEventListener(CloudSaveEvents.Conflict, onConflict);
+    return () => window.removeEventListener(CloudSaveEvents.Conflict, onConflict);
+  }, []);
 
   // Songbook share-link: visiting `?join=<deviceId>` prompts to take over
   // that device's songbook. The param is stripped after the user decides
@@ -1281,6 +1309,48 @@ export default function Home() {
           score={score}
           onExit={() => setUIState({ performMode: false, annotationMode: false })}
           onOpenMySongs={() => setMySongsOpen(true)}
+        />
+      )}
+
+      {/* Concurrent-edit conflict modal (#87). Opened when cloudAutosave's
+          409 path fires; the three resolution paths each clear `conflict`. */}
+      {conflict && conflict.local && (
+        <ConflictModal
+          current={conflict.current}
+          local={conflict.local}
+          songId={conflict.songId}
+          onKeepMine={async () => {
+            // Force last-write-wins: re-save with no expectedVersion so the
+            // server skips the concurrency check.
+            try {
+              const dto = await cloudPutSong({
+                id: conflict.songId,
+                title: conflict.current.title,
+                score: conflict.local!,
+                folder: conflict.current.folder ?? null,
+              });
+              updateSong(conflict.songId, {
+                score: conflict.local!,
+                cloudVersion: dto.version,
+                savedAt: dto.savedAt,
+              });
+            } catch (err) {
+              console.warn("[conflict] keep-mine save failed", err);
+            }
+            setConflict(null);
+          }}
+          onDiscardMine={() => {
+            // Adopt the cloud version: replace open score, advance local
+            // entry's cloudVersion so future saves go through cleanly.
+            setScore(conflict.current.score);
+            updateSong(conflict.songId, {
+              score: conflict.current.score,
+              cloudVersion: conflict.current.version,
+              savedAt: conflict.current.savedAt,
+            });
+            setConflict(null);
+          }}
+          onCancel={() => setConflict(null)}
         />
       )}
 

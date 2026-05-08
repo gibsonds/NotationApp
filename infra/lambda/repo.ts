@@ -6,7 +6,19 @@ import {
   PutCommand,
   QueryCommand,
 } from "@aws-sdk/lib-dynamodb";
+import { randomUUID } from "node:crypto";
 import type { SongDTO, SongSummary, VersionEntry } from "./types";
+
+/** Thrown by putSong when the caller's expectedVersion doesn't match the
+ *  current cloud version. Handler maps this to HTTP 409 with the current
+ *  DTO in the body so the client can run conflict resolution without a
+ *  second round trip. */
+export class VersionConflictError extends Error {
+  constructor(public current: SongDTO) {
+    super("version conflict");
+    this.name = "VersionConflictError";
+  }
+}
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const TABLE = process.env.TABLE_NAME!;
@@ -51,11 +63,16 @@ export async function listSongs(deviceId: string): Promise<SongSummary[]> {
         "#savedAt": "savedAt",
         "#updatedAt": "updatedAt",
         "#folder": "folder",
+        "#version": "version",
       },
-      ProjectionExpression: "#id, #title, #savedAt, #updatedAt, #folder",
+      ProjectionExpression: "#id, #title, #savedAt, #updatedAt, #folder, #version",
     })
   );
-  return (out.Items ?? []) as SongSummary[];
+  // Backfill empty version on legacy rows.
+  return (out.Items ?? []).map((it) => ({
+    ...(it as SongSummary),
+    version: typeof it.version === "string" ? it.version : "",
+  })) as SongSummary[];
 }
 
 export async function getSong(deviceId: string, id: string): Promise<SongDTO | null> {
@@ -71,6 +88,9 @@ export async function getSong(deviceId: string, id: string): Promise<SongDTO | n
     title: out.Item.title,
     savedAt: out.Item.savedAt,
     updatedAt: out.Item.updatedAt,
+    // Backfill a fresh token for legacy rows that predate the version
+    // field so clients can still load them.
+    version: typeof out.Item.version === "string" ? out.Item.version : "",
     score: out.Item.score,
     ...(out.Item.folder ? { folder: out.Item.folder } : {}),
   };
@@ -79,7 +99,18 @@ export async function getSong(deviceId: string, id: string): Promise<SongDTO | n
 export async function putSong(
   deviceId: string,
   id: string,
-  body: { title: string; score: Record<string, unknown>; savedAt?: number; folder?: string | null }
+  body: {
+    title: string;
+    score: Record<string, unknown>;
+    savedAt?: number;
+    folder?: string | null;
+    /** Opaque concurrency token from the last load/save the client did.
+     *  When provided AND the cloud row exists with a different version,
+     *  this PUT throws VersionConflictError. Clients that intentionally
+     *  want last-write-wins (e.g. force-save from the conflict modal)
+     *  omit this field. New songs (no cloud row yet) ignore it. */
+    expectedVersion?: string;
+  }
 ): Promise<SongDTO> {
   const now = Date.now();
 
@@ -90,6 +121,28 @@ export async function putSong(
     new GetCommand({ TableName: TABLE, Key: { pk: songPk(deviceId), sk: songSk(id) } })
   );
   const current = currentResp.Item;
+
+  // Optimistic-concurrency check (#87). If the client passed an
+  // expectedVersion AND the cloud row exists, both must agree. A
+  // mismatch means someone else wrote in between — the client gets
+  // 409 with the current DTO so it can run conflict resolution.
+  if (
+    body.expectedVersion !== undefined &&
+    current &&
+    typeof current.version === "string" &&
+    current.version !== body.expectedVersion
+  ) {
+    throw new VersionConflictError({
+      id,
+      title: current.title as string,
+      savedAt: current.savedAt as number,
+      updatedAt: current.updatedAt as number,
+      version: current.version as string,
+      score: current.score as Record<string, unknown>,
+      ...(current.folder ? { folder: current.folder as string } : {}),
+    });
+  }
+
   let didVersion = false;
   if (current) {
     const lastVersionedAt = (current.lastVersionedAt as number | undefined) ?? 0;
@@ -117,7 +170,7 @@ export async function putSong(
       );
       const kind = hasDailyToday ? "auto" : "daily";
 
-      const versionItem = {
+      const versionItem: Record<string, unknown> = {
         ...current,
         pk: songPk(deviceId),
         sk: versionSk(id, versionTs),
@@ -132,7 +185,7 @@ export async function putSong(
       // sticky. Among auto versions when we're over the cap, drop the
       // one that contributes least temporal info — the one closest in
       // time to its neighbors.
-      const allItemsAfter = [...existing, versionItem];
+      const allItemsAfter: Record<string, unknown>[] = [...existing, versionItem];
       if (allItemsAfter.length > MAX_VERSIONS_PER_SONG) {
         const sortedAsc = allItemsAfter
           .slice()
@@ -140,13 +193,13 @@ export async function putSong(
             (a, b) =>
               (a.updatedAt as number) - (b.updatedAt as number)
           );
-        const autos: typeof sortedAsc = [];
-        const idxOf = new Map<typeof sortedAsc[number], number>();
+        const autos: Record<string, unknown>[] = [];
+        const idxOf = new Map<Record<string, unknown>, number>();
         sortedAsc.forEach((v, i) => idxOf.set(v, i));
         for (const v of sortedAsc) if (v.kind === "auto") autos.push(v);
 
         const overBy = allItemsAfter.length - MAX_VERSIONS_PER_SONG;
-        const victims: typeof sortedAsc = [];
+        const victims: Record<string, unknown>[] = [];
         for (let n = 0; n < overBy && autos.length > 0; n++) {
           // Find the auto version whose temporal "gap to the closer
           // neighbor in the FULL set" is smallest — i.e., the one whose
@@ -184,6 +237,10 @@ export async function putSong(
     }
   }
 
+  // Mint a fresh version token on every successful write. Clients use
+  // this on subsequent PUTs to detect concurrent edits.
+  const newVersion = randomUUID();
+
   const item: Record<string, unknown> = {
     pk: songPk(deviceId),
     sk: songSk(id),
@@ -192,7 +249,7 @@ export async function putSong(
     title: body.title,
     savedAt: body.savedAt ?? now,
     updatedAt: now,
-    version: 1,
+    version: newVersion,
     score: body.score,
     lastVersionedAt: didVersion ? now : ((current?.lastVersionedAt as number | undefined) ?? 0),
   };
@@ -203,6 +260,7 @@ export async function putSong(
     title: item.title as string,
     savedAt: item.savedAt as number,
     updatedAt: item.updatedAt as number,
+    version: newVersion,
     score: body.score,
     ...(item.folder ? { folder: item.folder as string } : {}),
   };
@@ -294,6 +352,7 @@ export async function getVersion(
     title: out.Item.title,
     savedAt: out.Item.savedAt,
     updatedAt: out.Item.updatedAt,
+    version: typeof out.Item.version === "string" ? out.Item.version : "",
     score: out.Item.score,
     ...(out.Item.folder ? { folder: out.Item.folder } : {}),
   };

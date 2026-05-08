@@ -7,6 +7,7 @@ import {
   listSongs,
   listVersions,
   putSong,
+  VersionConflictError,
 } from "./repo";
 
 const json = (statusCode: number, body: unknown): APIGatewayProxyResultV2 => ({
@@ -91,6 +92,9 @@ export const handler = async (
       }
     }
   } catch (err) {
+    if (err instanceof VersionConflictError) {
+      return json(409, { error: "conflict", current: err.current });
+    }
     console.error("handler error", err);
     return json(500, { error: "internal error" });
   }

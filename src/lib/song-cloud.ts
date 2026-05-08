@@ -35,6 +35,20 @@ export function setDeviceId(id: string): void {
 class TerminalCloudError extends Error {}
 class TransientCloudError extends Error {}
 
+/** Thrown by cloudPutSong when the server returns 409. The cloud's current
+ *  DTO is attached so the client can show a side-by-side diff or run a
+ *  3-way merge (issue #89) without a second round trip. */
+export class ConflictCloudError extends TerminalCloudError {
+  constructor(public current: SongDTO) {
+    super("version conflict");
+    this.name = "ConflictCloudError";
+  }
+}
+
+export function isConflictError(err: unknown): err is ConflictCloudError {
+  return err instanceof ConflictCloudError;
+}
+
 async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
   if (!CLOUD_ENABLED) throw new TerminalCloudError("cloud disabled");
   const ctrl = new AbortController();
@@ -50,6 +64,20 @@ async function apiFetch(path: string, init: RequestInit = {}): Promise<Response>
       },
     });
     if (res.status >= 500) throw new TransientCloudError(`HTTP ${res.status}`);
+    if (res.status === 409) {
+      // Optimistic-concurrency conflict (#87). Body carries the current
+      // cloud DTO so the client can show a diff / run merge.
+      try {
+        const j = await res.json();
+        if (j && typeof j === "object" && j.error === "conflict" && j.current) {
+          throw new ConflictCloudError(j.current as SongDTO);
+        }
+      } catch (err) {
+        if (err instanceof ConflictCloudError) throw err;
+        // Body wasn't the expected shape — fall through to generic.
+      }
+      throw new TerminalCloudError(`HTTP 409`);
+    }
     if (res.status >= 400) {
       const body = await res.text().catch(() => "");
       throw new TerminalCloudError(`HTTP ${res.status}: ${body}`);
@@ -82,12 +110,18 @@ export async function cloudPutSong(s: {
   score: Score;
   savedAt?: number;
   folder?: string | null;
+  /** The cloud version this save is replacing. When provided AND the cloud's
+   *  current version differs, the request is rejected with ConflictCloudError
+   *  so the caller can run resolution. Omit to force last-write-wins (e.g.
+   *  the conflict modal's "keep mine" path). */
+  expectedVersion?: string;
 }): Promise<SongDTO> {
   const body = JSON.stringify({
     title: s.title,
     score: s.score,
     savedAt: s.savedAt,
     folder: s.folder ?? null,
+    ...(s.expectedVersion !== undefined && { expectedVersion: s.expectedVersion }),
   });
   if (body.length > MAX_PAYLOAD) {
     throw new TerminalCloudError(
@@ -234,19 +268,24 @@ export async function syncSongbook(opts?: {
     for (const summary of summaries) {
       const localEntry = localById.get(summary.id);
       if (localEntry && localEntry.savedAt >= summary.updatedAt) {
-        // Local has newer save — push it up (include folder).
+        // Local has newer save — push it up (include folder + version).
+        let pushedDto: SongDTO | undefined;
         try {
-          await cloudPutSong({
+          pushedDto = await cloudPutSong({
             id: summary.id,
             title: localEntry.title,
             score: localEntry.score,
             savedAt: localEntry.savedAt,
             folder: localEntry.folder ?? null,
+            ...(localEntry.cloudVersion !== undefined && { expectedVersion: localEntry.cloudVersion }),
           });
         } catch {
           /* keep local; retry next time */
         }
-        merged.push(localEntry);
+        merged.push({
+          ...localEntry,
+          ...(pushedDto?.version !== undefined && { cloudVersion: pushedDto.version }),
+        });
       } else {
         try {
           const dto = await cloudGetSong(summary.id);
@@ -254,16 +293,19 @@ export async function syncSongbook(opts?: {
           // If cloud has no folder but local does, that's a pre-sync local
           // folder we need to migrate up — push it now.
           let folder = dto.folder ?? localEntry?.folder;
+          let version = dto.version;
           if (!dto.folder && localEntry?.folder) {
             try {
-              await cloudPutSong({
+              const repushed = await cloudPutSong({
                 id: dto.id,
                 title: dto.title,
                 score: dto.score,
                 savedAt: dto.savedAt,
                 folder: localEntry.folder,
+                expectedVersion: dto.version,
               });
               folder = localEntry.folder;
+              version = repushed.version;
             } catch {
               /* keep local-only for now */
             }
@@ -274,6 +316,7 @@ export async function syncSongbook(opts?: {
             savedAt: dto.savedAt,
             score: dto.score,
             ...(folder ? { folder } : {}),
+            ...(version && { cloudVersion: version }),
           });
         } catch {
           if (localEntry) merged.push(localEntry);
@@ -285,14 +328,14 @@ export async function syncSongbook(opts?: {
     for (const entry of local) {
       if (cloudIds.has(entry.id)) continue;
       try {
-        await cloudPutSong({
+        const dto = await cloudPutSong({
           id: entry.id,
           title: entry.title,
           score: entry.score,
           savedAt: entry.savedAt,
           folder: entry.folder ?? null,
         });
-        merged.push(entry);
+        merged.push({ ...entry, cloudVersion: dto.version });
       } catch (err) {
         merged.push(entry);
         if (isTransient(err)) {

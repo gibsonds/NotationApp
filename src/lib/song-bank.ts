@@ -8,6 +8,10 @@ export interface SongBankEntry {
   /** Optional folder name (e.g. "Originals", "Covers"). Songs without a
    *  folder appear under "(Unfiled)" in the My Songs picker. */
   folder?: string;
+  /** Cloud version this entry was last synced from. Used as the
+   *  expectedVersion on cloudPutSong so concurrent writes from another
+   *  device get caught with a 409 instead of silently overwriting (#87). */
+  cloudVersion?: string;
 }
 
 const STORAGE_KEY = "notation-app-songs";
@@ -70,7 +74,7 @@ export function renameSong(id: string, title: string): SongBankEntry | null {
  *  current song) instead of saveSong (which always creates a new entry). */
 export function updateSong(
   id: string,
-  patch: Partial<Pick<SongBankEntry, "title" | "score" | "savedAt" | "folder">>,
+  patch: Partial<Pick<SongBankEntry, "title" | "score" | "savedAt" | "folder" | "cloudVersion">>,
 ): SongBankEntry | null {
   const songs = getSongs();
   const idx = songs.findIndex(s => s.id === id);
@@ -81,6 +85,7 @@ export function updateSong(
     ...(patch.score !== undefined ? { score: JSON.parse(JSON.stringify(patch.score)) } : {}),
     ...(patch.savedAt !== undefined ? { savedAt: patch.savedAt } : {}),
     ...(patch.folder !== undefined ? { folder: patch.folder } : {}),
+    ...(patch.cloudVersion !== undefined ? { cloudVersion: patch.cloudVersion } : {}),
   };
   songs[idx] = next;
   setSongs(songs);
