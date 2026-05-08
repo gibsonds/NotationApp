@@ -3,6 +3,15 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-08 — 603412b
+
+**Perform-mode picker hides folders collapsed in My Songs (#95)**
+
+- Commit: [`603412b`](../../commit/603412b5a337d1c613a34d43703e210b00f195a2)
+- Author: gibsonds
+- Files changed:
+  - `src/components/PerformView.tsx`
+
 ## 2026-05-08 — 46282c4
 
 **Run sync after Clean up duplicates so merged cloud content lands (#94)**
