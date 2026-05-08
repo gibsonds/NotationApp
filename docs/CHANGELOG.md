@@ -3,6 +3,16 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-08 — 90c7758
+
+**Ledger line width: multiply OSMD's default, not staff width (#81)**
+
+- Commit: [`90c7758`](../../commit/90c7758a2f800c565fe9ac0733aaf56b8bc41c4c)
+- Author: gibsonds
+- Files changed:
+  - `src/components/ScoreRenderer.tsx`
+  - `src/store/score-store.ts`
+
 ## 2026-05-08 — 2637a13
 
 **Make ledger lines noticeably bolder (#80)**
