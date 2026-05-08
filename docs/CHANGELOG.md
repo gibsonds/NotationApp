@@ -3,6 +3,16 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-08 — 324a0db
+
+**Add screenshot upload to feedback form**
+
+- Commit: [`324a0db`](../../commit/324a0db0855b7e28410c33649c9c4b9eebac16e7)
+- Author: gibsonds
+- Files changed:
+  - `src/components/FeedbackModal.tsx`
+  - `src/lib/feedback-store.ts`
+
 ## 2026-05-07 — 9c7a24d
 
 **Add ledger line weight setting; default ledger lines to staff width**
