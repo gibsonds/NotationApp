@@ -199,6 +199,7 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
     await runSync();
   };
 
+
   // Save logic. The default Save UPDATES the current song (matching by
   // currentSongId) instead of always creating a new entry — that's the
   // root cause of the "duplicates pile up every time I save" complaint.
@@ -410,6 +411,12 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
       }
     }
     refreshLocal();
+    // Pull cloud-side updates that may have happened since the modal
+    // opened (server-side merges, deletions from another device, etc.)
+    // so the user sees the canonical state in one button-tap, not two.
+    if (CLOUD_ENABLED) {
+      await runSync();
+    }
   };
 
   const handleDelete = async (id: string) => {
