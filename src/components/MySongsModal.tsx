@@ -123,8 +123,34 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
   const refreshLocal = () => setSongsState(getSongs().slice().reverse());
 
   const runSync = async (): Promise<void> => {
+    // Snapshot the LOCAL entry before sync overwrites localStorage. We
+    // need this to detect whether the user has in-flight local edits
+    // (open-score differs from local-entry) so we don't clobber them.
+    const preLocalById = new Map(getSongs().map((e) => [e.id, e]));
     const merged = await syncSongbook({ onStatus: setSyncStatus });
     setSongsState(merged.slice().reverse());
+
+    // Cross-device propagation: if the song currently open in the editor
+    // got newer content from the cloud, replace it in the store so the
+    // editor reflects the change. Without this, the My Songs list shows
+    // a fresh timestamp but the editor keeps rendering the stale score
+    // the user originally loaded.
+    //
+    // Safe-replace check: only swap when the displayed score is
+    // structurally identical to what was in localStorage BEFORE sync.
+    // If they differ, the user has in-flight local edits not yet
+    // autosaved — don't clobber.
+    if (currentSongId && score) {
+      const fresh = merged.find((e) => e.id === currentSongId);
+      const preLocal = preLocalById.get(currentSongId);
+      if (fresh && fresh.score !== score) {
+        const cloudIsNewer = JSON.stringify(fresh.score) !== JSON.stringify(score);
+        const noLocalUnsavedEdits = !!preLocal && JSON.stringify(score) === JSON.stringify(preLocal.score);
+        if (cloudIsNewer && noLocalUnsavedEdits) {
+          setScore(fresh.score);
+        }
+      }
+    }
   };
 
   useEffect(() => {
