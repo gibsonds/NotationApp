@@ -11,6 +11,12 @@ import { getSongs, SongsUpdatedEvent, type SongBankEntry } from "@/lib/song-bank
 
 const PREFS_KEY = "notation-app-perform-prefs";
 
+// Module-level constant for the default empty-array fallback. Selectors
+// that return `state.foo ?? []` create a fresh `[]` every render, which
+// breaks Zustand reference equality and triggers the "getSnapshot should
+// be cached" warning. Using a stable empty array fixes it.
+const EMPTY_STRINGS: readonly string[] = [];
+
 interface PerformPrefs {
   fontSize: number;       // rem
   lineHeight: number;     // unitless multiplier
@@ -67,6 +73,10 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
   // position, same chrome — so the user can drop a note where they're
   // already looking on the chart.
   const annotationMode = useScoreStore(s => s.uiState.annotationMode);
+  // Folders collapsed in My Songs are also hidden here — single mental
+  // model. The user's "old" archive folder shouldn't clutter the perform
+  // picker if they've tucked it away in the editor.
+  const collapsedFolders = useScoreStore(s => s.uiState.collapsedFolders ?? EMPTY_STRINGS);
   // 1-col scrolls the outer container vertically; 2-col scrolls the
   // PaginatedPerformChart's inner pages strip horizontally. They live in
   // different DOM nodes so we need separate refs.
@@ -98,13 +108,26 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
     return Array.from(set).sort();
   }, [songs]);
 
-  // Songs in the active scope (folder filter). When performFolder is set,
-  // prev/next only walks that subset — picking 'Set 1' once means the
-  // user stays in Set 1 across song changes.
+  // Songs in the active scope. Two filters compose:
+  //  1. performFolder (explicit user pick): when set, restrict to that one
+  //     folder. Picking 'Set 1' once locks the prev/next walk into Set 1.
+  //  2. collapsedFolders (shared with My Songs): folders the user has
+  //     hidden in the editor stay hidden here too — the "old" archive
+  //     folder shouldn't show up in the perform picker if it's tucked
+  //     away in My Songs. The "(unfiled)" pseudo-folder uses the
+  //     "_unfiled" key to match MySongsModal's collapse state.
   const songsInScope = useMemo(() => {
-    if (!performFolder) return songs;
-    return songs.filter(s => s.folder === performFolder);
-  }, [songs, performFolder]);
+    let out = songs;
+    if (performFolder) {
+      out = out.filter(s => s.folder === performFolder);
+    } else {
+      out = out.filter(s => {
+        const key = s.folder || "_unfiled";
+        return !collapsedFolders.includes(key);
+      });
+    }
+    return out;
+  }, [songs, performFolder, collapsedFolders]);
 
   // Find the position of the current song in the SCOPED list. Falls back
   // to 0 if the loaded song isn't in scope (so prev/next still work).
@@ -321,8 +344,9 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
                       ? "bg-blue-600 text-white"
                       : "bg-white border border-gray-200 text-gray-700 hover:bg-gray-100"
                   }`}
+                  title="Songs from all non-archived folders"
                 >
-                  All ({songs.length})
+                  All ({songs.filter(s => !collapsedFolders.includes(s.folder || "_unfiled")).length})
                 </button>
                 {folderNames.map(f => {
                   const count = songs.filter(s => s.folder === f).length;
