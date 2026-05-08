@@ -3,6 +3,17 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-08 — 2637a13
+
+**Make ledger lines noticeably bolder (#80)**
+
+- Commit: [`2637a13`](../../commit/2637a135dae4bbefbe77826840699ad6559db962)
+- Author: gibsonds
+- Files changed:
+  - `src/app/globals.css`
+  - `src/components/PropertiesPanel.tsx`
+  - `src/store/score-store.ts`
+
 ## 2026-05-08 — 324a0db
 
 **Add screenshot upload to feedback form**
