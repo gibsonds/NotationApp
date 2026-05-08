@@ -11,12 +11,6 @@ import { getSongs, SongsUpdatedEvent, type SongBankEntry } from "@/lib/song-bank
 
 const PREFS_KEY = "notation-app-perform-prefs";
 
-// Module-level constant for the default empty-array fallback. Selectors
-// that return `state.foo ?? []` create a fresh `[]` every render, which
-// breaks Zustand reference equality and triggers the "getSnapshot should
-// be cached" warning. Using a stable empty array fixes it.
-const EMPTY_STRINGS: readonly string[] = [];
-
 interface PerformPrefs {
   fontSize: number;       // rem
   lineHeight: number;     // unitless multiplier
@@ -73,10 +67,6 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
   // position, same chrome — so the user can drop a note where they're
   // already looking on the chart.
   const annotationMode = useScoreStore(s => s.uiState.annotationMode);
-  // Folders collapsed in My Songs are also hidden here — single mental
-  // model. The user's "old" archive folder shouldn't clutter the perform
-  // picker if they've tucked it away in the editor.
-  const collapsedFolders = useScoreStore(s => s.uiState.collapsedFolders ?? EMPTY_STRINGS);
   // 1-col scrolls the outer container vertically; 2-col scrolls the
   // PaginatedPerformChart's inner pages strip horizontally. They live in
   // different DOM nodes so we need separate refs.
@@ -108,27 +98,22 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
     return Array.from(set).sort();
   }, [songs]);
 
-  // Sentinel value for the unfiled pseudo-folder. Stored in performFolder
-  // when the user explicitly picks the (Unfiled) tab so the filter is
-  // distinguishable from null ("All non-collapsed").
+  // Sentinel folder values stored in performFolder. Three distinct picks:
+  //  - UNFILED_FOLDER: songs with no folder set (the default tab).
+  //  - ALL_FOLDER: every song, regardless of folder. Includes archived
+  //    folders even if the user has them collapsed in My Songs.
+  //  - any other string: the specific folder name.
+  // null is treated as UNFILED_FOLDER for legacy users — when the field
+  // wasn't yet populated, default to the focused subset.
   const UNFILED_FOLDER = "_unfiled" as const;
+  const ALL_FOLDER = "_all" as const;
+  const activeFolder = performFolder ?? UNFILED_FOLDER;
 
-  // Songs in the active scope. Three filters compose:
-  //  1. performFolder === UNFILED_FOLDER: only songs with no folder.
-  //  2. performFolder = a real folder name: only that folder.
-  //  3. performFolder null: all songs minus collapsed-in-My-Songs folders.
   const songsInScope = useMemo(() => {
-    if (performFolder === UNFILED_FOLDER) {
-      return songs.filter(s => !s.folder);
-    }
-    if (performFolder) {
-      return songs.filter(s => s.folder === performFolder);
-    }
-    return songs.filter(s => {
-      const key = s.folder || UNFILED_FOLDER;
-      return !collapsedFolders.includes(key);
-    });
-  }, [songs, performFolder, collapsedFolders]);
+    if (activeFolder === ALL_FOLDER) return songs;
+    if (activeFolder === UNFILED_FOLDER) return songs.filter(s => !s.folder);
+    return songs.filter(s => s.folder === activeFolder);
+  }, [songs, activeFolder]);
 
   const unfiledCount = useMemo(
     () => songs.filter(s => !s.folder).length,
@@ -342,24 +327,12 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
           <div className="absolute top-[68px] left-3 z-20 bg-white text-gray-800 rounded-xl shadow-2xl border border-gray-200 w-[min(360px,calc(100vw-1.5rem))] max-h-[60vh] overflow-hidden flex flex-col">
             {(folderNames.length > 0 || unfiledCount > 0) && (
               <div className="px-3 py-2 border-b border-gray-100 bg-gray-50 flex flex-wrap gap-1">
-                <button
-                  type="button"
-                  onClick={() => setUIState({ performFolder: null })}
-                  className={`px-2 py-1 text-xs rounded-md transition-colors ${
-                    !performFolder
-                      ? "bg-blue-600 text-white"
-                      : "bg-white border border-gray-200 text-gray-700 hover:bg-gray-100"
-                  }`}
-                  title="Songs from all non-archived folders"
-                >
-                  All ({songs.filter(s => !collapsedFolders.includes(s.folder || UNFILED_FOLDER)).length})
-                </button>
                 {unfiledCount > 0 && (
                   <button
                     type="button"
                     onClick={() => setUIState({ performFolder: UNFILED_FOLDER })}
                     className={`px-2 py-1 text-xs rounded-md transition-colors ${
-                      performFolder === UNFILED_FOLDER
+                      activeFolder === UNFILED_FOLDER
                         ? "bg-blue-600 text-white"
                         : "bg-white border border-gray-200 text-gray-700 hover:bg-gray-100"
                     }`}
@@ -376,7 +349,7 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
                       type="button"
                       onClick={() => setUIState({ performFolder: f })}
                       className={`px-2 py-1 text-xs rounded-md transition-colors ${
-                        performFolder === f
+                        activeFolder === f
                           ? "bg-blue-600 text-white"
                           : "bg-white border border-gray-200 text-gray-700 hover:bg-gray-100"
                       }`}
@@ -385,6 +358,18 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
                     </button>
                   );
                 })}
+                <button
+                  type="button"
+                  onClick={() => setUIState({ performFolder: ALL_FOLDER })}
+                  className={`px-2 py-1 text-xs rounded-md transition-colors ${
+                    activeFolder === ALL_FOLDER
+                      ? "bg-blue-600 text-white"
+                      : "bg-white border border-gray-200 text-gray-700 hover:bg-gray-100"
+                  }`}
+                  title="Every song, including archived folders"
+                >
+                  All ({songs.length})
+                </button>
               </div>
             )}
             <div className="flex-1 overflow-y-auto">
