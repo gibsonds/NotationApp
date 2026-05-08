@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Thin wrapper so users can invoke `bin/notation <args>` directly without
+# remembering the tsx prefix. Delegates to tsx with the .ts source so the
+# CLI stays a single source-of-truth file.
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." && pwd )"
+exec "$DIR/node_modules/.bin/tsx" "$DIR/bin/notation.ts" "$@"
