@@ -3,6 +3,18 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-08 — 7991714
+
+**Print: Legal + Tabloid page sizes; @page size honors choice (#5) (#83)**
+
+- Commit: [`7991714`](../../commit/79917142a2f3a37d501b93116da42057251f7e2d)
+- Author: gibsonds
+- Files changed:
+  - `.claude/scheduled_tasks.lock`
+  - `src/app/page.tsx`
+  - `src/components/PropertiesPanel.tsx`
+  - `src/store/score-store.ts`
+
 ## 2026-05-08 — 2d18ace
 
 **Mid-score tempo / time-sig / key-sig changes (#42) (#82)**
