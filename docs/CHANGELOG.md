@@ -3,6 +3,15 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-08 — 3331078
+
+**Three-tab perform picker: Unfiled / folders / All (#97)**
+
+- Commit: [`3331078`](../../commit/33310787165f76ada8de81b80c79583ea9595d49)
+- Author: gibsonds
+- Files changed:
+  - `src/components/PerformView.tsx`
+
 ## 2026-05-08 — bf0bee8
 
 **Add Unfiled tab to perform-mode song picker (#96)**
