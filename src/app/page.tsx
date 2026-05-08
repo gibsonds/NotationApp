@@ -801,6 +801,7 @@ export default function Home() {
                       keySignature: "C",
                       measures: 16,
                       anacrusis: false,
+      measureChanges: [],
                       staves: [{
                         id: uuidv4(),
                         name: "Staff 1",
@@ -835,6 +836,7 @@ export default function Home() {
                       keySignature: "C",
                       measures: 1,
                       anacrusis: false,
+      measureChanges: [],
                       staves: [],
                       chordSymbols: [],
                       rehearsalMarks: [],

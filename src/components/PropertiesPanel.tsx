@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useScoreStore, DEFAULT_LAYOUT, PRINT_LAYOUT, REALBOOK_LAYOUT, STYLE_PRESETS, StylePreset, LayoutSettings, MusicFont, TextFont, PageSize } from "@/store/score-store";
 import { downloadScoreAsMidi } from "@/lib/midi-export";
-import { KeySignature, Clef } from "@/lib/schema";
+import { KeySignature, Clef, Score, ScorePatch } from "@/lib/schema";
 import { v4 as uuidv4 } from "uuid";
 import RevisionPanel from "./RevisionPanel";
 
@@ -51,6 +51,7 @@ export default function PropertiesPanel({ embedded = false }: PropertiesPanelPro
                 {score.anacrusis ? "On" : "Off"}
               </button>
             </div>
+            <MidScoreChangesEditor score={score} applyPatches={applyPatches} />
           </div>
         </PropSection>
 
@@ -653,6 +654,160 @@ function PropSection({ title, defaultOpen = true, action, children }: {
           {children}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Mid-score change editor (#42). Lists every measureChange and provides
+ * an "+ Add" button. Each row lets the user pick the measure number plus
+ * any combination of tempo / time-signature / key-signature override.
+ */
+function MidScoreChangesEditor({
+  score,
+  applyPatches,
+}: {
+  score: Score;
+  applyPatches: (patches: ScorePatch[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const changes = score.measureChanges ?? [];
+
+  const addChange = () => {
+    const used = new Set(changes.map((c) => c.measure));
+    let target = 2;
+    while (used.has(target) && target <= score.measures) target++;
+    if (target > score.measures) return;
+    applyPatches([{ op: "set_measure_change", measure: target, tempo: score.tempo }]);
+    setOpen(true);
+  };
+
+  const updateChange = (
+    measure: number,
+    patch: { measure?: number; tempo?: number | undefined; timeSignature?: string | undefined; keySignature?: KeySignature | undefined },
+  ) => {
+    const existing = changes.find((c) => c.measure === measure);
+    if (!existing) return;
+    const merged = { ...existing, ...patch };
+    if (patch.measure !== undefined && patch.measure !== measure) {
+      // Renumbering: remove old, insert new.
+      applyPatches([
+        { op: "remove_measure_change", measure },
+        { op: "set_measure_change", ...merged, measure: patch.measure },
+      ]);
+    } else {
+      applyPatches([{ op: "set_measure_change", ...merged }]);
+    }
+  };
+
+  const removeChange = (measure: number) => {
+    applyPatches([{ op: "remove_measure_change", measure }]);
+  };
+
+  return (
+    <div className="border-t border-white/5 pt-2 mt-1">
+      <div className="flex items-center justify-between mb-1">
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className="text-[10px] uppercase tracking-wider text-gray-500 hover:text-gray-300 inline-flex items-center gap-1"
+        >
+          <svg className={`w-2.5 h-2.5 transition-transform ${open ? "rotate-90" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+          </svg>
+          <span>Mid-score changes ({changes.length})</span>
+        </button>
+        <button
+          type="button"
+          onClick={addChange}
+          className="text-[10px] text-blue-400 hover:text-blue-300 font-medium"
+          title="Insert a tempo / time / key change at a specific measure"
+        >
+          + Add
+        </button>
+      </div>
+      {open && (
+        <div className="space-y-1.5">
+          {changes.length === 0 && (
+            <p className="text-[10px] text-gray-500 italic">No mid-score changes. Click + Add to insert one.</p>
+          )}
+          {changes.map((c) => (
+            <div key={c.measure} className="bg-white/5 rounded-lg p-2 space-y-1 border border-white/10">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-gray-400 w-10">Bar</span>
+                <input
+                  type="number"
+                  min={2}
+                  max={score.measures}
+                  value={c.measure}
+                  onChange={(e) => {
+                    const n = parseInt(e.target.value, 10);
+                    if (!isNaN(n) && n >= 2 && n <= score.measures) {
+                      updateChange(c.measure, { measure: n });
+                    }
+                  }}
+                  className="flex-1 bg-black/20 border border-white/10 rounded px-2 py-0.5 text-[11px] text-gray-200 focus:outline-none focus:border-blue-400"
+                />
+                <button
+                  type="button"
+                  onClick={() => removeChange(c.measure)}
+                  className="text-[10px] text-red-400/60 hover:text-red-400"
+                  title="Remove this change"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-gray-400 w-10">Tempo</span>
+                <input
+                  type="number"
+                  min={20}
+                  max={300}
+                  placeholder="—"
+                  value={c.tempo ?? ""}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    const n = v === "" ? undefined : parseInt(v, 10);
+                    updateChange(c.measure, { tempo: n });
+                  }}
+                  className="flex-1 bg-black/20 border border-white/10 rounded px-2 py-0.5 text-[11px] text-gray-200 focus:outline-none focus:border-blue-400"
+                />
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-gray-400 w-10">Time</span>
+                <input
+                  type="text"
+                  placeholder="—"
+                  value={c.timeSignature ?? ""}
+                  onChange={(e) => {
+                    const v = e.target.value.trim();
+                    if (v === "" || /^\d+\/\d+$/.test(v)) {
+                      updateChange(c.measure, { timeSignature: v === "" ? undefined : v });
+                    }
+                  }}
+                  className="flex-1 bg-black/20 border border-white/10 rounded px-2 py-0.5 text-[11px] text-gray-200 focus:outline-none focus:border-blue-400"
+                />
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-gray-400 w-10">Key</span>
+                <select
+                  value={c.keySignature ?? ""}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    updateChange(c.measure, { keySignature: v === "" ? undefined : (v as KeySignature) });
+                  }}
+                  className="flex-1 bg-black/20 border border-white/10 rounded px-2 py-0.5 text-[11px] text-gray-200 focus:outline-none focus:border-blue-400"
+                >
+                  <option value="">—</option>
+                  {(["C","G","D","A","E","B","F","Bb","Eb","Ab","Db","Am","Em","Bm","Dm","Gm","Cm","Fm"] as const).map((k) => (
+                    <option key={k} value={k}>{k}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

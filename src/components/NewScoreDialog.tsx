@@ -57,6 +57,7 @@ export default function NewScoreDialog({ onClose }: { onClose: () => void }) {
       keySignature: keySignature as Score["keySignature"],
       measures,
       anacrusis: false,
+      measureChanges: [],
       staves: staves.map((s, i) => ({
         id: `staff_${i + 1}`,
         name: s.name,
