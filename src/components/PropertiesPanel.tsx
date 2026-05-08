@@ -122,7 +122,7 @@ export default function PropertiesPanel({ embedded = false }: PropertiesPanelPro
             <DarkRange label="Meas/line" value={layout.measuresPerSystem} min={0} max={8} step={1} onChange={(v) => setLayout({ measuresPerSystem: v })} />
             <DarkRange label="Sys gap" value={layout.systemSpacing} min={1} max={15} step={0.5} onChange={(v) => setLayout({ systemSpacing: v })} />
             <DarkRange label="Margins" value={layout.pageLeftMargin} min={0} max={20} step={1} onChange={(v) => setLayout({ pageLeftMargin: v, pageRightMargin: v })} />
-            <DarkRange label="Ledger lines" value={layout.ledgerLineWeight} min={0.5} max={2.0} step={0.1} onChange={(v) => setLayout({ ledgerLineWeight: v })} />
+            <DarkRange label="Ledger lines" value={layout.ledgerLineWeight} min={0.5} max={3.5} step={0.1} onChange={(v) => setLayout({ ledgerLineWeight: v })} />
             <DarkSelect label="Notes" value={layout.musicFont} options={["bravura","petaluma","gonville"]}
               onChange={(v) => setLayout({ musicFont: v as MusicFont })} />
             <DarkSelect label="Text" value={layout.textFont} options={["georgia","palatino","garamond","times","helvetica","noto","handwritten"]}
@@ -413,7 +413,7 @@ export default function PropertiesPanel({ embedded = false }: PropertiesPanelPro
               label="Ledger lines"
               value={layout.ledgerLineWeight}
               min={0.5}
-              max={2.0}
+              max={3.5}
               step={0.1}
               onChange={(v) => setLayout({ ledgerLineWeight: v })}
             />

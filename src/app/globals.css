@@ -89,6 +89,18 @@ body {
   stroke-linejoin: round;
 }
 
+/* Ledger lines — VexFlow groups them under <g id="vf-…ledgers">. The OSMD
+ * LedgerLineWidth rule controls stroke-width upstream, but on small
+ * zoom levels and Bravura at 0.65× note size the rule alone reads as
+ * faint. Force a minimum stroke width on screen so they stay readable
+ * for outliers (high/low notes); print rules above already render
+ * everything full opacity. */
+.score-container svg g[id$="ledgers"] line,
+.score-container svg g[id$="ledgers"] path {
+  stroke-width: 2.2px;
+  stroke-linecap: round;
+}
+
 /* Print overlay elements — hidden on screen, visible only in print */
 .print-overlay {
   display: none;
