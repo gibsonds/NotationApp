@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useScoreStore, DEFAULT_LAYOUT, PRINT_LAYOUT, REALBOOK_LAYOUT, STYLE_PRESETS, StylePreset, LayoutSettings, MusicFont, TextFont, PageSize } from "@/store/score-store";
+import { useScoreStore, DEFAULT_LAYOUT, PRINT_LAYOUT, REALBOOK_LAYOUT, STYLE_PRESETS, StylePreset, LayoutSettings, MusicFont, TextFont, PageSize, PAGE_DIMENSIONS } from "@/store/score-store";
 import { downloadScoreAsMidi } from "@/lib/midi-export";
 import { KeySignature, Clef, Score, ScorePatch } from "@/lib/schema";
 import { v4 as uuidv4 } from "uuid";
@@ -456,7 +456,7 @@ export default function PropertiesPanel({ embedded = false }: PropertiesPanelPro
               />
               <span className="text-[10px] text-gray-400">
                 {layout.pageBreaks
-                  ? layout.pageSize === "a4" ? "A4 pages" : "Letter pages"
+                  ? `${PAGE_DIMENSIONS[layout.pageSize].label} pages`
                   : "Endless scroll"}
               </span>
             </div>
@@ -469,6 +469,8 @@ export default function PropertiesPanel({ embedded = false }: PropertiesPanelPro
               >
                 <option value="letter">US Letter (8.5 &times; 11&quot;)</option>
                 <option value="a4">A4 (210 &times; 297mm)</option>
+                <option value="legal">US Legal (8.5 &times; 14&quot;)</option>
+                <option value="tabloid">Tabloid (11 &times; 17&quot;)</option>
               </select>
             </div>
             <div className="flex items-center gap-2">

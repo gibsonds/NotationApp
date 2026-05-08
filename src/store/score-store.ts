@@ -27,11 +27,13 @@ export interface RecordedOperation {
 
 export type MusicFont = "bravura" | "petaluma" | "gonville";
 export type TextFont = "georgia" | "palatino" | "garamond" | "times" | "helvetica" | "noto" | "handwritten";
-export type PageSize = "letter" | "a4";
+export type PageSize = "letter" | "a4" | "legal" | "tabloid";
 
-export const PAGE_DIMENSIONS: Record<PageSize, { width: number; height: number; label: string }> = {
-  letter: { width: 8.5, height: 11.0, label: "US Letter" },
-  a4: { width: 8.27, height: 11.69, label: "A4" },
+export const PAGE_DIMENSIONS: Record<PageSize, { width: number; height: number; label: string; cssSize: string }> = {
+  letter:  { width: 8.5,  height: 11.0,  label: "US Letter", cssSize: "letter" },
+  a4:      { width: 8.27, height: 11.69, label: "A4",        cssSize: "A4" },
+  legal:   { width: 8.5,  height: 14.0,  label: "US Legal",  cssSize: "legal" },
+  tabloid: { width: 11.0, height: 17.0,  label: "Tabloid",   cssSize: "ledger" },
 };
 
 export const TEXT_FONT_STACKS: Record<TextFont, string> = {

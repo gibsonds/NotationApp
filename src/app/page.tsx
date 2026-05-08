@@ -419,6 +419,33 @@ export default function Home() {
     }
   }, [score]);
 
+  // Inject a `@page { size: ... }` rule so the browser print dialog
+  // defaults to the layout's chosen paper size (Letter / A4 / Legal /
+  // Tabloid). Without this the print dialog uses the OS default and the
+  // user has to change it manually every time. Runs as an effect so it
+  // re-applies whenever the page size pref changes.
+  useEffect(() => {
+    const pageSize = layout?.pageSize ?? "letter";
+    const cssSize = pageSize === "a4"
+      ? "A4"
+      : pageSize === "legal"
+        ? "legal"
+        : pageSize === "tabloid"
+          ? "ledger"
+          : "letter";
+    let el = document.getElementById("notation-page-size") as HTMLStyleElement | null;
+    if (!el) {
+      el = document.createElement("style");
+      el.id = "notation-page-size";
+      document.head.appendChild(el);
+    }
+    el.textContent = `@media print { @page { size: ${cssSize}; } }`;
+    return () => {
+      // Don't remove on unmount — the page is the app root, this only
+      // unmounts on full teardown. Leaving the rule in place is harmless.
+    };
+  }, [layout?.pageSize]);
+
   // Songbook share-link: visiting `?join=<deviceId>` prompts to take over
   // that device's songbook. The param is stripped after the user decides
   // (Join or Cancel) so a refresh doesn't re-prompt.
