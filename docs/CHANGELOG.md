@@ -3,6 +3,15 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-08 — f03283e
+
+**My Songs: refresh open editor when cloud has newer content (#86)**
+
+- Commit: [`f03283e`](../../commit/f03283ef5667a70072086bbe999e8613dc38cf02)
+- Author: gibsonds
+- Files changed:
+  - `src/components/MySongsModal.tsx`
+
 ## 2026-05-08 — fdd88c9
 
 **Score CLI thin slice (#19) (#85)**
