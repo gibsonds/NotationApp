@@ -7,17 +7,27 @@ import { Runtime } from "aws-cdk-lib/aws-lambda";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { Construct } from "constructs";
 
+interface NotationStackProps extends StackProps {
+  /** Suffix appended to resource names so prod and test can co-exist in
+   *  the same AWS account. Use "" for prod, "-test" for the test stack. */
+  resourceSuffix?: string;
+}
+
 export class NotationStack extends Stack {
-  constructor(scope: Construct, id: string, props?: StackProps) {
+  constructor(scope: Construct, id: string, props?: NotationStackProps) {
     super(scope, id, props);
 
+    const suffix = props?.resourceSuffix ?? "";
+    const isTest = suffix !== "";
+
     const table = new Table(this, "Table", {
-      tableName: "NotationApp",
+      tableName: `NotationApp${suffix}`,
       partitionKey: { name: "pk", type: AttributeType.STRING },
       sortKey: { name: "sk", type: AttributeType.STRING },
       billingMode: BillingMode.PAY_PER_REQUEST,
       pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
-      removalPolicy: RemovalPolicy.RETAIN,
+      // Test table can be cleanly torn down; prod stays.
+      removalPolicy: isTest ? RemovalPolicy.DESTROY : RemovalPolicy.RETAIN,
     });
 
     table.addGlobalSecondaryIndex({
@@ -43,7 +53,7 @@ export class NotationStack extends Stack {
 
     const integration = new HttpLambdaIntegration("Integration", fn);
     const api = new HttpApi(this, "Api", {
-      apiName: "NotationApi",
+      apiName: `NotationApi${suffix}`,
       corsPreflight: {
         allowOrigins: ["https://gibsonds.github.io", "http://localhost:3000", "http://localhost:3001"],
         allowMethods: [
