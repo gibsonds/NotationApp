@@ -3,6 +3,27 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-08 — 2d18ace
+
+**Mid-score tempo / time-sig / key-sig changes (#42) (#82)**
+
+- Commit: [`2d18ace`](../../commit/2d18acea5e35ba7ac83acf96669b68cdb6401a86)
+- Author: gibsonds
+- Files changed:
+  - `src/app/page.tsx`
+  - `src/components/MenuBar.tsx`
+  - `src/components/NewScoreDialog.tsx`
+  - `src/components/PropertiesPanel.tsx`
+  - `src/components/Toolbar.tsx`
+  - `src/lib/chordpro-import.ts`
+  - `src/lib/importers/midi-import.ts`
+  - `src/lib/importers/musicxml-import.ts`
+  - `src/lib/importers/staffpad.ts`
+  - `src/lib/musicxml.ts`
+  - `src/lib/patches.ts`
+  - `src/lib/schema.ts`
+  - `src/lib/validation.ts`
+
 ## 2026-05-08 — 90c7758
 
 **Ledger line width: multiply OSMD's default, not staff width (#81)**
