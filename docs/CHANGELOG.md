@@ -3,6 +3,16 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-08 — f7a2b9a
+
+**iPad chord-chart: bigger touch targets on coarse pointer (#23) (#84)**
+
+- Commit: [`f7a2b9a`](../../commit/f7a2b9a7f8f1c4c313e549bb263ddf690257a664)
+- Author: gibsonds
+- Files changed:
+  - `.gitignore`
+  - `src/app/globals.css`
+
 ## 2026-05-08 — 7991714
 
 **Print: Legal + Tabloid page sizes; @page size honors choice (#5) (#83)**
