@@ -177,7 +177,13 @@ function applyLayout(osmd: any, layout: LayoutSettings, zoomLevel: number) {
     rules.TieHeightMaximum = 1.4;
     rules.BeamSlopeMaxAngle = 10;
   }
-  rules.LedgerLineWidth = rules.StaffLineWidth * layout.ledgerLineWeight;
+  // OSMD's default LedgerLineWidth is 1.0 in its own units (about 10× the
+  // 0.1 StaffLineWidth — yes, the units are different scales). Multiplying
+  // staff-width by the weight produced ledger lines a fifth as thick as
+  // OSMD's own default, which is why weight=2.0 still rendered a hairline.
+  // Use the weight as a direct multiplier on the OSMD default instead, so
+  // 1.0 = OSMD default, 2.0 = twice as bold, etc.
+  rules.LedgerLineWidth = 1.0 * layout.ledgerLineWeight;
 
   rules.SlurPlacementUseSkyBottomLine = true;
 
