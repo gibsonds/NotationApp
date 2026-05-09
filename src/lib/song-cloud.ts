@@ -324,9 +324,29 @@ export async function syncSongbook(opts?: {
       }
     }
 
-    // Local-only entries → push to cloud (include folder).
+    // Local-only entries: two cases.
+    //
+    //   A) Never-synced (no cloudVersion) → push to cloud as a migration.
+    //      This handles legacy entries created before cloud was enabled
+    //      and entries created in this session that haven't been
+    //      autosaved yet.
+    //
+    //   B) Already-synced (has cloudVersion) but cloud no longer lists
+    //      it → cloud-side deletion. Drop locally instead of pushing
+    //      back. This stops the resurrection bug where deleting a song
+    //      from one device would have it re-uploaded by another that
+    //      still had the entry in localStorage.
+    //
+    // The cloudVersion field is the tombstone signal: its presence means
+    // "we knew about this in cloud at some point; cloud absence now is
+    // intentional." Without it we'd assume migration and push back up.
     for (const entry of local) {
       if (cloudIds.has(entry.id)) continue;
+      if (entry.cloudVersion) {
+        // Tombstone respect — cloud deleted it, propagate the deletion
+        // locally. Don't add to merged.
+        continue;
+      }
       try {
         const dto = await cloudPutSong({
           id: entry.id,
