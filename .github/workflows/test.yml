@@ -1,0 +1,26 @@
+name: Tests
+
+# Run vitest on every push and PR. Catches regressions in the merge
+# logic (#89), the chord-token equivalence checks, and any future pure-
+# function additions in src/lib/__tests__/. Playwright e2e tests are
+# excluded — they live under e2e/ and run on a separate path.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm test
