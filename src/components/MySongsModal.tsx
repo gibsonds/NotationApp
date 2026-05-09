@@ -479,49 +479,94 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        {score ? (
-          <div className="px-5 py-3 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
-            <input
-              type="text"
-              value={saveTitle}
-              onChange={e => setSaveTitle(e.target.value)}
-              placeholder={score.title || "Song name"}
-              className="flex-1 px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              onKeyDown={e => {
-                if (e.key === "Enter") handleSave();
-                if (e.key === "Escape") onClose();
-              }}
-            />
-            <button
-              onClick={handleSave}
-              className={`px-4 py-1.5 text-sm font-medium text-white rounded-lg transition-colors whitespace-nowrap shrink-0 ${
-                justSaved
-                  ? "bg-green-600 hover:bg-green-700"
-                  : "bg-blue-600 hover:bg-blue-700 active:bg-blue-800"
-              }`}
-              title={
-                currentSongId && songs.some(s => s.id === currentSongId)
-                  ? "Update the current song (no duplicate)"
-                  : "Create a new song"
-              }
-            >
-              {justSaved
-                ? "Saved!"
-                : currentSongId && songs.some(s => s.id === currentSongId)
-                ? "Save"
-                : "Save Song"}
-            </button>
-            {currentSongId && songs.some(s => s.id === currentSongId) && (
-              <button
-                onClick={handleSaveAs}
-                className="px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50 active:bg-blue-100 border border-blue-200 rounded-lg transition-colors whitespace-nowrap shrink-0"
-                title="Save as a new entry (keeps the current one)"
-              >
-                Save As…
-              </button>
-            )}
-          </div>
-        ) : (
+        {score ? (() => {
+          // Save flow with explicit branching to prevent silent
+          // overwrites. Three states:
+          //
+          //   1. No currentSongId        → single 'Save Song' button.
+          //                                 Always creates a new entry.
+          //   2. currentSongId present,
+          //      titles match            → single 'Save' button. Updates
+          //                                 the existing entry in place
+          //                                 (the no-duplicate path).
+          //   3. currentSongId present,
+          //      titles DIFFER           → AMBIGUOUS. Banner + TWO
+          //                                 buttons forcing the user to
+          //                                 pick: 'Update [old title]'
+          //                                 or 'Save as new'.
+          //
+          // State 3 is what bit San Francisco / Love Seeking Missile —
+          // an AI-generated new song was created while another was
+          // loaded; the silent overwrite path clobbered the original.
+          const currentEntry =
+            currentSongId ? songs.find(s => s.id === currentSongId) : null;
+          const titleNow = saveTitle.trim() || score.title || "Untitled Song";
+          const titlesMatch = currentEntry && currentEntry.title.trim().toLowerCase() === titleNow.toLowerCase();
+          const ambiguous = !!currentEntry && !titlesMatch;
+          return (
+            <div className="px-5 py-3 bg-gray-50 border-b border-gray-200">
+              {ambiguous && (
+                <div className="mb-2 p-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-900">
+                  The current song <strong>&ldquo;{currentEntry!.title}&rdquo;</strong> has a different title from what you&rsquo;re saving (<strong>&ldquo;{titleNow}&rdquo;</strong>). Pick one — &ldquo;Update&rdquo; overwrites the existing song; &ldquo;Save as new&rdquo; creates a separate entry.
+                </div>
+              )}
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={saveTitle}
+                  onChange={e => setSaveTitle(e.target.value)}
+                  placeholder={score.title || "Song name"}
+                  className="flex-1 px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  onKeyDown={e => {
+                    if (e.key === "Enter" && !ambiguous) handleSave();
+                    if (e.key === "Escape") onClose();
+                  }}
+                />
+                {ambiguous ? (
+                  <>
+                    <button
+                      onClick={handleSave}
+                      className="px-3 py-1.5 text-sm font-medium text-amber-900 bg-amber-100 hover:bg-amber-200 border border-amber-300 rounded-lg transition-colors whitespace-nowrap shrink-0"
+                      title={`Update '${currentEntry!.title}' with this content`}
+                    >
+                      Update &ldquo;{truncate(currentEntry!.title, 18)}&rdquo;
+                    </button>
+                    <button
+                      onClick={handleSaveAs}
+                      className="px-4 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-lg transition-colors whitespace-nowrap shrink-0"
+                      title="Create a new entry; leave the existing song alone"
+                    >
+                      Save as new
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      onClick={handleSave}
+                      className={`px-4 py-1.5 text-sm font-medium text-white rounded-lg transition-colors whitespace-nowrap shrink-0 ${
+                        justSaved
+                          ? "bg-green-600 hover:bg-green-700"
+                          : "bg-blue-600 hover:bg-blue-700 active:bg-blue-800"
+                      }`}
+                      title={currentEntry ? "Update the current song (no duplicate)" : "Create a new song"}
+                    >
+                      {justSaved ? "Saved!" : currentEntry ? "Save" : "Save Song"}
+                    </button>
+                    {currentEntry && (
+                      <button
+                        onClick={handleSaveAs}
+                        className="px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50 active:bg-blue-100 border border-blue-200 rounded-lg transition-colors whitespace-nowrap shrink-0"
+                        title="Save as a new entry (keeps the current one)"
+                      >
+                        Save As…
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })() : (
           <div className="px-5 py-3 bg-gray-50 border-b border-gray-200">
             <p className="text-sm text-gray-500">Open or create a score or chord chart to save it here.</p>
           </div>
@@ -839,4 +884,8 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
       )}
     </div>
   );
+}
+
+function truncate(s: string, max: number): string {
+  return s.length <= max ? s : s.slice(0, max - 1) + "…";
 }
