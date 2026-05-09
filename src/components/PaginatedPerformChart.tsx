@@ -88,8 +88,18 @@ export default function PaginatedPerformChart({
     const pageH = outer.clientHeight;
     if (pageW === 0 || pageH === 0) return;
 
+    // outerRef carries pt-[7vh] + pb-16 (top room for the song picker
+    // chrome, bottom room for the pager). clientHeight INCLUDES that
+    // padding, so the visible column area is smaller. Bin-packing
+    // against pageH directly was overestimating column height by ~7vh
+    // + 64px, which is exactly why content was clipping at the bottom.
+    // Read the real outer padding from computed style so this stays
+    // correct regardless of viewport changes.
+    const cs = window.getComputedStyle(outer);
+    const outerPadTop = parseFloat(cs.paddingTop) || 0;
+    const outerPadBot = parseFloat(cs.paddingBottom) || 0;
     const PAD_Y = 8; // px — matches .py-2 on each visible page
-    const colHeight = pageH - 2 * PAD_Y;
+    const colHeight = pageH - outerPadTop - outerPadBot - 2 * PAD_Y;
 
     const heights = new Map<string, number>();
     for (const b of blocks) {
