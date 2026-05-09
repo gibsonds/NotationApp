@@ -3,6 +3,15 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-09 — 2205993
+
+**Tombstone-based deletion in syncSongbook (#101)**
+
+- Commit: [`2205993`](../../commit/22059936bed1d04054e1804d657d24344ee32eb9)
+- Author: gibsonds
+- Files changed:
+  - `src/lib/song-cloud.ts`
+
 ## 2026-05-09 — 7f5e79c
 
 **Clean up duplicates: keep the richest copy, not just the newest (#107)**
