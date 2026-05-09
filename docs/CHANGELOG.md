@@ -3,6 +3,15 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-09 — 7f5e79c
+
+**Clean up duplicates: keep the richest copy, not just the newest (#107)**
+
+- Commit: [`7f5e79c`](../../commit/7f5e79c9409f1773025d55a5587b0991bef4fa8d)
+- Author: gibsonds
+- Files changed:
+  - `src/components/MySongsModal.tsx`
+
 ## 2026-05-09 — ac6b175
 
 **Bulk-recover: normalize titles fully so near-duplicates don't sneak through (#106)**
