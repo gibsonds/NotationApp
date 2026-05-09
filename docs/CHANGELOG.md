@@ -3,6 +3,15 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-09 — a951da5
+
+**Save Song: explicit branching when title differs from current entry (#104)**
+
+- Commit: [`a951da5`](../../commit/a951da52fe5e9b516b7e6bf19c30f34eb27ef95e)
+- Author: gibsonds
+- Files changed:
+  - `src/components/MySongsModal.tsx`
+
 ## 2026-05-09 — d57ae83
 
 **Account for per-block margins when packing 2-col perform pages (#103)**
