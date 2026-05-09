@@ -3,6 +3,16 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-09 — ccfc473
+
+**Phase 3 of #89: auto-merge on 409 (cloud-autosave path) (#100)**
+
+- Commit: [`ccfc473`](../../commit/ccfc47394abacf9f77e07b8f71c8de075e4d76bf)
+- Author: gibsonds
+- Files changed:
+  - `src/app/page.tsx`
+  - `src/lib/cloud-autosave.ts`
+
 ## 2026-05-09 — a951da5
 
 **Save Song: explicit branching when title differs from current entry (#104)**
