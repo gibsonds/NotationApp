@@ -385,23 +385,58 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
       if (!byTitle.has(k)) byTitle.set(k, []);
       byTitle.get(k)!.push(s);
     }
+    // Score each entry by total chord + lyric character count. The
+    // RICHEST copy of each title wins, with savedAt newer-than tie-
+    // breaker. This is the right heuristic when bulk-recover (or
+    // anything else) creates a parallel entry — the autosave snapshot
+    // it pulled from might not be the most-edited moment, so newest-
+    // savedAt alone could discard real chord work in favor of an
+    // emptier just-written copy.
+    const contentScore = (s: SongBankEntry): number => {
+      const sections = s.score.sections ?? [];
+      let chars = 0;
+      for (const sec of sections) {
+        for (const line of sec.lines ?? []) {
+          chars += (line.chords ?? "").length;
+          chars += (line.lyrics ?? "").length;
+        }
+      }
+      // Notation scores: count notes as a proxy.
+      for (const staff of s.score.staves ?? []) {
+        for (const v of staff.voices ?? []) chars += (v.notes ?? []).length * 4;
+      }
+      return chars;
+    };
     const toDelete: SongBankEntry[] = [];
+    const winners: { keep: SongBankEntry; lost: SongBankEntry[] }[] = [];
     for (const entries of byTitle.values()) {
       if (entries.length <= 1) continue;
-      entries.sort((a, b) => b.savedAt - a.savedAt);
+      // Sort so the winner is index 0: highest content first, then
+      // newest savedAt as tiebreaker.
+      entries.sort((a, b) => {
+        const sa = contentScore(a);
+        const sb = contentScore(b);
+        if (sa !== sb) return sb - sa;
+        return b.savedAt - a.savedAt;
+      });
+      winners.push({ keep: entries[0], lost: entries.slice(1) });
       toDelete.push(...entries.slice(1));
     }
     if (toDelete.length === 0) {
       window.alert("No duplicates found.");
       return;
     }
-    const summary = toDelete
-      .slice(0, 5)
-      .map(e => `• ${e.title} (${new Date(e.savedAt).toLocaleString()})`)
-      .join("\n");
-    const more = toDelete.length > 5 ? `\n…and ${toDelete.length - 5} more` : "";
+    // Build a confirm message that's transparent about which copy is
+    // kept (showing chord-char score) so the user can verify before
+    // pulling the trigger.
+    const lines: string[] = [];
+    for (const w of winners.slice(0, 5)) {
+      const keepScore = contentScore(w.keep);
+      lines.push(`• Keep "${w.keep.title}" (${keepScore} chars), drop ${w.lost.length} other${w.lost.length === 1 ? "" : "s"}`);
+    }
+    const more = winners.length > 5 ? `\n…and ${winners.length - 5} more` : "";
     const ok = window.confirm(
-      `Delete ${toDelete.length} duplicate ${toDelete.length === 1 ? "song" : "songs"}? Newest copy of each title is kept.\n\n${summary}${more}`
+      `Delete ${toDelete.length} duplicate ${toDelete.length === 1 ? "song" : "songs"}? The richest copy (most chord + lyric content) of each title is kept.\n\n${lines.join("\n")}${more}`,
     );
     if (!ok) return;
     for (const entry of toDelete) {
