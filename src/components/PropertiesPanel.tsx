@@ -499,10 +499,6 @@ export default function PropertiesPanel({ embedded = false }: PropertiesPanelPro
         </section>
       </div>
 
-      {/* Revisions — anchored at bottom */}
-      <div className="mt-auto">
-        <RevisionPanel />
-      </div>
     </div>
   );
 }
