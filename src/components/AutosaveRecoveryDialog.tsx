@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { listSnapshots, loadSnapshot, deleteSnapshot, AutosaveSnapshot } from "@/lib/autosave";
 import { useScoreStore } from "@/store/score-store";
 import {
@@ -9,6 +9,7 @@ import {
   cloudListVersions,
 } from "@/lib/song-cloud";
 import type { VersionEntry } from "@/lib/song-cloud-types";
+import { getSongs, saveSong } from "@/lib/song-bank";
 
 interface AutosaveRecoveryDialogProps {
   onClose: () => void;
@@ -122,6 +123,66 @@ export default function AutosaveRecoveryDialog({ onClose, filterTitle, cloudSong
     }
   };
 
+  // Snapshots grouped by title — used by both the rendering pass and
+  // the "Recover all" button. Each title's newest snapshot is the
+  // candidate to materialize into My Songs.
+  const groupedByTitle = useMemo(() => {
+    if (!snapshots) return null;
+    const map = new Map<string, Omit<AutosaveSnapshot, "score">>();
+    for (const s of snapshots) {
+      const key = (s.title || "Untitled").toLowerCase();
+      const existing = map.get(key);
+      if (!existing || s.timestamp > existing.timestamp) map.set(key, s);
+    }
+    return map;
+  }, [snapshots]);
+
+  /** Recover every unique-title snapshot whose title isn't already
+   *  represented in My Songs. The newest snapshot per title wins.
+   *  Used after the save flow loses a song (e.g. silent overwrite via
+   *  the now-fixed currentSongId clobber). One click rescues everything. */
+  const handleRecoverAllUnique = async () => {
+    if (!groupedByTitle || busy) return;
+    setBusy(true);
+    try {
+      const existingTitles = new Set(
+        getSongs().map((s) => (s.title || "").trim().toLowerCase()),
+      );
+      let recovered = 0;
+      const recoveredTitles: string[] = [];
+      for (const [key, snapMeta] of groupedByTitle.entries()) {
+        if (existingTitles.has(key)) continue;
+        if (key === "untitled") continue; // skip the placeholder
+        const full = await loadSnapshot(snapMeta.timestamp);
+        if (!full) continue;
+        saveSong(snapMeta.title, full.score);
+        recovered++;
+        recoveredTitles.push(snapMeta.title);
+      }
+      if (recovered === 0) {
+        addMessage({
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: "Nothing to recover — every snapshotted title is already in My Songs.",
+          timestamp: Date.now(),
+        });
+      } else {
+        addMessage({
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: `Recovered ${recovered} song${recovered === 1 ? "" : "s"} into My Songs: ${recoveredTitles.join(", ")}.`,
+          timestamp: Date.now(),
+        });
+      }
+      onClose();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to recover snapshots";
+      setError(msg);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleDelete = async (timestamp: number) => {
     if (busy) return;
     if (!confirm(`Delete this autosave from ${formatTimestamp(timestamp)}?`)) return;
@@ -147,19 +208,32 @@ export default function AutosaveRecoveryDialog({ onClose, filterTitle, cloudSong
         className="bg-white rounded-xl shadow-2xl border border-gray-200 w-[560px] max-h-[70vh] flex flex-col overflow-hidden text-gray-800"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-5 py-3 border-b border-gray-200 flex items-center justify-between">
-          <div>
+        <div className="px-5 py-3 border-b border-gray-200 flex items-center justify-between gap-3">
+          <div className="min-w-0">
             <h2 className="text-base font-semibold">
               {filterTitle ? `History — ${filterTitle}` : "Recover from Auto-save"}
             </h2>
             <p className="text-xs text-gray-500 mt-0.5">
-              Up to the last 20 snapshots, saved every 30 seconds when there are changes.
+              Up to the last 50 snapshots, saved as you edit. Click any row to load
+              it; click <strong>Recover all</strong> below to bulk-rescue every
+              unique title that isn&rsquo;t already in My Songs.
             </p>
           </div>
+          {!filterTitle && groupedByTitle && groupedByTitle.size > 0 && (
+            <button
+              type="button"
+              onClick={handleRecoverAllUnique}
+              disabled={busy}
+              className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-lg disabled:opacity-50 whitespace-nowrap shrink-0"
+              title="Bulk-recover every unique-titled snapshot not already in My Songs. The newest snapshot per title wins."
+            >
+              Recover all
+            </button>
+          )}
           <button
             type="button"
             onClick={onClose}
-            className="text-gray-500 hover:text-gray-700 text-lg px-2"
+            className="text-gray-500 hover:text-gray-700 text-lg px-2 shrink-0"
             aria-label="Close"
           >
             ×
