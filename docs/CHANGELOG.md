@@ -3,6 +3,21 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-09 — 6d55ff4
+
+**Phase 1+2 of #89: score-merge.ts + annotation-merge.ts + tests (#99)**
+
+- Commit: [`6d55ff4`](../../commit/6d55ff4b0029ed8a288dea5cffb79f5fc9b14d5f)
+- Author: gibsonds
+- Files changed:
+  - `package-lock.json`
+  - `package.json`
+  - `src/lib/__tests__/annotation-merge.test.ts`
+  - `src/lib/__tests__/score-merge.test.ts`
+  - `src/lib/annotation-merge.ts`
+  - `src/lib/score-merge.ts`
+  - `vitest.config.ts`
+
 ## 2026-05-09 — cb5e314
 
 **Fix bottom-cutoff in 2-column perform mode (#98)**
