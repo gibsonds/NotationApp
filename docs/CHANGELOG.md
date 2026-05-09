@@ -3,6 +3,15 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-09 — cb5e314
+
+**Fix bottom-cutoff in 2-column perform mode (#98)**
+
+- Commit: [`cb5e314`](../../commit/cb5e31492dba413fe280e4f5fcdf44e2e7e3aaaf)
+- Author: gibsonds
+- Files changed:
+  - `src/components/PaginatedPerformChart.tsx`
+
 ## 2026-05-08 — 3331078
 
 **Three-tab perform picker: Unfiled / folders / All (#97)**
