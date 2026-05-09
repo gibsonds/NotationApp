@@ -101,11 +101,35 @@ export default function PaginatedPerformChart({
     const PAD_Y = 8; // px — matches .py-2 on each visible page
     const colHeight = pageH - outerPadTop - outerPadBot - 2 * PAD_Y;
 
+    // Per-block heights in the visible column = bounding rect + the
+    // margin-bottom that lives on the inner element. The measure
+    // wrapper has no margin itself, so the inner mb-N is what shows up
+    // as inter-block spacing on the rendered side. getBoundingClientRect
+    // does NOT include outgoing margin, so we read computedStyle of the
+    // first child and add it back. Without this, packing 30+ lines per
+    // column understates the rendered height by ~30 × 8px = 240px and
+    // the last lines clip below the page (the original bug).
     const heights = new Map<string, number>();
     for (const b of blocks) {
       const key = blockKey(b);
       const el = measureRefs.current.get(key);
-      if (el) heights.set(key, el.getBoundingClientRect().height);
+      if (!el) continue;
+      const rect = el.getBoundingClientRect();
+      // Walk into the wrapper to find the actual content's margin.
+      const inner = el.firstElementChild as HTMLElement | null;
+      let extra = 0;
+      if (inner) {
+        const ics = window.getComputedStyle(inner);
+        extra += parseFloat(ics.marginBottom) || 0;
+        extra += parseFloat(ics.marginTop) || 0;
+      }
+      // PerformSectionGroup also wraps the inner block in a `<section
+      // className="mb-3">` whose margin lands BETWEEN groups in the
+      // visible render but NOT between same-group lines. Conservatively
+      // add a 4px floor so the packer leaves some safety headroom on
+      // the last line of each column even when measurements are slightly
+      // tight on a particular browser.
+      heights.set(key, rect.height + extra + 4);
     }
 
     const result: Page[] = [];
