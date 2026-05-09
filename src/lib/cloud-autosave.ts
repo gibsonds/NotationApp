@@ -4,6 +4,7 @@ import type { Score } from "@/lib/schema";
 import type { SongDTO } from "@/lib/song-cloud-types";
 import { CLOUD_ENABLED, cloudPutSong, isTransient, enqueueOffline, isConflictError } from "@/lib/song-cloud";
 import { getSongs, updateSong } from "@/lib/song-bank";
+import { mergeScores } from "@/lib/score-merge";
 
 /**
  * Cloud autosave: pushes the currently-loaded song to DynamoDB after edits
@@ -23,6 +24,7 @@ const SAVING_EVENT = "notation-cloud-saving";
 const SAVED_EVENT = "notation-cloud-saved";
 const OFFLINE_EVENT = "notation-cloud-offline";
 const CONFLICT_EVENT = "notation-cloud-conflict";
+const MERGED_EVENT = "notation-cloud-merged";
 
 let lastPushedScore: Score | null = null;
 let lastPushedSongId: string | null = null;
@@ -72,8 +74,57 @@ export async function autosaveToCloud(
     return true;
   } catch (err) {
     if (isConflictError(err)) {
-      // Concurrent write detected. Surface to the UI; the modal owns
-      // resolution. Don't queue or retry — that would create a loop.
+      // Concurrent write detected (#87). Try a 3-way auto-merge first
+      // (#89): if the only differences are non-conflicting (chord layout,
+      // disjoint sections/lines, annotation adds), silently re-save the
+      // merged content. Only fall back to the modal when there are real
+      // user-visible disagreements.
+      const base = localEntry?.score; // last successful sync = our merge ancestor
+      if (base) {
+        const merge = mergeScores(base, score, err.current.score);
+        if (merge.conflicts.length === 0) {
+          // Clean merge — push the merged content with theirs's version
+          // as expectedVersion so the conditional update succeeds.
+          try {
+            const now2 = Date.now();
+            const dto = await cloudPutSong({
+              id: songId,
+              title,
+              score: merge.score,
+              savedAt: now2,
+              folder,
+              expectedVersion: err.current.version,
+            });
+            updateSong(songId, {
+              score: merge.score,
+              savedAt: now2,
+              cloudVersion: dto.version,
+            });
+            lastPushedScore = merge.score;
+            lastPushedSongId = songId;
+            if (typeof window !== "undefined") {
+              // Tell the editor: replace the open score with the merge
+              // result so the user sees the other side's contributions
+              // along with their own. Toast UI listens to this event.
+              window.dispatchEvent(
+                new CustomEvent<{ score: Score; songId: string; stats: typeof merge.stats }>(
+                  MERGED_EVENT,
+                  { detail: { score: merge.score, songId, stats: merge.stats } },
+                ),
+              );
+              window.dispatchEvent(
+                new CustomEvent(SAVED_EVENT, { detail: { ts: now2 } }),
+              );
+            }
+            return true;
+          } catch (retryErr) {
+            // The retry itself can race-conflict (someone else wrote
+            // between our 409 and our retry). Fall through to the modal.
+            console.warn("[cloud-autosave] merge retry conflicted", retryErr);
+          }
+        }
+      }
+      // Real conflicts (or no base to merge against) → modal.
       if (typeof window !== "undefined") {
         window.dispatchEvent(
           new CustomEvent<{ current: SongDTO; local: Score; songId: string }>(
@@ -114,4 +165,5 @@ export const CloudSaveEvents = {
   Saved: SAVED_EVENT,
   Offline: OFFLINE_EVENT,
   Conflict: CONFLICT_EVENT,
+  Merged: MERGED_EVENT,
 };
