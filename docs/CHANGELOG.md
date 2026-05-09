@@ -3,6 +3,15 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-09 — d57ae83
+
+**Account for per-block margins when packing 2-col perform pages (#103)**
+
+- Commit: [`d57ae83`](../../commit/d57ae83cfad0840137cf6403822a05ae5dc4b396)
+- Author: gibsonds
+- Files changed:
+  - `src/components/PaginatedPerformChart.tsx`
+
 ## 2026-05-09 — 6d55ff4
 
 **Phase 1+2 of #89: score-merge.ts + annotation-merge.ts + tests (#99)**
