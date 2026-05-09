@@ -470,9 +470,36 @@ export default function Home() {
       } | undefined;
       if (detail) setConflict(detail);
     };
+    const onMerged = (e: Event) => {
+      const detail = (e as CustomEvent).detail as {
+        score: typeof score;
+        songId: string;
+        stats: { sectionsAdded: number; linesChanged: number; annotationsAdded: number };
+      } | undefined;
+      if (!detail || !detail.score) return;
+      // Adopt the merged score so the editor shows the other device's
+      // contributions immediately. Without this the user keeps editing
+      // off a stale local score and re-collisions until reload.
+      setScore(detail.score);
+      const parts: string[] = [];
+      if (detail.stats.linesChanged) parts.push(`${detail.stats.linesChanged} line${detail.stats.linesChanged === 1 ? "" : "s"}`);
+      if (detail.stats.sectionsAdded) parts.push(`${detail.stats.sectionsAdded} section${detail.stats.sectionsAdded === 1 ? "" : "s"}`);
+      if (detail.stats.annotationsAdded) parts.push(`${detail.stats.annotationsAdded} annotation${detail.stats.annotationsAdded === 1 ? "" : "s"}`);
+      const summary = parts.length ? ` (${parts.join(", ")})` : "";
+      addMessage({
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: `Merged changes from another device${summary}.`,
+        timestamp: Date.now(),
+      });
+    };
     window.addEventListener(CloudSaveEvents.Conflict, onConflict);
-    return () => window.removeEventListener(CloudSaveEvents.Conflict, onConflict);
-  }, []);
+    window.addEventListener(CloudSaveEvents.Merged, onMerged);
+    return () => {
+      window.removeEventListener(CloudSaveEvents.Conflict, onConflict);
+      window.removeEventListener(CloudSaveEvents.Merged, onMerged);
+    };
+  }, [addMessage, setScore]);
 
   // Songbook share-link: visiting `?join=<deviceId>` prompts to take over
   // that device's songbook. The param is stripped after the user decides
