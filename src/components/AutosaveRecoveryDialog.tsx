@@ -123,14 +123,22 @@ export default function AutosaveRecoveryDialog({ onClose, filterTitle, cloudSong
     }
   };
 
-  // Snapshots grouped by title — used by both the rendering pass and
-  // the "Recover all" button. Each title's newest snapshot is the
-  // candidate to materialize into My Songs.
+  // Aggressively normalize titles so 'San Francisco' / ' san francisco '
+  // / 'san  francisco' all collapse to the same key. Earlier version
+  // only lower-cased — left near-duplicates because the whitespace
+  // differed slightly between the snapshot and an existing My Songs
+  // entry, so the existence check missed.
+  const normalizeTitle = (s: string) =>
+    (s || "").trim().toLowerCase().replace(/\s+/g, " ");
+
+  // Snapshots grouped by normalized title — used by both the rendering
+  // pass and the "Recover all" button. Each title's newest snapshot is
+  // the candidate to materialize into My Songs.
   const groupedByTitle = useMemo(() => {
     if (!snapshots) return null;
     const map = new Map<string, Omit<AutosaveSnapshot, "score">>();
     for (const s of snapshots) {
-      const key = (s.title || "Untitled").toLowerCase();
+      const key = normalizeTitle(s.title || "Untitled");
       const existing = map.get(key);
       if (!existing || s.timestamp > existing.timestamp) map.set(key, s);
     }
@@ -146,7 +154,7 @@ export default function AutosaveRecoveryDialog({ onClose, filterTitle, cloudSong
     setBusy(true);
     try {
       const existingTitles = new Set(
-        getSongs().map((s) => (s.title || "").trim().toLowerCase()),
+        getSongs().map((s) => normalizeTitle(s.title)),
       );
       let recovered = 0;
       const recoveredTitles: string[] = [];
