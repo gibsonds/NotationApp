@@ -3,6 +3,15 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-09 — ac6b175
+
+**Bulk-recover: normalize titles fully so near-duplicates don't sneak through (#106)**
+
+- Commit: [`ac6b175`](../../commit/ac6b175587b629174427827dd56ac8bbd2a65490)
+- Author: gibsonds
+- Files changed:
+  - `src/components/AutosaveRecoveryDialog.tsx`
+
 ## 2026-05-09 — ccfc473
 
 **Phase 3 of #89: auto-merge on 409 (cloud-autosave path) (#100)**
