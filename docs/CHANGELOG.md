@@ -3,6 +3,18 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-10 — 9f7214c
+
+**Cloud-sync test coverage with happy-dom + fetch mocking (#108)**
+
+- Commit: [`9f7214c`](../../commit/9f7214c2a6baa2a9b4b5a47f12db585d7ccda2e4)
+- Author: gibsonds
+- Files changed:
+  - `package-lock.json`
+  - `package.json`
+  - `src/lib/__tests__/cloud-autosave.test.ts`
+  - `vitest.config.ts`
+
 ## 2026-05-09 — 2205993
 
 **Tombstone-based deletion in syncSongbook (#101)**
