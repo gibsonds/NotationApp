@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useScoreStore } from "@/store/score-store";
 import { saveSnapshot } from "@/lib/autosave";
 import AutosaveRecoveryDialog from "@/components/AutosaveRecoveryDialog";
+import SetsPanel from "@/components/SetsPanel";
 import {
   getSongs,
   saveSong,
@@ -63,6 +64,7 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
   const [pasteCode, setPasteCode] = useState("");
   const [showSync, setShowSync] = useState(false);
   const [showRawCode, setShowRawCode] = useState(false);
+  const [activeTab, setActiveTab] = useState<"songs" | "sets">("songs");
   const [linkCopied, setLinkCopied] = useState(false);
   const [codeCopied, setCodeCopied] = useState(false);
   // Per-row UI state
@@ -514,7 +516,32 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        {score ? (() => {
+        {/* Songs / Sets tab switcher (#73). Sets is a thin slice today —
+         * per-device only, no cloud sync until #74 lands. The Songs tab
+         * is the existing My Songs view; Sets renders SetsPanel. */}
+        <div className="px-5 pt-2 bg-white border-b border-gray-200 flex gap-1">
+          {(["songs", "sets"] as const).map((t) => {
+            const active = activeTab === t;
+            return (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setActiveTab(t)}
+                className={`px-3 py-1.5 text-xs font-medium rounded-t-lg transition-colors ${
+                  active
+                    ? "bg-blue-50 text-blue-700 border border-blue-200 border-b-transparent"
+                    : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+                }`}
+              >
+                {t === "songs" ? "Songs" : "Sets"}
+              </button>
+            );
+          })}
+        </div>
+
+        {activeTab === "sets" ? (
+          <SetsPanel onClose={onClose} />
+        ) : score ? (() => {
           // Save flow with explicit branching to prevent silent
           // overwrites. Three states:
           //
