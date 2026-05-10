@@ -27,6 +27,26 @@ function fireSongsUpdated(): void {
   window.dispatchEvent(new CustomEvent(SONGS_UPDATED_EVENT));
 }
 
+/**
+ * Recognises titles that past autosave-recovery / dedup-cleanup runs
+ * suffixed to disambiguate copies, e.g.
+ *   "Anywhere (snapped)"
+ *   "Foggy Night (recovered 9:06 PM)"
+ *   "Star to Star (latest 10:37 PM)"
+ * These are alias entries — we hide them from the Sets candidate
+ * picker and offer a one-click cleanup. Returns the canonical title
+ * (suffix stripped) if matched, else null.
+ */
+export function aliasCanonicalTitle(title: string): string | null {
+  const m = title.match(/^(.*?)\s*\((snapped|recovered|latest)(?:\s[^)]*)?\)\s*$/i);
+  return m ? m[1].trim() : null;
+}
+
+/** True if the title looks like an autosave-/recovery-/sync-generated alias. */
+export function isAliasTitle(title: string): boolean {
+  return aliasCanonicalTitle(title) !== null;
+}
+
 export function getSongs(): SongBankEntry[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);

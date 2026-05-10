@@ -7,6 +7,7 @@ import AutosaveRecoveryDialog from "@/components/AutosaveRecoveryDialog";
 import SetsPanel from "@/components/SetsPanel";
 import {
   getSongs,
+  isAliasTitle,
   saveSong,
   deleteSong,
   renameSong,
@@ -456,6 +457,35 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
     }
   };
 
+  // Bulk-delete autosave/recovery alias entries — titles like
+  // "Foo (snapped)", "(recovered 9:06 PM)", "(latest 10:37 PM)" — that
+  // earlier sync/recovery flows used to disambiguate duplicates. They
+  // pile up over time and clutter the Sets candidate picker. Removes
+  // both local and cloud copies, with a transparent confirm.
+  const handleCleanupAliases = async () => {
+    const aliases = getSongs().filter((s) => isAliasTitle(s.title));
+    if (aliases.length === 0) {
+      window.alert("No alias entries found.");
+      return;
+    }
+    const preview = aliases.slice(0, 8).map((s) => `• "${s.title}"`).join("\n");
+    const more = aliases.length > 8 ? `\n…and ${aliases.length - 8} more` : "";
+    const ok = window.confirm(
+      `Delete ${aliases.length} alias ${aliases.length === 1 ? "entry" : "entries"}? These are autosave/recovery copies whose titles end in (snapped), (recovered …), or (latest …).\n\n${preview}${more}`,
+    );
+    if (!ok) return;
+    for (const entry of aliases) {
+      deleteSong(entry.id);
+      if (CLOUD_ENABLED) {
+        try { await cloudDeleteSong(entry.id); } catch { /* best-effort */ }
+      }
+    }
+    refreshLocal();
+    if (CLOUD_ENABLED) {
+      await runSync();
+    }
+  };
+
   const handleDelete = async (id: string) => {
     logEvent({ event: "mysongs_delete" });
     deleteSong(id);
@@ -835,14 +865,23 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
           </div>
         )}
 
-        <div className="px-5 py-4 border-t border-gray-200 flex justify-between items-center">
-          <button
-            onClick={handleCleanupDuplicates}
-            className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 active:bg-gray-200 rounded-lg transition-colors"
-            title="Delete duplicate-titled songs, keeping the newest of each"
-          >
-            Clean up duplicates
-          </button>
+        <div className="px-5 py-4 border-t border-gray-200 flex justify-between items-center gap-2">
+          <div className="flex items-center gap-1">
+            <button
+              onClick={handleCleanupDuplicates}
+              className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 active:bg-gray-200 rounded-lg transition-colors"
+              title="Delete duplicate-titled songs, keeping the newest of each"
+            >
+              Clean up duplicates
+            </button>
+            <button
+              onClick={handleCleanupAliases}
+              className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 active:bg-gray-200 rounded-lg transition-colors"
+              title="Delete autosave/recovery alias copies (titles ending in (snapped), (recovered …), (latest …))"
+            >
+              Clean up aliases
+            </button>
+          </div>
           <button
             onClick={onClose}
             className="px-5 py-2 text-sm text-gray-700 hover:bg-gray-100 active:bg-gray-200 rounded-lg transition-colors"
