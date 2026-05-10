@@ -3,6 +3,18 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-10 — 01ff5e3
+
+**Hide alias artifacts from Sets picker + 'Clean up aliases' action (#110)**
+
+- Commit: [`01ff5e3`](../../commit/01ff5e3a351d759f76038806cc54859a24b36277)
+- Author: gibsonds
+- Files changed:
+  - `src/components/MySongsModal.tsx`
+  - `src/components/SetsPanel.tsx`
+  - `src/lib/__tests__/song-bank-aliases.test.ts`
+  - `src/lib/song-bank.ts`
+
 ## 2026-05-10 — 665160b
 
 **Sets feature (#73): group songs into ordered set lists (#109)**
