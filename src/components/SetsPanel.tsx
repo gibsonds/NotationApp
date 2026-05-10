@@ -12,7 +12,7 @@ import {
   SetsUpdatedEvent,
   type SongSet,
 } from "@/lib/song-sets";
-import { getSongs, SongsUpdatedEvent, type SongBankEntry } from "@/lib/song-bank";
+import { getSongs, isAliasTitle, SongsUpdatedEvent, type SongBankEntry } from "@/lib/song-bank";
 import { useScoreStore } from "@/store/score-store";
 import { saveSnapshot } from "@/lib/autosave";
 import { scoreTypeOf } from "@/lib/analytics";
@@ -211,7 +211,13 @@ export default function SetsPanel({ onClose }: { onClose: () => void }) {
 
   const allSongs = Array.from(songsById.values());
   const inSet = new Set(openSet.songIds);
-  const candidates = allSongs.filter((s) => !inSet.has(s.id));
+  // Hide alias entries (titles like "Foo (snapped)" / "(recovered 9:06 PM)"
+  // / "(latest 10:37 PM)") from the candidate list — they're stale
+  // autosave/recovery artifacts the user almost never wants to add to a
+  // set. They remain in My Songs and can be removed via "Clean up aliases".
+  const candidatesAll = allSongs.filter((s) => !inSet.has(s.id));
+  const candidates = candidatesAll.filter((s) => !isAliasTitle(s.title));
+  const hiddenAliasCount = candidatesAll.length - candidates.length;
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
@@ -298,11 +304,17 @@ export default function SetsPanel({ onClose }: { onClose: () => void }) {
           </ul>
         )}
 
-        {/* Add-songs picker — shows everything not already in the set. */}
+        {/* Add-songs picker — shows everything not already in the set, with
+            alias artifacts hidden so the list stays scannable. */}
         {candidates.length > 0 && (
           <>
-            <div className="px-5 py-1.5 text-[11px] uppercase tracking-wider text-gray-500 bg-gray-50 border-y border-gray-100 mt-2">
-              Add to this set
+            <div className="px-5 py-1.5 text-[11px] uppercase tracking-wider text-gray-500 bg-gray-50 border-y border-gray-100 mt-2 flex items-center justify-between">
+              <span>Add to this set</span>
+              {hiddenAliasCount > 0 && (
+                <span className="text-[10px] normal-case tracking-normal text-gray-400">
+                  {hiddenAliasCount} alias{hiddenAliasCount === 1 ? "" : "es"} hidden — clean up in My Songs
+                </span>
+              )}
             </div>
             <ul className="divide-y divide-gray-100">
               {candidates.map((entry) => (
