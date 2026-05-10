@@ -3,6 +3,20 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-10 — 665160b
+
+**Sets feature (#73): group songs into ordered set lists (#109)**
+
+- Commit: [`665160b`](../../commit/665160b87b35cc8f60dd6d9b89eb88c1ac91c1ab)
+- Author: gibsonds
+- Files changed:
+  - `src/components/MySongsModal.tsx`
+  - `src/components/PerformView.tsx`
+  - `src/components/SetsPanel.tsx`
+  - `src/lib/__tests__/song-sets.test.ts`
+  - `src/lib/song-sets.ts`
+  - `src/store/score-store.ts`
+
 ## 2026-05-10 — 9f7214c
 
 **Cloud-sync test coverage with happy-dom + fetch mocking (#108)**
