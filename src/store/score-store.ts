@@ -261,6 +261,10 @@ export interface UIState {
    *  Null means "all songs". When set to a folder name, prev/next and
    *  the picker only see songs in that folder. Sticky across launches. */
   performFolder: string | null;
+  /** Active set id (#73). When set, PerformView's prev/next walks the
+   *  set's songIds instead of the full song list. Cleared by Load From
+   *  My Songs (a song loaded from outside any set). */
+  activeSetId: string | null;
   annotationFilters: AnnotationFilters;
 }
 
@@ -273,6 +277,7 @@ export const DEFAULT_UI_STATE: UIState = {
   currentSongId: null,
   collapsedFolders: [],
   performFolder: null,
+  activeSetId: null,
   annotationFilters: DEFAULT_ANNOTATION_FILTERS,
 };
 

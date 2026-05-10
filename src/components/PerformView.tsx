@@ -8,6 +8,7 @@ import AnnotationLayer from "@/components/AnnotationLayer";
 import AnnotateToggle from "@/components/AnnotateToggle";
 import { useScoreStore } from "@/store/score-store";
 import { getSongs, SongsUpdatedEvent, type SongBankEntry } from "@/lib/song-bank";
+import { getSets, SetsUpdatedEvent, type SongSet } from "@/lib/song-sets";
 
 const PREFS_KEY = "notation-app-perform-prefs";
 
@@ -62,6 +63,7 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
   const setUIState = useScoreStore(s => s.setUIState);
   const currentSongId = useScoreStore(s => s.uiState.currentSongId);
   const performFolder = useScoreStore(s => s.uiState.performFolder ?? null);
+  const activeSetId = useScoreStore(s => s.uiState.activeSetId ?? null);
   // Whether we're annotating from inside perform mode. The button below
   // toggles uiState.annotationMode without leaving perform — same scroll
   // position, same chrome — so the user can drop a note where they're
@@ -91,6 +93,16 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
     }
   }, [pickerOpen]);
 
+  // Sets list — only consulted when activeSetId is non-null, but we
+  // subscribe so renames/reorder land here without remounting.
+  const [sets, setSetsState] = useState<SongSet[]>(() => getSets());
+  useEffect(() => {
+    const refresh = () => setSetsState(getSets());
+    window.addEventListener(SetsUpdatedEvent, refresh);
+    return () => window.removeEventListener(SetsUpdatedEvent, refresh);
+  }, []);
+  const activeSet = activeSetId ? sets.find(s => s.id === activeSetId) ?? null : null;
+
   // All folder names (sorted), for the picker's folder selector.
   const folderNames = useMemo(() => {
     const set = new Set<string>();
@@ -110,10 +122,19 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
   const activeFolder = performFolder ?? UNFILED_FOLDER;
 
   const songsInScope = useMemo(() => {
+    // Active set takes precedence over folder filter — when the user
+    // loaded a song from a set, prev/next walks that set in order
+    // (and stops at the ends). Missing-from-songbank ids are dropped.
+    if (activeSet) {
+      const byId = new Map(songs.map(s => [s.id, s]));
+      return activeSet.songIds
+        .map(id => byId.get(id))
+        .filter((s): s is SongBankEntry => !!s);
+    }
     if (activeFolder === ALL_FOLDER) return songs;
     if (activeFolder === UNFILED_FOLDER) return songs.filter(s => !s.folder);
     return songs.filter(s => s.folder === activeFolder);
-  }, [songs, activeFolder]);
+  }, [songs, activeFolder, activeSet]);
 
   const unfiledCount = useMemo(
     () => songs.filter(s => !s.folder).length,
@@ -136,6 +157,8 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
     if (idx < 0 || idx >= songsInScope.length) return;
     const entry = songsInScope[idx];
     setScore(entry.score);
+    // Keep activeSetId stable when stepping inside a set so the next
+    // prev/next still walks the same set even after the song change.
     setUIState({ currentSongId: entry.id });
     scrollRef.current?.scrollTo({ top: 0 });
     setPickerOpen(false);
@@ -288,11 +311,15 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
             className="h-11 px-3 flex flex-col items-start justify-center text-gray-100 hover:bg-gray-800 active:bg-gray-700 rounded-lg max-w-[40vw]"
             title="Jump to song"
           >
-            {performFolder && (
+            {activeSet ? (
+              <span className="text-[9px] uppercase tracking-wider text-pink-300 leading-none mb-0.5 truncate max-w-[40vw]">
+                Set: {activeSet.name}
+              </span>
+            ) : performFolder ? (
               <span className="text-[9px] uppercase tracking-wider text-gray-400 leading-none mb-0.5">
                 {performFolder}
               </span>
-            )}
+            ) : null}
             <span className="flex items-center gap-1 truncate text-sm font-medium leading-tight">
               <span className="truncate">
                 {songsInScope[currentIndex]?.title ?? score.title ?? "Untitled"}
@@ -325,7 +352,21 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
             onClick={() => setPickerOpen(false)}
           />
           <div className="absolute top-[68px] left-3 z-20 bg-white text-gray-800 rounded-xl shadow-2xl border border-gray-200 w-[min(360px,calc(100vw-1.5rem))] max-h-[60vh] overflow-hidden flex flex-col">
-            {(folderNames.length > 0 || unfiledCount > 0) && (
+            {activeSet ? (
+              <div className="px-3 py-2 border-b border-gray-100 bg-pink-50/60 flex items-center gap-2">
+                <span className="text-xs font-medium text-pink-800 truncate flex-1">
+                  Set: {activeSet.name}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setUIState({ activeSetId: null })}
+                  className="px-2 py-1 text-[11px] rounded-md text-pink-700 hover:bg-pink-100"
+                  title="Exit set — go back to folder filter"
+                >
+                  Exit set
+                </button>
+              </div>
+            ) : (folderNames.length > 0 || unfiledCount > 0) && (
               <div className="px-3 py-2 border-b border-gray-100 bg-gray-50 flex flex-wrap gap-1">
                 {unfiledCount > 0 && (
                   <button
@@ -375,7 +416,7 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
             <div className="flex-1 overflow-y-auto">
               {songsInScope.length === 0 ? (
                 <div className="px-4 py-6 text-sm text-gray-500 text-center">
-                  No songs in this folder.
+                  {activeSet ? "This set is empty." : "No songs in this folder."}
                 </div>
               ) : (
                 <ul className="py-1">
