@@ -3,6 +3,17 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-12 — 66dfaae
+
+**Extract AddToSet candidate filter + add behavior tests (#114)**
+
+- Commit: [`66dfaae`](../../commit/66dfaae3da8e1f89cde3608d3bbb23232146f8dd)
+- Author: gibsonds
+- Files changed:
+  - `src/components/AddToSetSheet.tsx`
+  - `src/lib/__tests__/add-to-set-flow.test.ts`
+  - `src/lib/song-sets.ts`
+
 ## 2026-05-12 — 0c270af
 
 **Unified Unicode-aware title canonicalization (#113)**
