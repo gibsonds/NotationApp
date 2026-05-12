@@ -3,6 +3,19 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-12 — 4f2e641
+
+**UI guidelines doc + Sets/My Songs redesign (multi-select) (#112)**
+
+- Commit: [`4f2e641`](../../commit/4f2e641cd4273711320c86fa4e136c18a68995ea)
+- Author: gibsonds
+- Files changed:
+  - `AGENTS.md`
+  - `docs/ui-guidelines.md`
+  - `src/components/AddToSetSheet.tsx`
+  - `src/components/MySongsModal.tsx`
+  - `src/components/SetsPanel.tsx`
+
 ## 2026-05-12 — ca28cea
 
 **Annotation fixes: visible textarea + drag-to-move (#111)**
