@@ -3,6 +3,17 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-12 — ca28cea
+
+**Annotation fixes: visible textarea + drag-to-move (#111)**
+
+- Commit: [`ca28cea`](../../commit/ca28cea64c61cc5c5457aeca8ba583d9dcac061e)
+- Author: gibsonds
+- Files changed:
+  - `src/components/AnnotationLayer.tsx`
+  - `src/components/AnnotationPopover.tsx`
+  - `src/lib/schema.ts`
+
 ## 2026-05-10 — 01ff5e3
 
 **Hide alias artifacts from Sets picker + 'Clean up aliases' action (#110)**
