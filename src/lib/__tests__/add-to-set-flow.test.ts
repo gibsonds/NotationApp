@@ -98,6 +98,26 @@ describe("AddToSetSheet — pickSongs flow (candidate filter)", () => {
     const out = filterCandidatesForSheet(all, ["a"], "night");
     expect(out.map((s) => s.id).sort()).toEqual(["b", "c"]);
   });
+
+  it("search is canonical-aware (smart quotes match straight)", () => {
+    const iPadList: SongBankEntry[] = [
+      song("p1", "Friday’s gig"),  // smart quote (iPad auto-correct)
+      song("p2", "Tuesday Blues"),
+    ];
+    // Mac-typed straight-quote query matches iPad smart-quote song
+    const out = filterCandidatesForSheet(iPadList, [], "friday's");
+    expect(out.map((s) => s.id)).toEqual(["p1"]);
+  });
+
+  it("search is canonical-aware (NFD accents match NFC)", () => {
+    const list: SongBankEntry[] = [
+      song("p1", "Café Anthem"),       // precomposed é (NFC)
+      song("p2", "Random other song"),
+    ];
+    // Decomposed query (e + combining acute) matches precomposed song
+    const out = filterCandidatesForSheet(list, [], "café");
+    expect(out.map((s) => s.id)).toEqual(["p1"]);
+  });
 });
 
 describe("AddToSetSheet — end-to-end batch add through public lib API", () => {

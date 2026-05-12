@@ -9,7 +9,11 @@
  */
 
 import { z } from "zod";
-import { isAliasTitle, type SongBankEntry } from "@/lib/song-bank";
+import {
+  canonicalSongTitle,
+  isAliasTitle,
+  type SongBankEntry,
+} from "@/lib/song-bank";
 
 const STORAGE_KEY = "notation-app-song-sets";
 const SETS_UPDATED_EVENT = "notation-sets-updated";
@@ -165,11 +169,14 @@ export function filterCandidatesForSheet(
   query: string = "",
 ): SongBankEntry[] {
   const inSet = new Set(setSongIds);
-  const q = query.trim().toLowerCase();
+  // Canonical-match both sides so iPad smart-quote / NFC-NFD variants
+  // (per #113) match. "Friday's gig" typed on iPad collides with
+  // "Friday's gig" typed on Mac under canonicalSongTitle.
+  const qCanon = canonicalSongTitle(query);
   return songs
     .filter((s) => !inSet.has(s.id))
     .filter((s) => !isAliasTitle(s.title))
-    .filter((s) => !q || s.title.toLowerCase().includes(q));
+    .filter((s) => !qCanon || canonicalSongTitle(s.title).includes(qCanon));
 }
 
 export function reorderSong(setId: string, fromIdx: number, toIdx: number): SongSet | null {
