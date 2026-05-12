@@ -520,6 +520,8 @@ export const ScorePatchSchema = z.discriminatedUnion("op", [
       color: z.enum(["yellow", "blue", "pink", "green"]).optional(),
       visibility: z.enum(["shared", "personal"]).optional(),
       label: z.string().optional(),
+      anchorX: z.number().min(0).max(1).optional(),
+      anchorY: z.number().min(0).max(1).optional(),
     }),
   }),
   z.object({

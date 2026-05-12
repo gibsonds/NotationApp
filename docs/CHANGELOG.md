@@ -3,6 +3,29 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-12 — ca28cea
+
+**Annotation fixes: visible textarea + drag-to-move (#111)**
+
+- Commit: [`ca28cea`](../../commit/ca28cea64c61cc5c5457aeca8ba583d9dcac061e)
+- Author: gibsonds
+- Files changed:
+  - `src/components/AnnotationLayer.tsx`
+  - `src/components/AnnotationPopover.tsx`
+  - `src/lib/schema.ts`
+
+## 2026-05-10 — 01ff5e3
+
+**Hide alias artifacts from Sets picker + 'Clean up aliases' action (#110)**
+
+- Commit: [`01ff5e3`](../../commit/01ff5e3a351d759f76038806cc54859a24b36277)
+- Author: gibsonds
+- Files changed:
+  - `src/components/MySongsModal.tsx`
+  - `src/components/SetsPanel.tsx`
+  - `src/lib/__tests__/song-bank-aliases.test.ts`
+  - `src/lib/song-bank.ts`
+
 ## 2026-05-10 — 665160b
 
 **Sets feature (#73): group songs into ordered set lists (#109)**

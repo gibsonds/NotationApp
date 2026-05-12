@@ -40,6 +40,29 @@ export default function AnnotationLayer() {
   // overlay opens a popover and scrolling on iPad/touch devices breaks.
   const pointerStart = useRef<{ x: number; y: number } | null>(null);
 
+  // Drag-to-move state for repositioning an existing bubble. Live during
+  // the gesture; on pointer-up either commits an update_annotation patch
+  // (if the bubble moved) or falls through to opening the editor (tap).
+  // Ref-not-state because the pointer-event handlers need to read the
+  // current values synchronously without re-render churn.
+  const dragState = useRef<{
+    id: string;
+    startClientX: number;
+    startClientY: number;
+    baseAnchorX: number;
+    baseAnchorY: number;
+    layerRect: DOMRect;
+    moved: boolean;
+  } | null>(null);
+  // Visual feedback during drag — re-rendered when dragOffset changes.
+  // Stored in fraction-of-container-size so it composes with anchorX/Y.
+  const [dragVisual, setDragVisual] = useState<{
+    id: string;
+    dx: number;
+    dy: number;
+  } | null>(null);
+  const layerRef = useRef<HTMLDivElement | null>(null);
+
   const editingAnnotation = editingId
     ? annotations.find((a) => a.id === editingId) ?? null
     : null;
@@ -88,10 +111,67 @@ export default function AnnotationLayer() {
     [annotationMode],
   );
 
-  const handleBubbleClick = (e: React.MouseEvent, ann: Annotation) => {
+  // Bubble pointer handlers — drive both tap-to-edit and drag-to-move.
+  // pointerdown captures pointer so the drag continues even if the finger
+  // slides off the bubble onto another element (critical on iPad).
+  const handleBubblePointerDown = (e: React.PointerEvent, ann: Annotation) => {
     e.stopPropagation();
-    setEditingId(ann.id);
-    setPendingAnchor(null);
+    if (!annotationMode) return;
+    const layer = layerRef.current;
+    if (!layer) return;
+    const rect = layer.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return;
+    dragState.current = {
+      id: ann.id,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      baseAnchorX: ann.anchorX,
+      baseAnchorY: ann.anchorY,
+      layerRect: rect,
+      moved: false,
+    };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+
+  const handleBubblePointerMove = (e: React.PointerEvent) => {
+    const drag = dragState.current;
+    if (!drag) return;
+    const dxPx = e.clientX - drag.startClientX;
+    const dyPx = e.clientY - drag.startClientY;
+    if (!drag.moved && Math.abs(dxPx) <= TAP_THRESHOLD_PX && Math.abs(dyPx) <= TAP_THRESHOLD_PX) {
+      return; // still inside the tap-threshold, no visual movement yet
+    }
+    drag.moved = true;
+    setDragVisual({
+      id: drag.id,
+      dx: dxPx / drag.layerRect.width,
+      dy: dyPx / drag.layerRect.height,
+    });
+  };
+
+  const handleBubblePointerUp = (e: React.PointerEvent, ann: Annotation) => {
+    e.stopPropagation();
+    const drag = dragState.current;
+    dragState.current = null;
+    setDragVisual(null);
+    if (!drag) {
+      // No drag started (e.g. annotationMode was off on pointerdown) —
+      // treat as a plain tap to open the editor.
+      setEditingId(ann.id);
+      setPendingAnchor(null);
+      return;
+    }
+    if (!drag.moved) {
+      // Pure tap inside the threshold — open editor.
+      setEditingId(ann.id);
+      setPendingAnchor(null);
+      return;
+    }
+    // Commit the move. Clamp to [0,1] so the bubble can't end up off-canvas.
+    const newX = Math.max(0, Math.min(1, drag.baseAnchorX + (e.clientX - drag.startClientX) / drag.layerRect.width));
+    const newY = Math.max(0, Math.min(1, drag.baseAnchorY + (e.clientY - drag.startClientY) / drag.layerRect.height));
+    logEvent({ event: "annotation_edit", scoreType: scoreTypeOf(score) });
+    applyPatches([{ op: "update_annotation", id: drag.id, updates: { anchorX: newX, anchorY: newY } }]);
   };
 
   const handleCreate = (data: {
@@ -148,6 +228,7 @@ export default function AnnotationLayer() {
 
   return (
     <div
+      ref={layerRef}
       className={`absolute inset-0 ${annotationMode ? "cursor-crosshair" : ""}`}
       style={layerStyle}
       onPointerDown={handlePointerDown}
@@ -156,19 +237,30 @@ export default function AnnotationLayer() {
       {/* Annotation bubbles */}
       {filteredAnnotations.map((ann) => {
         const cls = COLOR_CLASSES[ann.color] ?? COLOR_CLASSES.yellow;
+        // Visual offset while a drag is in progress for THIS bubble. The
+        // anchor on the model doesn't change until pointer-up; we just
+        // shift the bubble in screen space so the user sees it follow
+        // their finger.
+        const isDragging = dragVisual?.id === ann.id;
+        const dragShiftX = isDragging ? dragVisual.dx * 100 : 0;
+        const dragShiftY = isDragging ? dragVisual.dy * 100 : 0;
         return (
           <div
             key={ann.id}
             data-annotation-bubble="true"
             className="absolute"
             style={{
-              left: `${ann.anchorX * 100}%`,
-              top: `${ann.anchorY * 100}%`,
+              left: `calc(${ann.anchorX * 100}% + ${dragShiftX}%)`,
+              top: `calc(${ann.anchorY * 100}% + ${dragShiftY}%)`,
               transform: "translate(-50%, calc(-100% - 8px))",
               pointerEvents: "auto",
-              zIndex: 10,
+              zIndex: isDragging ? 20 : 10,
+              touchAction: "none",
+              opacity: isDragging ? 0.8 : 1,
             }}
-            onClick={(e) => handleBubbleClick(e, ann)}
+            onPointerDown={(e) => handleBubblePointerDown(e, ann)}
+            onPointerMove={handleBubblePointerMove}
+            onPointerUp={(e) => handleBubblePointerUp(e, ann)}
           >
             <div
               className={`relative rounded-lg border px-2.5 py-1.5 text-xs shadow-md cursor-pointer max-w-[180px] min-w-[44px] min-h-[36px] flex flex-col justify-center ${cls.bg} ${cls.border} ${cls.text}`}
