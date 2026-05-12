@@ -76,6 +76,15 @@ export default function AnnotationPopover({
   const topPct = anchorY * 100;
   const above = topPct > 40;
 
+  // The popover lives INSIDE AnnotationLayer's DOM tree. The layer listens
+  // on pointerdown/pointerup (not click) for tap-to-create. Without
+  // stopping pointer events here, clicking Save / Delete / Cancel / a
+  // color swatch — or even tapping the backdrop to dismiss — would also
+  // fire the layer's "create a new annotation here" handler, since
+  // pointer events fire BEFORE click. (Bug: tapping Delete used to spawn
+  // a fresh annotation at the Delete-button position.)
+  const stopPointer = (e: React.PointerEvent | React.MouseEvent) => e.stopPropagation();
+
   return (
     <>
       {/* Backdrop */}
@@ -83,6 +92,8 @@ export default function AnnotationPopover({
         className="absolute inset-0 z-40"
         style={{ pointerEvents: "auto" }}
         onClick={onClose}
+        onPointerDown={stopPointer}
+        onPointerUp={stopPointer}
       />
 
       {/* Popover */}
@@ -97,6 +108,8 @@ export default function AnnotationPopover({
           pointerEvents: "auto",
         }}
         onClick={(e) => e.stopPropagation()}
+        onPointerDown={stopPointer}
+        onPointerUp={stopPointer}
       >
         {/* Color swatches */}
         <div className="flex items-center gap-2 px-4 pt-4 pb-2">
