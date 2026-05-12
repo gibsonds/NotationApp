@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import type { Score } from "@/lib/schema";
 import type { SongDTO } from "@/lib/song-cloud-types";
+import { computeConflictDiff, describeDelta } from "@/lib/conflict-diff";
 
 /**
  * Conflict resolution modal (#87, Tier 1). Fires when cloudPutSong returns
@@ -43,6 +44,12 @@ export default function ConflictModal({
   }, [onCancel]);
 
   const summary = computeDiffSummary(local, current.score as Score);
+  // Per-section deltas — replaces the previous "just look at the counts"
+  // approach. First N deltas render; the rest collapse behind a count.
+  const diff = computeConflictDiff(local, current.score as Score);
+  const SHOWN_DELTAS = 5;
+  const visibleDeltas = diff.deltas.slice(0, SHOWN_DELTAS);
+  const hiddenDeltaCount = Math.max(0, diff.deltas.length - SHOWN_DELTAS);
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
@@ -71,6 +78,40 @@ export default function ConflictModal({
             <div className="pt-1 text-amber-700 not-italic">{summary.note}</div>
           )}
         </div>
+
+        {/* What's different — per-section deltas so the user can pick
+            with the actual changes in view. Empty if the section-level
+            structure is identical (the conflict may then be annotations
+            only, or metadata; the summary counts above hint at that). */}
+        {diff.deltas.length > 0 && (
+          <div className="mb-4">
+            <div className="text-xs uppercase tracking-wider text-gray-500 mb-1.5">
+              What's different
+            </div>
+            <ul className="text-sm text-gray-700 space-y-1 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+              {visibleDeltas.map((d, i) => (
+                <li key={`${d.kind}-${d.label}-${i}`} className="flex items-start gap-2">
+                  <span
+                    className={`mt-0.5 inline-block w-1.5 h-1.5 rounded-full shrink-0 ${
+                      d.kind === "only-mine"
+                        ? "bg-blue-500"
+                        : d.kind === "only-theirs"
+                        ? "bg-amber-500"
+                        : "bg-gray-400"
+                    }`}
+                    aria-hidden
+                  />
+                  <span className="leading-snug">{describeDelta(d)}</span>
+                </li>
+              ))}
+              {hiddenDeltaCount > 0 && (
+                <li className="text-xs text-gray-500 pt-1">
+                  + {hiddenDeltaCount} more change{hiddenDeltaCount === 1 ? "" : "s"}
+                </li>
+              )}
+            </ul>
+          </div>
+        )}
 
         <div className="flex flex-col gap-2">
           <button
