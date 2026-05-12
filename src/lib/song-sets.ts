@@ -9,6 +9,7 @@
  */
 
 import { z } from "zod";
+import { isAliasTitle, type SongBankEntry } from "@/lib/song-bank";
 
 const STORAGE_KEY = "notation-app-song-sets";
 const SETS_UPDATED_EVENT = "notation-sets-updated";
@@ -127,6 +128,28 @@ export function removeSongFromSet(setId: string, songId: string): SongSet | null
 
 /** Reorder songs inside a set. From and to are 0-indexed positions in
  *  the songIds array. */
+/**
+ * Songs eligible to be added to a given set. Drops songs already in
+ * the set and drops alias artifacts (titles ending in "(snapped)",
+ * "(recovered ...)", "(latest ...)"). Optionally applies a
+ * case-insensitive substring search.
+ *
+ * Pure function — exported so AddToSetSheet's filter logic can be
+ * unit-tested without rendering React.
+ */
+export function filterCandidatesForSheet(
+  songs: SongBankEntry[],
+  setSongIds: string[],
+  query: string = "",
+): SongBankEntry[] {
+  const inSet = new Set(setSongIds);
+  const q = query.trim().toLowerCase();
+  return songs
+    .filter((s) => !inSet.has(s.id))
+    .filter((s) => !isAliasTitle(s.title))
+    .filter((s) => !q || s.title.toLowerCase().includes(q));
+}
+
 export function reorderSong(setId: string, fromIdx: number, toIdx: number): SongSet | null {
   const sets = getSets();
   const idx = sets.findIndex((s) => s.id === setId);
