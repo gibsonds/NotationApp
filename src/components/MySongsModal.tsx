@@ -6,6 +6,7 @@ import { saveSnapshot } from "@/lib/autosave";
 import AutosaveRecoveryDialog from "@/components/AutosaveRecoveryDialog";
 import SetsPanel from "@/components/SetsPanel";
 import AddToSetSheet from "@/components/AddToSetSheet";
+import { getSets, SetsUpdatedEvent, type SongSet } from "@/lib/song-sets";
 import {
   canonicalSongTitle,
   getSongs,
@@ -132,6 +133,30 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
     else set.add(folder);
     setUIState({ collapsedFolders: Array.from(set) });
   };
+
+  // Sets list — drives the "In N sets" badge on each row so the user
+  // can see at a glance whether a song is already on a setlist.
+  // Subscribed to SetsUpdatedEvent so adds/removes in another tab
+  // (or via the Sets panel inside this modal) flow through.
+  const [sets, setSetsState] = useState<SongSet[]>(() => getSets());
+  useEffect(() => {
+    const refresh = () => setSetsState(getSets());
+    window.addEventListener(SetsUpdatedEvent, refresh);
+    return () => window.removeEventListener(SetsUpdatedEvent, refresh);
+  }, []);
+  // songId → list of set names this song appears in. Memoed against
+  // the sets list reference so the per-row badge render is O(1).
+  const setMembership = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const s of sets) {
+      for (const id of s.songIds) {
+        const cur = map.get(id);
+        if (cur) cur.push(s.name);
+        else map.set(id, [s.name]);
+      }
+    }
+    return map;
+  }, [sets]);
 
   // All distinct folder names across the bank, sorted — used by the
   // folder picker so the user doesn't have to remember/retype names.
@@ -916,8 +941,26 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
                               })()}
                             </button>
                           )}
-                          <div className="text-xs text-gray-400 mt-0.5">
-                            {new Date(entry.savedAt).toLocaleString()}
+                          <div className="text-xs text-gray-400 mt-0.5 flex items-center gap-2 flex-wrap">
+                            <span>{new Date(entry.savedAt).toLocaleString()}</span>
+                            {/* "In N sets" pill — hidden in select mode
+                                so the row stays purely selection-focused. */}
+                            {!selectMode && (() => {
+                              const memberOf = setMembership.get(entry.id);
+                              if (!memberOf || memberOf.length === 0) return null;
+                              const label =
+                                memberOf.length === 1
+                                  ? `In: ${memberOf[0]}`
+                                  : `In ${memberOf.length} sets · ${memberOf.slice(0, 2).join(", ")}${memberOf.length > 2 ? ", …" : ""}`;
+                              return (
+                                <span
+                                  className="text-[10px] px-1.5 py-0.5 rounded bg-pink-50 text-pink-700 border border-pink-100"
+                                  title={memberOf.join(", ")}
+                                >
+                                  {label}
+                                </span>
+                              );
+                            })()}
                           </div>
                         </div>
                         {!selectMode && (
