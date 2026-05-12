@@ -3,6 +3,15 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-12 — f2025bb
+
+**My Songs search box (canonical-title substring match) (#118)**
+
+- Commit: [`f2025bb`](../../commit/f2025bb9b95e101905922443f554b7824246841e)
+- Author: gibsonds
+- Files changed:
+  - `src/components/MySongsModal.tsx`
+
 ## 2026-05-12 — e356db9
 
 **Extract songSetMembership into song-sets.ts (#117)**
