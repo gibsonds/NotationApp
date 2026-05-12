@@ -3,6 +3,15 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-12 — 4e1c28a
+
+**PerformView: 'Switch to set' chips in the song picker (#119)**
+
+- Commit: [`4e1c28a`](../../commit/4e1c28a874e7bbfc86985cc4f19140721daa19cb)
+- Author: gibsonds
+- Files changed:
+  - `src/components/PerformView.tsx`
+
 ## 2026-05-12 — f2025bb
 
 **My Songs search box (canonical-title substring match) (#118)**
