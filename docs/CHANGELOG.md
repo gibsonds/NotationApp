@@ -3,6 +3,15 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-12 — 2f13d44
+
+**'In N sets' badge on My Songs rows (#115)**
+
+- Commit: [`2f13d44`](../../commit/2f13d4436056aa8811bb3fe034a4aa0fa2e440a4)
+- Author: gibsonds
+- Files changed:
+  - `src/components/MySongsModal.tsx`
+
 ## 2026-05-12 — 66dfaae
 
 **Extract AddToSet candidate filter + add behavior tests (#114)**
