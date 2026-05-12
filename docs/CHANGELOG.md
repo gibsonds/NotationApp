@@ -3,6 +3,15 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-12 — cfe495e
+
+**Fix Rename / kebab menu: clicks were closing the whole modal (#121)**
+
+- Commit: [`cfe495e`](../../commit/cfe495ed81b25421e817eb125caf697c398975b5)
+- Author: gibsonds
+- Files changed:
+  - `src/components/MySongsModal.tsx`
+
 ## 2026-05-12 — 4e1c28a
 
 **PerformView: 'Switch to set' chips in the song picker (#119)**
