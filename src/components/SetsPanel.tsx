@@ -30,11 +30,12 @@ export default function SetsPanel({ onClose }: { onClose: () => void }) {
   const [newName, setNewName] = useState("");
   const [renameOpen, setRenameOpen] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
-  // Stacked sheet for "+ Add songs…" entry path. AddToSetSheet in
-  // pickSongs mode lets the user multi-select songs to add at once,
-  // with a search field — replaces the per-row "Add" buttons that
-  // made the original detail view feel cramped.
-  const [addOpen, setAddOpen] = useState(false);
+  // Target set for the AddToSetSheet (pickSongs mode). Lets us trigger
+  // the sheet from either the list view (inline "+ Add songs" on each
+  // row) or the detail view (header button) — both write the same
+  // setId here, so the sheet pre-targets correctly without an extra
+  // boolean.
+  const [addToSetId, setAddToSetId] = useState<string | null>(null);
   // Live search filter for the songs-in-set list. Critical once a set
   // gets above ~10 songs.
   const [setQuery, setSetQuery] = useState("");
@@ -143,6 +144,19 @@ export default function SetsPanel({ onClose }: { onClose: () => void }) {
                         )}
                       </div>
                     </button>
+                    {/* Inline "+ Add songs" — skips the open-the-set
+                        step. Pre-targets the AddToSetSheet at this set,
+                        so the sheet opens straight into pickSongs mode.
+                        Critical for "I just want to add a song without
+                        clicking into the set first." */}
+                    <button
+                      type="button"
+                      onClick={() => setAddToSetId(set.id)}
+                      className="px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50 active:bg-blue-100 border border-blue-200 rounded"
+                      title={`Add songs to ${set.name}`}
+                    >
+                      + Add songs
+                    </button>
                     <button
                       type="button"
                       onClick={() => {
@@ -211,6 +225,16 @@ export default function SetsPanel({ onClose }: { onClose: () => void }) {
             </div>
           )}
         </div>
+        {/* AddToSetSheet — also mounted from the list view so the
+            inline "+ Add songs" button on each row works without first
+            opening a set. */}
+        {addToSetId && (
+          <AddToSetSheet
+            mode="pickSongs"
+            targetSetId={addToSetId}
+            onClose={() => setAddToSetId(null)}
+          />
+        )}
       </div>
     );
   }
@@ -246,7 +270,7 @@ export default function SetsPanel({ onClose }: { onClose: () => void }) {
         </span>
         <button
           type="button"
-          onClick={() => setAddOpen(true)}
+          onClick={() => setAddToSetId(openSet.id)}
           className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-lg"
           title="Add multiple songs to this set"
         >
@@ -343,11 +367,11 @@ export default function SetsPanel({ onClose }: { onClose: () => void }) {
         )}
       </div>
 
-      {addOpen && (
+      {addToSetId && (
         <AddToSetSheet
           mode="pickSongs"
-          targetSetId={openSet.id}
-          onClose={() => setAddOpen(false)}
+          targetSetId={addToSetId}
+          onClose={() => setAddToSetId(null)}
         />
       )}
     </div>

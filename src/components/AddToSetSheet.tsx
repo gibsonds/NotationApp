@@ -352,26 +352,43 @@ function PickSongsBody({
               const t = scoreTypeOf(entry.score);
               return (
                 <li key={entry.id}>
-                  <label className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50 cursor-pointer">
+                  <label className="flex items-start gap-3 px-5 py-3 hover:bg-gray-50 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={picked.has(entry.id)}
                       onChange={() => togglePicked(entry.id)}
-                      className="w-4 h-4 text-blue-600"
+                      className="w-4 h-4 text-blue-600 mt-0.5 shrink-0"
                     />
-                    <span className="flex-1 min-w-0 text-sm text-gray-900 truncate">
-                      {entry.title}
-                      {t === "chord-chart" && (
-                        <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-pink-100 text-pink-700 ml-2">
-                          Chart
-                        </span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm text-gray-900 truncate inline-flex items-center gap-2">
+                        <span className="truncate">{entry.title}</span>
+                        {t === "chord-chart" && (
+                          <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-pink-100 text-pink-700 shrink-0">
+                            Chart
+                          </span>
+                        )}
+                        {t === "notation" && (
+                          <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 shrink-0">
+                            Score
+                          </span>
+                        )}
+                      </div>
+                      {/* Folder pill — critical for disambiguating
+                          same-titled songs that live in different
+                          folders. Hidden when the song has no folder
+                          (avoids a generic "(Unfiled)" pill on most
+                          rows). */}
+                      {entry.folder && (
+                        <div className="mt-0.5">
+                          <span
+                            className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 border border-gray-200"
+                            title={`Folder: ${entry.folder}`}
+                          >
+                            {entry.folder}
+                          </span>
+                        </div>
                       )}
-                      {t === "notation" && (
-                        <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 ml-2">
-                          Score
-                        </span>
-                      )}
-                    </span>
+                    </div>
                   </label>
                 </li>
               );
