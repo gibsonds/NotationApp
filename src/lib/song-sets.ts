@@ -129,6 +129,28 @@ export function removeSongFromSet(setId: string, songId: string): SongSet | null
 /** Reorder songs inside a set. From and to are 0-indexed positions in
  *  the songIds array. */
 /**
+ * Per-song set-membership index. Returns a Map keyed by songId
+ * pointing at the list of full SongSet objects the song is a member
+ * of. Pure function — caller decides whether it wants names (for the
+ * "In N sets" badge), set ids (for the Perform switch-to-set chip
+ * action), or full objects.
+ *
+ * Order within each songId's list follows the input `sets` order so
+ * the UI sees stable chip / pill ordering across renders.
+ */
+export function songSetMembership(sets: SongSet[]): Map<string, SongSet[]> {
+  const map = new Map<string, SongSet[]>();
+  for (const s of sets) {
+    for (const id of s.songIds) {
+      const cur = map.get(id);
+      if (cur) cur.push(s);
+      else map.set(id, [s]);
+    }
+  }
+  return map;
+}
+
+/**
  * Songs eligible to be added to a given set. Drops songs already in
  * the set and drops alias artifacts (titles ending in "(snapped)",
  * "(recovered ...)", "(latest ...)"). Optionally applies a

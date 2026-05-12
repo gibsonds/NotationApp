@@ -6,7 +6,7 @@ import { saveSnapshot } from "@/lib/autosave";
 import AutosaveRecoveryDialog from "@/components/AutosaveRecoveryDialog";
 import SetsPanel from "@/components/SetsPanel";
 import AddToSetSheet from "@/components/AddToSetSheet";
-import { getSets, SetsUpdatedEvent, type SongSet } from "@/lib/song-sets";
+import { getSets, SetsUpdatedEvent, songSetMembership, type SongSet } from "@/lib/song-sets";
 import {
   canonicalSongTitle,
   getSongs,
@@ -144,19 +144,10 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
     window.addEventListener(SetsUpdatedEvent, refresh);
     return () => window.removeEventListener(SetsUpdatedEvent, refresh);
   }, []);
-  // songId → list of set names this song appears in. Memoed against
-  // the sets list reference so the per-row badge render is O(1).
-  const setMembership = useMemo(() => {
-    const map = new Map<string, string[]>();
-    for (const s of sets) {
-      for (const id of s.songIds) {
-        const cur = map.get(id);
-        if (cur) cur.push(s.name);
-        else map.set(id, [s.name]);
-      }
-    }
-    return map;
-  }, [sets]);
+  // songId → list of SongSets the song appears in. Shared helper in
+  // src/lib/song-sets.ts so MySongsModal (this badge) and PerformView
+  // (switch-to-set chips) compute it the same way.
+  const setMembership = useMemo(() => songSetMembership(sets), [sets]);
 
   // All distinct folder names across the bank, sorted — used by the
   // folder picker so the user doesn't have to remember/retype names.
@@ -948,14 +939,15 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
                             {!selectMode && (() => {
                               const memberOf = setMembership.get(entry.id);
                               if (!memberOf || memberOf.length === 0) return null;
+                              const names = memberOf.map((s) => s.name);
                               const label =
-                                memberOf.length === 1
-                                  ? `In: ${memberOf[0]}`
-                                  : `In ${memberOf.length} sets · ${memberOf.slice(0, 2).join(", ")}${memberOf.length > 2 ? ", …" : ""}`;
+                                names.length === 1
+                                  ? `In: ${names[0]}`
+                                  : `In ${names.length} sets · ${names.slice(0, 2).join(", ")}${names.length > 2 ? ", …" : ""}`;
                               return (
                                 <span
                                   className="text-[10px] px-1.5 py-0.5 rounded bg-pink-50 text-pink-700 border border-pink-100"
-                                  title={memberOf.join(", ")}
+                                  title={names.join(", ")}
                                 >
                                   {label}
                                 </span>
