@@ -3,6 +3,18 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-12 — 0c270af
+
+**Unified Unicode-aware title canonicalization (#113)**
+
+- Commit: [`0c270af`](../../commit/0c270af4f37cff2ad693085a2b8148d06004202e)
+- Author: gibsonds
+- Files changed:
+  - `src/components/AutosaveRecoveryDialog.tsx`
+  - `src/components/MySongsModal.tsx`
+  - `src/lib/__tests__/canonical-title.test.ts`
+  - `src/lib/song-bank.ts`
+
 ## 2026-05-12 — 4f2e641
 
 **UI guidelines doc + Sets/My Songs redesign (multi-select) (#112)**
