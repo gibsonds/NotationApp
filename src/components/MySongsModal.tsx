@@ -7,6 +7,7 @@ import AutosaveRecoveryDialog from "@/components/AutosaveRecoveryDialog";
 import SetsPanel from "@/components/SetsPanel";
 import AddToSetSheet from "@/components/AddToSetSheet";
 import {
+  canonicalSongTitle,
   getSongs,
   isAliasTitle,
   saveSong,
@@ -421,7 +422,9 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
     const list = getSongs();
     const byTitle = new Map<string, SongBankEntry[]>();
     for (const s of list) {
-      const k = s.title.trim().toLowerCase();
+      // Canonical key folds smart quotes / NFC-NFD / case / whitespace so
+      // iPad-typed and Mac-typed variants of the same song collide.
+      const k = canonicalSongTitle(s.title);
       if (!byTitle.has(k)) byTitle.set(k, []);
       byTitle.get(k)!.push(s);
     }

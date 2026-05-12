@@ -9,7 +9,7 @@ import {
   cloudListVersions,
 } from "@/lib/song-cloud";
 import type { VersionEntry } from "@/lib/song-cloud-types";
-import { getSongs, saveSong } from "@/lib/song-bank";
+import { canonicalSongTitle, getSongs, saveSong } from "@/lib/song-bank";
 
 interface AutosaveRecoveryDialogProps {
   onClose: () => void;
@@ -123,13 +123,11 @@ export default function AutosaveRecoveryDialog({ onClose, filterTitle, cloudSong
     }
   };
 
-  // Aggressively normalize titles so 'San Francisco' / ' san francisco '
-  // / 'san  francisco' all collapse to the same key. Earlier version
-  // only lower-cased — left near-duplicates because the whitespace
-  // differed slightly between the snapshot and an existing My Songs
-  // entry, so the existence check missed.
-  const normalizeTitle = (s: string) =>
-    (s || "").trim().toLowerCase().replace(/\s+/g, " ");
+  // Canonical title equality — shared with My Songs dedup so iPad-
+  // entered smart-quote / NFD-accent variants of the same song get
+  // matched. See canonicalSongTitle in src/lib/song-bank.ts for the
+  // exact normalization steps.
+  const normalizeTitle = canonicalSongTitle;
 
   // Snapshots grouped by normalized title — used by both the rendering
   // pass and the "Recover all" button. Each title's newest snapshot is
