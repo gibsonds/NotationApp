@@ -3,6 +3,18 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-12 — b1c3e02
+
+**Sets + AddToSet quick wins: folder pill, canonical search, inline +Add (#122)**
+
+- Commit: [`b1c3e02`](../../commit/b1c3e02634ac39452b9b34a3d513afad2a6b314e)
+- Author: gibsonds
+- Files changed:
+  - `src/components/AddToSetSheet.tsx`
+  - `src/components/SetsPanel.tsx`
+  - `src/lib/__tests__/add-to-set-flow.test.ts`
+  - `src/lib/song-sets.ts`
+
 ## 2026-05-12 — cfe495e
 
 **Fix Rename / kebab menu: clicks were closing the whole modal (#121)**
