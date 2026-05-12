@@ -5,6 +5,7 @@ import { useScoreStore } from "@/store/score-store";
 import { saveSnapshot } from "@/lib/autosave";
 import AutosaveRecoveryDialog from "@/components/AutosaveRecoveryDialog";
 import SetsPanel from "@/components/SetsPanel";
+import AddToSetSheet from "@/components/AddToSetSheet";
 import {
   getSongs,
   isAliasTitle,
@@ -78,6 +79,42 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
   const [menuAnchor, setMenuAnchor] = useState<Anchor | null>(null);
   const [pickerAnchor, setPickerAnchor] = useState<Anchor | null>(null);
   const [historyForTitle, setHistoryForTitle] = useState<string | null>(null);
+  // Multi-select state for bulk operations (#73 follow-up). When
+  // selectMode is on, rows render with leading checkboxes; the title
+  // toggles selection instead of starting a rename; Load + kebab hide.
+  // Esc exits.
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // Stacked sheet for "Add to set…" bulk action. Pre-fills with the
+  // current selection; the sheet picks the target set (existing or new).
+  const [addToSetOpen, setAddToSetOpen] = useState(false);
+  // Centered "pick a folder" picker for the bulk Move action.
+  const [bulkFolderOpen, setBulkFolderOpen] = useState(false);
+
+  const exitSelectMode = () => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  };
+  const toggleSelected = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    if (!selectMode) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        exitSelectMode();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [selectMode]);
 
   const openKebab = (entry: SongBankEntry, e: React.MouseEvent<HTMLButtonElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -486,6 +523,70 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
     }
   };
 
+  // Bulk delete of the currently-selected songs. Confirms with a count
+  // + preview. Queues all deletes first (local + cloud) and runs ONE
+  // sync at the end — same pattern as handleCleanupAliases. Exits
+  // select mode on success.
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    const all = getSongs();
+    const targets = all.filter((s) => selectedIds.has(s.id));
+    if (targets.length === 0) {
+      exitSelectMode();
+      return;
+    }
+    const preview = targets.slice(0, 8).map((s) => `• "${s.title}"`).join("\n");
+    const more = targets.length > 8 ? `\n…and ${targets.length - 8} more` : "";
+    const ok = window.confirm(
+      `Delete ${targets.length} ${targets.length === 1 ? "song" : "songs"}?\n\n${preview}${more}`,
+    );
+    if (!ok) return;
+    for (const t of targets) {
+      deleteSong(t.id);
+      if (CLOUD_ENABLED) {
+        try { await cloudDeleteSong(t.id); } catch { /* best-effort */ }
+      }
+    }
+    refreshLocal();
+    exitSelectMode();
+    if (CLOUD_ENABLED) {
+      await runSync();
+    }
+  };
+
+  // Bulk move-to-folder. Called from the centered folder picker once
+  // the user picks a target folder (or creates a new one). All selected
+  // ids land in that folder; one sync at the end.
+  const handleBulkMoveToFolder = async (folder: string | null) => {
+    if (selectedIds.size === 0) return;
+    const ids = Array.from(selectedIds);
+    for (const id of ids) {
+      setSongFolder(id, folder && folder.trim() ? folder.trim() : null);
+    }
+    refreshLocal();
+    setBulkFolderOpen(false);
+    exitSelectMode();
+    if (CLOUD_ENABLED) {
+      // Push each updated entry so the new folder propagates. Re-read
+      // post-update so cloudVersion bumps land on the latest snapshot.
+      const updated = getSongs().filter((s) => ids.includes(s.id));
+      for (const entry of updated) {
+        try {
+          const dto = await cloudPutSong({
+            id: entry.id,
+            title: entry.title,
+            score: entry.score,
+            savedAt: entry.savedAt,
+            folder: entry.folder ?? null,
+            ...(entry.cloudVersion !== undefined && { expectedVersion: entry.cloudVersion }),
+          });
+          updateSong(entry.id, { cloudVersion: dto.version });
+        } catch { /* best-effort */ }
+      }
+      await runSync();
+    }
+  };
+
   const handleDelete = async (id: string) => {
     logEvent({ event: "mysongs_delete" });
     deleteSong(id);
@@ -527,7 +628,7 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-xl shadow-2xl w-full max-w-lg flex flex-col max-h-[80vh]"
+        className="bg-white rounded-xl shadow-2xl w-[800px] max-w-[92vw] flex flex-col max-h-[80vh]"
         onClick={e => e.stopPropagation()}
       >
         <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
@@ -549,14 +650,17 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
         {/* Songs / Sets tab switcher (#73). Sets is a thin slice today —
          * per-device only, no cloud sync until #74 lands. The Songs tab
          * is the existing My Songs view; Sets renders SetsPanel. */}
-        <div className="px-5 pt-2 bg-white border-b border-gray-200 flex gap-1">
+        <div className="px-5 pt-2 bg-white border-b border-gray-200 flex items-end gap-1">
           {(["songs", "sets"] as const).map((t) => {
             const active = activeTab === t;
             return (
               <button
                 key={t}
                 type="button"
-                onClick={() => setActiveTab(t)}
+                onClick={() => {
+                  setActiveTab(t);
+                  if (t !== "songs") exitSelectMode();
+                }}
                 className={`px-3 py-1.5 text-xs font-medium rounded-t-lg transition-colors ${
                   active
                     ? "bg-blue-50 text-blue-700 border border-blue-200 border-b-transparent"
@@ -567,6 +671,23 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
               </button>
             );
           })}
+          {/* Select-mode toggle, Songs tab only. Per docs/ui-guidelines.md
+              §"Multi-select" — ghost button in the header that flips to
+              Cancel when active. */}
+          {activeTab === "songs" && songs.length > 0 && (
+            <button
+              type="button"
+              onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
+              className={`ml-auto mb-1 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                selectMode
+                  ? "text-gray-700 hover:bg-gray-100 active:bg-gray-200"
+                  : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+              }`}
+              title={selectMode ? "Exit select mode (Esc)" : "Select multiple songs for bulk actions"}
+            >
+              {selectMode ? "Cancel" : "Select"}
+            </button>
+          )}
         </div>
 
         {activeTab === "sets" ? (
@@ -703,10 +824,33 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
                   )}
                   {!collapsed && (
                   <ul className="divide-y divide-gray-100">
-                    {group.entries.map(entry => (
-                      <li key={entry.id} className="flex items-center px-5 py-3 hover:bg-gray-50 gap-3 relative">
+                    {group.entries.map(entry => {
+                      const isSelected = selectedIds.has(entry.id);
+                      const rowClick = selectMode ? () => toggleSelected(entry.id) : undefined;
+                      return (
+                      <li
+                        key={entry.id}
+                        className={`flex items-center px-5 py-3 hover:bg-gray-50 gap-3 relative ${
+                          selectMode && isSelected ? "bg-blue-50/40" : ""
+                        } ${selectMode ? "cursor-pointer" : ""}`}
+                        onClick={rowClick}
+                      >
+                        {/* Leading checkbox in select mode. Clicking the
+                            checkbox or anywhere else on the row toggles
+                            selection. The Load/kebab buttons and rename
+                            affordance hide so the row is purely
+                            selection-focused. */}
+                        {selectMode && (
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleSelected(entry.id)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-4 h-4 text-blue-600 shrink-0"
+                          />
+                        )}
                         <div className="flex-1 min-w-0">
-                          {renamingId === entry.id ? (
+                          {!selectMode && renamingId === entry.id ? (
                             <input
                               type="text"
                               autoFocus
@@ -719,6 +863,28 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
                               onBlur={() => commitRename(entry)}
                               className="w-full px-2 py-1 text-sm border border-blue-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                             />
+                          ) : selectMode ? (
+                            <div className="text-sm font-medium text-gray-900 truncate inline-flex items-center gap-2">
+                              <span className="truncate">{entry.title}</span>
+                              {(() => {
+                                const t = scoreTypeOf(entry.score);
+                                if (t === "chord-chart") {
+                                  return (
+                                    <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-pink-100 text-pink-700 shrink-0">
+                                      Chart
+                                    </span>
+                                  );
+                                }
+                                if (t === "notation") {
+                                  return (
+                                    <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 shrink-0">
+                                      Score
+                                    </span>
+                                  );
+                                }
+                                return null;
+                              })()}
+                            </div>
                           ) : (
                             <button
                               type="button"
@@ -751,26 +917,31 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
                             {new Date(entry.savedAt).toLocaleString()}
                           </div>
                         </div>
-                        <button
-                          onClick={() => handleLoad(entry)}
-                          className="px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50 active:bg-blue-100 border border-blue-200 rounded-lg transition-colors shrink-0"
-                        >
-                          Load
-                        </button>
-                        <button
-                          onClick={(e) => openKebab(entry, e)}
-                          className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 active:bg-gray-200 rounded-lg transition-colors shrink-0"
-                          title="More"
-                          aria-label="More actions"
-                        >
-                          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                            <circle cx="5" cy="12" r="2" />
-                            <circle cx="12" cy="12" r="2" />
-                            <circle cx="19" cy="12" r="2" />
-                          </svg>
-                        </button>
+                        {!selectMode && (
+                          <>
+                            <button
+                              onClick={() => handleLoad(entry)}
+                              className="px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50 active:bg-blue-100 border border-blue-200 rounded-lg transition-colors shrink-0"
+                            >
+                              Load
+                            </button>
+                            <button
+                              onClick={(e) => openKebab(entry, e)}
+                              className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 active:bg-gray-200 rounded-lg transition-colors shrink-0"
+                              title="More"
+                              aria-label="More actions"
+                            >
+                              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                                <circle cx="5" cy="12" r="2" />
+                                <circle cx="12" cy="12" r="2" />
+                                <circle cx="19" cy="12" r="2" />
+                              </svg>
+                            </button>
+                          </>
+                        )}
                       </li>
-                    ))}
+                      );
+                    })}
                   </ul>
                   )}
                 </div>
@@ -865,6 +1036,38 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
           </div>
         )}
 
+        {/* Bulk-action bar — appears in select mode whenever ≥1 song is
+            picked. Per docs/ui-guidelines.md §"Multi-select" — "N selected"
+            on the left, action buttons on the right (primary blue = the
+            common action; ghost for the rest; red for Delete). */}
+        {selectMode && selectedIds.size > 0 && (
+          <div className="px-5 py-3 border-t border-gray-200 bg-blue-50/40 flex items-center justify-between gap-2">
+            <span className="text-sm font-medium text-gray-700">
+              {selectedIds.size} selected
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setAddToSetOpen(true)}
+                className="px-4 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-lg"
+              >
+                Add to set…
+              </button>
+              <button
+                onClick={() => setBulkFolderOpen(true)}
+                className="px-4 py-1.5 text-sm text-gray-700 hover:bg-gray-100 active:bg-gray-200 rounded-lg"
+              >
+                Move to folder…
+              </button>
+              <button
+                onClick={handleBulkDelete}
+                className="px-4 py-1.5 text-sm text-red-600 hover:bg-red-50 active:bg-red-100 rounded-lg"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="px-5 py-4 border-t border-gray-200 flex justify-between items-center gap-2">
           <div className="flex items-center gap-1">
             <button
@@ -890,6 +1093,30 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
           </button>
         </div>
       </div>
+
+      {/* Stacked sheet for "Add to set…" — z-[110] sits above this modal's
+          z-50, matching the kebab-menu z-stack pattern. */}
+      {addToSetOpen && (
+        <AddToSetSheet
+          mode="pickSet"
+          songIds={Array.from(selectedIds)}
+          onClose={() => {
+            setAddToSetOpen(false);
+            exitSelectMode();
+          }}
+        />
+      )}
+
+      {/* Centered bulk folder picker — one picker for the entire selection
+          (vs. the per-row picker reached via the kebab menu). */}
+      {bulkFolderOpen && (
+        <BulkFolderPicker
+          folderNames={folderNames}
+          count={selectedIds.size}
+          onCancel={() => setBulkFolderOpen(false)}
+          onPick={(folder) => handleBulkMoveToFolder(folder)}
+        />
+      )}
 
       {/* Kebab menu — fixed-positioned at the button anchor so it isn't
           clipped by the modal's overflow-y-auto song list (the bug that
@@ -989,4 +1216,136 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
 
 function truncate(s: string, max: number): string {
   return s.length <= max ? s : s.slice(0, max - 1) + "…";
+}
+
+/**
+ * Centered folder picker for the bulk Move action. Lists existing
+ * folder names + "(Unfiled)" + "+ New folder" inline create. Pops over
+ * the entire selection at once (vs. the kebab's per-row anchored
+ * picker). Renders at z-[110] above MySongsModal's z-50.
+ */
+function BulkFolderPicker({
+  folderNames,
+  count,
+  onCancel,
+  onPick,
+}: {
+  folderNames: string[];
+  count: number;
+  onCancel: () => void;
+  onPick: (folder: string | null) => void;
+}) {
+  const [newFolder, setNewFolder] = useState("");
+  const [creating, setCreating] = useState(false);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        onCancel();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCancel]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[110] flex items-start justify-center pt-[12vh] bg-black/40"
+      onClick={(e) => {
+        e.stopPropagation();
+        onCancel();
+      }}
+    >
+      <div
+        className="bg-white rounded-xl shadow-2xl border border-gray-200 w-[440px] max-w-[92vw] max-h-[70vh] flex flex-col overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-5 py-3 border-b border-gray-200 flex items-center justify-between">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900">
+              Move {count} {count === 1 ? "song" : "songs"} to a folder
+            </h2>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Pick an existing folder or name a new one.
+            </p>
+          </div>
+          <button
+            onClick={onCancel}
+            className="text-gray-500 hover:text-gray-700 text-lg px-2 shrink-0"
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          <ul className="divide-y divide-gray-100">
+            <li>
+              <button
+                type="button"
+                onClick={() => onPick(null)}
+                className="w-full text-left px-5 py-3 text-sm hover:bg-gray-50 active:bg-gray-100 text-gray-900"
+              >
+                (Unfiled)
+              </button>
+            </li>
+            {folderNames.map((f) => (
+              <li key={f}>
+                <button
+                  type="button"
+                  onClick={() => onPick(f)}
+                  className="w-full text-left px-5 py-3 text-sm hover:bg-gray-50 active:bg-gray-100 text-gray-900"
+                >
+                  {f}
+                </button>
+              </li>
+            ))}
+          </ul>
+          <div className="border-t border-gray-100 px-5 py-3">
+            {creating ? (
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  autoFocus
+                  value={newFolder}
+                  onChange={(e) => setNewFolder(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      const t = newFolder.trim();
+                      if (t) onPick(t);
+                    }
+                    if (e.key === "Escape") {
+                      setCreating(false);
+                      setNewFolder("");
+                    }
+                  }}
+                  placeholder="Folder name"
+                  className="flex-1 text-sm text-gray-900 placeholder-gray-400 border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const t = newFolder.trim();
+                    if (t) onPick(t);
+                  }}
+                  disabled={!newFolder.trim()}
+                  className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:bg-gray-300 rounded-lg"
+                >
+                  Move
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setCreating(true)}
+                className="w-full text-left text-sm text-blue-700 hover:underline"
+              >
+                + New folder…
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }

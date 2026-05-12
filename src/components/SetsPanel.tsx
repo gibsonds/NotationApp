@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  addSongToSet,
   createSet,
   deleteSet,
   getSets,
@@ -12,7 +11,8 @@ import {
   SetsUpdatedEvent,
   type SongSet,
 } from "@/lib/song-sets";
-import { getSongs, isAliasTitle, SongsUpdatedEvent, type SongBankEntry } from "@/lib/song-bank";
+import { getSongs, SongsUpdatedEvent, type SongBankEntry } from "@/lib/song-bank";
+import AddToSetSheet from "@/components/AddToSetSheet";
 import { useScoreStore } from "@/store/score-store";
 import { saveSnapshot } from "@/lib/autosave";
 import { scoreTypeOf } from "@/lib/analytics";
@@ -30,6 +30,14 @@ export default function SetsPanel({ onClose }: { onClose: () => void }) {
   const [newName, setNewName] = useState("");
   const [renameOpen, setRenameOpen] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  // Stacked sheet for "+ Add songs…" entry path. AddToSetSheet in
+  // pickSongs mode lets the user multi-select songs to add at once,
+  // with a search field — replaces the per-row "Add" buttons that
+  // made the original detail view feel cramped.
+  const [addOpen, setAddOpen] = useState(false);
+  // Live search filter for the songs-in-set list. Critical once a set
+  // gets above ~10 songs.
+  const [setQuery, setSetQuery] = useState("");
   const setScore = useScoreStore((s) => s.setScore);
   const setUIState = useScoreStore((s) => s.setUIState);
   const score = useScoreStore((s) => s.score);
@@ -209,15 +217,16 @@ export default function SetsPanel({ onClose }: { onClose: () => void }) {
 
   // ── Detail view: songs inside the open set ──────────────────────────
 
-  const allSongs = Array.from(songsById.values());
-  const inSet = new Set(openSet.songIds);
-  // Hide alias entries (titles like "Foo (snapped)" / "(recovered 9:06 PM)"
-  // / "(latest 10:37 PM)") from the candidate list — they're stale
-  // autosave/recovery artifacts the user almost never wants to add to a
-  // set. They remain in My Songs and can be removed via "Clean up aliases".
-  const candidatesAll = allSongs.filter((s) => !inSet.has(s.id));
-  const candidates = candidatesAll.filter((s) => !isAliasTitle(s.title));
-  const hiddenAliasCount = candidatesAll.length - candidates.length;
+  // Filter songs-in-set by search query (case-insensitive, title only).
+  // Empty query passes everything through. Reordering controls only show
+  // when no query is active — moving rows in a filtered view would be
+  // confusing (you'd move "song 2 of 3 visible" to a position that means
+  // nothing in the unfiltered list).
+  const setQueryLc = setQuery.trim().toLowerCase();
+  const filterMatch = (entry: SongBankEntry | undefined) => {
+    if (!setQueryLc) return true;
+    return !!entry && entry.title.toLowerCase().includes(setQueryLc);
+  };
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
@@ -235,18 +244,42 @@ export default function SetsPanel({ onClose }: { onClose: () => void }) {
         <span className="text-xs text-gray-400">
           {openSet.songIds.length} song{openSet.songIds.length === 1 ? "" : "s"}
         </span>
+        <button
+          type="button"
+          onClick={() => setAddOpen(true)}
+          className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-lg"
+          title="Add multiple songs to this set"
+        >
+          + Add songs…
+        </button>
       </div>
+
+      {/* Search field — only useful once the set has >1 song. Hides for
+          empty sets to avoid clutter. */}
+      {openSet.songIds.length > 1 && (
+        <div className="px-5 py-2 border-b border-gray-100">
+          <input
+            type="text"
+            value={setQuery}
+            onChange={(e) => setSetQuery(e.target.value)}
+            placeholder="Search this set…"
+            className="w-full text-sm text-gray-900 placeholder-gray-400 border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+      )}
+
       <div className="flex-1 overflow-y-auto">
         {/* Songs in the set, in order, with up/down/remove controls. */}
         {openSet.songIds.length === 0 ? (
           <div className="px-5 py-6 text-sm text-gray-500 text-center">
-            Empty set. Pick songs to add from the list below.
+            Empty set. Tap <strong>+ Add songs…</strong> above to pick songs to add.
           </div>
         ) : (
           <ul className="divide-y divide-gray-100">
             {openSet.songIds.map((songId, idx) => {
               const entry = songsById.get(songId);
               if (!entry) {
+                if (setQueryLc) return null;
                 return (
                   <li key={songId} className="px-5 py-2 flex items-center text-amber-700 bg-amber-50">
                     <span className="text-xs italic flex-1">
@@ -262,6 +295,7 @@ export default function SetsPanel({ onClose }: { onClose: () => void }) {
                   </li>
                 );
               }
+              if (!filterMatch(entry)) return null;
               return (
                 <li key={songId} className="flex items-center px-5 py-2 hover:bg-gray-50 gap-2">
                   <span className="text-xs text-gray-400 w-6">{idx + 1}.</span>
@@ -273,24 +307,28 @@ export default function SetsPanel({ onClose }: { onClose: () => void }) {
                     {entry.title}
                     <SongTypeBadge entry={entry} />
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => reorderSong(openSet.id, idx, idx - 1)}
-                    disabled={idx === 0}
-                    className="px-1.5 py-1 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-30"
-                    aria-label="Move up"
-                  >
-                    ↑
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => reorderSong(openSet.id, idx, idx + 1)}
-                    disabled={idx === openSet.songIds.length - 1}
-                    className="px-1.5 py-1 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-30"
-                    aria-label="Move down"
-                  >
-                    ↓
-                  </button>
+                  {!setQueryLc && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => reorderSong(openSet.id, idx, idx - 1)}
+                        disabled={idx === 0}
+                        className="px-1.5 py-1 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-30"
+                        aria-label="Move up"
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => reorderSong(openSet.id, idx, idx + 1)}
+                        disabled={idx === openSet.songIds.length - 1}
+                        className="px-1.5 py-1 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-30"
+                        aria-label="Move down"
+                      >
+                        ↓
+                      </button>
+                    </>
+                  )}
                   <button
                     type="button"
                     onClick={() => removeSongFromSet(openSet.id, songId)}
@@ -303,39 +341,15 @@ export default function SetsPanel({ onClose }: { onClose: () => void }) {
             })}
           </ul>
         )}
-
-        {/* Add-songs picker — shows everything not already in the set, with
-            alias artifacts hidden so the list stays scannable. */}
-        {candidates.length > 0 && (
-          <>
-            <div className="px-5 py-1.5 text-[11px] uppercase tracking-wider text-gray-500 bg-gray-50 border-y border-gray-100 mt-2 flex items-center justify-between">
-              <span>Add to this set</span>
-              {hiddenAliasCount > 0 && (
-                <span className="text-[10px] normal-case tracking-normal text-gray-400">
-                  {hiddenAliasCount} alias{hiddenAliasCount === 1 ? "" : "es"} hidden — clean up in My Songs
-                </span>
-              )}
-            </div>
-            <ul className="divide-y divide-gray-100">
-              {candidates.map((entry) => (
-                <li key={entry.id} className="flex items-center px-5 py-2 hover:bg-gray-50 gap-2">
-                  <div className="flex-1 min-w-0 text-sm text-gray-700 truncate">
-                    {entry.title}
-                    <SongTypeBadge entry={entry} />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => addSongToSet(openSet.id, entry.id)}
-                    className="px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50 rounded"
-                  >
-                    Add
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
       </div>
+
+      {addOpen && (
+        <AddToSetSheet
+          mode="pickSongs"
+          targetSetId={openSet.id}
+          onClose={() => setAddOpen(false)}
+        />
+      )}
     </div>
   );
 }
