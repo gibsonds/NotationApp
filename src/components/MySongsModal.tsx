@@ -93,6 +93,21 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
   // Centered "pick a folder" picker for the bulk Move action.
   const [bulkFolderOpen, setBulkFolderOpen] = useState(false);
 
+  // Search box state. When non-empty, the list switches from
+  // folder-grouped to a flat result list (folder shown inline). Folder
+  // collapse state doesn't apply mid-search. Empty string = no filter.
+  const [songQuery, setSongQuery] = useState("");
+  const songQueryCanon = useMemo(
+    () => canonicalSongTitle(songQuery),
+    [songQuery],
+  );
+  const filteredSongs = useMemo(() => {
+    if (!songQueryCanon) return songs;
+    return songs.filter((s) =>
+      canonicalSongTitle(s.title).includes(songQueryCanon),
+    );
+  }, [songs, songQueryCanon]);
+
   const exitSelectMode = () => {
     setSelectMode(false);
     setSelectedIds(new Set());
@@ -804,6 +819,31 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
           </div>
         )}
 
+        {/* Search box — pinned above the list. Hidden in Sets tab and
+            in select mode (the bulk-action bar already overloads the
+            chrome there). */}
+        {activeTab === "songs" && !selectMode && songs.length > 0 && (
+          <div className="px-5 py-2 border-b border-gray-100 bg-white flex items-center gap-2">
+            <input
+              type="text"
+              value={songQuery}
+              onChange={(e) => setSongQuery(e.target.value)}
+              placeholder="Search songs…"
+              className="flex-1 text-sm text-gray-900 placeholder-gray-400 border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            {songQuery && (
+              <button
+                type="button"
+                onClick={() => setSongQuery("")}
+                className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded"
+                title="Clear search"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        )}
+
         <div className="flex-1 overflow-y-auto">
           {songs.length === 0 ? (
             <div className="px-5 py-10 text-center text-sm text-gray-400">
@@ -813,6 +853,137 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
                 ? "No songs saved yet. Enter a name above and click Save Song."
                 : "No songs saved yet."}
             </div>
+          ) : songQueryCanon ? (
+            // ── Search-result flat list ─────────────────────────────
+            // Folder grouping doesn't apply during search; results may
+            // span folders, so we render a single flat list with the
+            // folder name shown inline as a small label. Renaming /
+            // select / Load / kebab all still work — this is the same
+            // <li> structure used in the grouped path below, just
+            // unwrapped from the <ul> group wrappers.
+            filteredSongs.length === 0 ? (
+              <div className="px-5 py-10 text-center text-sm text-gray-400">
+                No songs match <em className="not-italic font-medium">&ldquo;{songQuery}&rdquo;</em>.
+              </div>
+            ) : (
+              <ul className="divide-y divide-gray-100">
+                {filteredSongs.map((entry) => {
+                  const isSelected = selectedIds.has(entry.id);
+                  return (
+                    <li
+                      key={entry.id}
+                      className={`flex items-center px-5 py-3 hover:bg-gray-50 gap-3 relative ${
+                        selectMode && isSelected ? "bg-blue-50/40" : ""
+                      } ${selectMode ? "cursor-pointer" : ""}`}
+                      onClick={selectMode ? () => toggleSelected(entry.id) : undefined}
+                    >
+                      {selectMode && (
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleSelected(entry.id)}
+                          onClick={(e) => e.stopPropagation()}
+                          className="w-4 h-4 text-blue-600 shrink-0"
+                        />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        {renamingId === entry.id ? (
+                          <input
+                            type="text"
+                            autoFocus
+                            value={renameValue}
+                            onChange={e => setRenameValue(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === "Enter") commitRename(entry);
+                              if (e.key === "Escape") setRenamingId(null);
+                            }}
+                            onBlur={() => commitRename(entry)}
+                            className="w-full px-2 py-1 text-sm border border-blue-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => !selectMode && startRename(entry)}
+                            className="text-sm font-medium text-gray-900 truncate text-left hover:text-blue-700 w-full inline-flex items-center gap-2"
+                            title={selectMode ? undefined : "Click to rename"}
+                          >
+                            <span className="truncate">{entry.title}</span>
+                            {(() => {
+                              const t = scoreTypeOf(entry.score);
+                              if (t === "chord-chart") {
+                                return (
+                                  <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-pink-100 text-pink-700 shrink-0">
+                                    Chart
+                                  </span>
+                                );
+                              }
+                              if (t === "notation") {
+                                return (
+                                  <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 shrink-0">
+                                    Score
+                                  </span>
+                                );
+                              }
+                              return null;
+                            })()}
+                          </button>
+                        )}
+                        <div className="text-xs text-gray-400 mt-0.5 flex items-center gap-2 flex-wrap">
+                          <span>{new Date(entry.savedAt).toLocaleString()}</span>
+                          {entry.folder && (
+                            <span
+                              className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 border border-gray-200"
+                              title={`Folder: ${entry.folder}`}
+                            >
+                              {entry.folder}
+                            </span>
+                          )}
+                          {!selectMode && (() => {
+                            const memberOf = setMembership.get(entry.id);
+                            if (!memberOf || memberOf.length === 0) return null;
+                            const names = memberOf.map((s) => s.name);
+                            const label =
+                              names.length === 1
+                                ? `In: ${names[0]}`
+                                : `In ${names.length} sets · ${names.slice(0, 2).join(", ")}${names.length > 2 ? ", …" : ""}`;
+                            return (
+                              <span
+                                className="text-[10px] px-1.5 py-0.5 rounded bg-pink-50 text-pink-700 border border-pink-100"
+                                title={names.join(", ")}
+                              >
+                                {label}
+                              </span>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                      {!selectMode && (
+                        <>
+                          <button
+                            onClick={() => handleLoad(entry)}
+                            className="px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50 active:bg-blue-100 border border-blue-200 rounded-lg transition-colors shrink-0"
+                          >
+                            Load
+                          </button>
+                          <button
+                            onClick={(e) => openKebab(entry, e)}
+                            className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 active:bg-gray-200 rounded-lg transition-colors shrink-0"
+                            title="More"
+                            aria-label="More actions"
+                          >
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                              <circle cx="5" cy="12" r="2" />
+                              <circle cx="12" cy="12" r="2" />
+                              <circle cx="19" cy="12" r="2" />
+                            </svg>
+                          </button>
+                        </>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )
           ) : (
             <div className="divide-y divide-gray-100">
               {grouped.map(group => {
