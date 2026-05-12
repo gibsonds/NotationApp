@@ -1336,6 +1336,14 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
           <div
             className="fixed z-[120] w-48 bg-white rounded-lg shadow-2xl border border-gray-200 py-1 text-sm"
             style={{ top: menuAnchor.top, right: menuAnchor.right }}
+            // Stop clicks from bubbling to the outer modal-backdrop's
+            // onClose. The menu lives OUTSIDE the inner-modal
+            // stopPropagation wrapper so it can render past the
+            // overflow-y-auto on iPad — but that means menu-item clicks
+            // would otherwise close the whole modal before the action
+            // can take effect (e.g. Rename: state was set, then modal
+            // unmounted before the input could render).
+            onClick={(e) => e.stopPropagation()}
           >
             <button
               onClick={() => startRename(menuAnchor.entry)}
@@ -1373,6 +1381,10 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
           <div
             className="fixed z-[120] w-56 bg-white rounded-lg shadow-2xl border border-gray-200 py-1 text-sm max-h-[60vh] overflow-y-auto"
             style={{ top: pickerAnchor.top, right: pickerAnchor.right }}
+            // Same fix as the kebab menu — popovers rendered outside
+            // the inner-modal wrapper need to stop click bubble or the
+            // outer modal-backdrop's onClose fires.
+            onClick={(e) => e.stopPropagation()}
           >
             <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-gray-400">Move to…</div>
             <button
