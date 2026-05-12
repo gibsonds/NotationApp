@@ -8,7 +8,7 @@ import AnnotationLayer from "@/components/AnnotationLayer";
 import AnnotateToggle from "@/components/AnnotateToggle";
 import { useScoreStore } from "@/store/score-store";
 import { getSongs, SongsUpdatedEvent, type SongBankEntry } from "@/lib/song-bank";
-import { getSets, SetsUpdatedEvent, type SongSet } from "@/lib/song-sets";
+import { getSets, SetsUpdatedEvent, songSetMembership, type SongSet } from "@/lib/song-sets";
 
 const PREFS_KEY = "notation-app-perform-prefs";
 
@@ -102,6 +102,15 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
     return () => window.removeEventListener(SetsUpdatedEvent, refresh);
   }, []);
   const activeSet = activeSetId ? sets.find(s => s.id === activeSetId) ?? null : null;
+
+  // Sets the currently-loaded song is a member of. Drives the chip
+  // strip at the top of the picker so the user can swap between sets
+  // without bouncing back to My Songs. When ≥1, the chip strip
+  // replaces the standard folder/activeSet headers in the picker.
+  const currentSongSets = useMemo(() => {
+    if (!currentSongId) return [] as SongSet[];
+    return songSetMembership(sets).get(currentSongId) ?? [];
+  }, [sets, currentSongId]);
 
   // All folder names (sorted), for the picker's folder selector.
   const folderNames = useMemo(() => {
@@ -352,7 +361,48 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
             onClick={() => setPickerOpen(false)}
           />
           <div className="absolute top-[68px] left-3 z-20 bg-white text-gray-800 rounded-xl shadow-2xl border border-gray-200 w-[min(360px,calc(100vw-1.5rem))] max-h-[60vh] overflow-hidden flex flex-col">
-            {activeSet ? (
+            {currentSongSets.length > 0 ? (
+              // Chip strip: every set this song belongs to. Tap to
+              // enter that set; the active set chip is highlighted.
+              // "Exit set" appears next to the chips when one is active,
+              // so the user can go back to folder-scoped prev/next.
+              <div className="px-3 py-2 border-b border-gray-100 bg-pink-50/60 flex flex-wrap items-center gap-1">
+                <span className="text-[10px] uppercase tracking-wider text-pink-700/70 mr-1">
+                  Switch to set:
+                </span>
+                {currentSongSets.map((s) => {
+                  const isActive = activeSetId === s.id;
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => setUIState({ activeSetId: s.id })}
+                      className={`px-2 py-1 text-xs rounded-md transition-colors max-w-[140px] truncate ${
+                        isActive
+                          ? "bg-pink-600 text-white"
+                          : "bg-white border border-pink-200 text-pink-800 hover:bg-pink-100"
+                      }`}
+                      title={isActive ? "Currently walking this set" : `Switch prev/next to walk ${s.name}`}
+                    >
+                      {s.name}
+                    </button>
+                  );
+                })}
+                {activeSetId && (
+                  <button
+                    type="button"
+                    onClick={() => setUIState({ activeSetId: null })}
+                    className="ml-auto px-2 py-1 text-[11px] rounded-md text-pink-700 hover:bg-pink-100"
+                    title="Exit set — go back to folder filter"
+                  >
+                    × Exit set
+                  </button>
+                )}
+              </div>
+            ) : activeSet ? (
+              // Edge case: song was loaded inside a set but is no
+              // longer a member of it (removed from the set after
+              // load). Keep the canonical "Set: name + Exit" affordance.
               <div className="px-3 py-2 border-b border-gray-100 bg-pink-50/60 flex items-center gap-2">
                 <span className="text-xs font-medium text-pink-800 truncate flex-1">
                   Set: {activeSet.name}
