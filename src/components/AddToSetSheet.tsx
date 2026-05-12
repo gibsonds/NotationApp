@@ -4,11 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import {
   addSongToSet,
   createSet,
+  filterCandidatesForSheet,
   getSets,
   SetsUpdatedEvent,
   type SongSet,
 } from "@/lib/song-sets";
-import { getSongs, isAliasTitle, SongsUpdatedEvent, type SongBankEntry } from "@/lib/song-bank";
+import { getSongs, SongsUpdatedEvent, type SongBankEntry } from "@/lib/song-bank";
 import { scoreTypeOf } from "@/lib/analytics";
 
 /**
@@ -257,28 +258,20 @@ function PickSongsBody({
   onClose: () => void;
 }) {
   const target = sets.find((s) => s.id === targetSetId) ?? null;
-  const inSet = new Set(target?.songIds ?? []);
-
-  // Candidate list: songs not already in the set, with alias artifacts
-  // ("(snapped)" / "(recovered …)" / "(latest …)") filtered out so the
-  // user only sees real songs.
-  const candidates = useMemo(
-    () =>
-      songs
-        .filter((s) => !inSet.has(s.id))
-        .filter((s) => !isAliasTitle(s.title)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [songs, target?.songIds.join("|")],
-  );
 
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState("");
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return candidates;
-    return candidates.filter((s) => s.title.toLowerCase().includes(q));
-  }, [candidates, query]);
+  // Candidate list: not-yet-in-set + non-alias + search-matching.
+  // Lives in src/lib/song-sets.ts so the rule is unit-testable.
+  const filtered = useMemo(
+    () => filterCandidatesForSheet(songs, target?.songIds ?? [], query),
+    [songs, target?.songIds, query],
+  );
+  const candidates = useMemo(
+    () => filterCandidatesForSheet(songs, target?.songIds ?? []),
+    [songs, target?.songIds],
+  );
 
   const togglePicked = (id: string) => {
     setPicked((prev) => {
