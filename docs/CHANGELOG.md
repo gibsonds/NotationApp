@@ -3,6 +3,17 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-12 — e356db9
+
+**Extract songSetMembership into song-sets.ts (#117)**
+
+- Commit: [`e356db9`](../../commit/e356db937904774f2034ae72dc59eaa4034c764b)
+- Author: gibsonds
+- Files changed:
+  - `src/components/MySongsModal.tsx`
+  - `src/lib/__tests__/song-set-membership.test.ts`
+  - `src/lib/song-sets.ts`
+
 ## 2026-05-12 — 2f13d44
 
 **'In N sets' badge on My Songs rows (#115)**
