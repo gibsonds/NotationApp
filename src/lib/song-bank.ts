@@ -47,6 +47,32 @@ export function isAliasTitle(title: string): boolean {
   return aliasCanonicalTitle(title) !== null;
 }
 
+/**
+ * Canonical form of a song title for equality comparison. Folds the
+ * surprising-divergence sources we've actually hit in user data:
+ *
+ *   - NFC vs NFD: macOS dead-key input ("Cafe" + combining-acute) hashes
+ *     differently from precomposed "Café" without `.normalize("NFC")`.
+ *   - Smart quotes: iOS auto-corrects ' → ’ and " → ”. "Friday's gig"
+ *     from iPad would otherwise miss "Friday's gig" typed elsewhere.
+ *   - Whitespace: nbsp (U+00A0), tabs, double spaces — all collapse to
+ *     a single regular space. `\s` in modern JS already matches Unicode
+ *     whitespace including nbsp, so /\s+/g is enough.
+ *   - Case + leading/trailing whitespace.
+ *
+ * Use for any dedup or membership check that should treat
+ * visually-identical titles as the same song.
+ */
+export function canonicalSongTitle(s: string): string {
+  return (s ?? "")
+    .normalize("NFC")
+    .replace(/[‘’]/g, "'")
+    .replace(/[“”]/g, '"')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
 export function getSongs(): SongBankEntry[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
