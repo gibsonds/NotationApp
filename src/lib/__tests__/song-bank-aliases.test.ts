@@ -26,6 +26,30 @@ describe("aliasCanonicalTitle", () => {
     expect(aliasCanonicalTitle("Song (live version)")).toBeNull();
     expect(aliasCanonicalTitle("Take 2 (rehearsal)")).toBeNull();
   });
+
+  it("strips (with highlights HH:MM PM)", () => {
+    expect(aliasCanonicalTitle("Foggy Night (with highlights 10:26 PM)")).toBe(
+      "Foggy Night",
+    );
+  });
+
+  it("strips (chords fixed HH:MM PM)", () => {
+    expect(aliasCanonicalTitle("Star to Star (chords fixed 9:59 PM)")).toBe(
+      "Star to Star",
+    );
+  });
+
+  it("strips bare (old) tag", () => {
+    expect(aliasCanonicalTitle("Anywhere (old)")).toBe("Anywhere");
+  });
+
+  it("catches future timestamped aliases via trailing HH:MM AM|PM rule", () => {
+    // Even unknown verbs get caught if they trail with a time.
+    expect(aliasCanonicalTitle("Twig (remixed 10:42 PM)")).toBe("Twig");
+    expect(aliasCanonicalTitle("Hurricane (autosaved 1:00 am)")).toBe(
+      "Hurricane",
+    );
+  });
 });
 
 describe("isAliasTitle", () => {

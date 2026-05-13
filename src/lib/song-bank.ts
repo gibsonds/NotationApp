@@ -28,18 +28,56 @@ function fireSongsUpdated(): void {
 }
 
 /**
- * Recognises titles that past autosave-recovery / dedup-cleanup runs
- * suffixed to disambiguate copies, e.g.
+ * Recognises titles that past autosave-recovery / dedup-cleanup /
+ * change-marker flows suffixed to disambiguate copies, e.g.
  *   "Anywhere (snapped)"
  *   "Foggy Night (recovered 9:06 PM)"
  *   "Star to Star (latest 10:37 PM)"
+ *   "Foggy Night (with highlights 10:26 PM)"
+ *   "Star to Star (chords fixed 9:59 PM)"
+ *   "Anywhere (old)"
  * These are alias entries — we hide them from the Sets candidate
  * picker and offer a one-click cleanup. Returns the canonical title
  * (suffix stripped) if matched, else null.
+ *
+ * Two complementary rules so we keep matching new auto-generated
+ * patterns without enumerating each one:
+ *
+ *   1. Known-verb prefix: `(snapped|recovered|latest|with X|chords X|
+ *      lyrics X|fixed X|old)` followed by anything.
+ *   2. Trailing timestamp: any parenthetical that *ends with* a clock
+ *      time like "9:06 PM" — typical of save-timestamp aliasing.
+ *
+ * Bare keywords like "(live version)" or "(acoustic)" stay matched
+ * as user-meaningful titles, not aliases.
  */
 export function aliasCanonicalTitle(title: string): string | null {
-  const m = title.match(/^(.*?)\s*\((snapped|recovered|latest)(?:\s[^)]*)?\)\s*$/i);
-  return m ? m[1].trim() : null;
+  // Keyword-prefix patterns the codebase or migration scripts have
+  // historically generated.
+  const KEYWORDS = [
+    "snapped",
+    "recovered",
+    "latest",
+    "with highlights",
+    "with chords",
+    "chords fixed",
+    "lyrics fixed",
+    "fixed",
+    "old",
+  ];
+  const keywordAlt = KEYWORDS.map((k) => k.replace(/\s/g, "\\s")).join("|");
+  const keywordRe = new RegExp(
+    `^(.*?)\\s*\\((?:${keywordAlt})(?:\\s[^)]*)?\\)\\s*$`,
+    "i",
+  );
+  const m1 = title.match(keywordRe);
+  if (m1) return m1[1].trim();
+  // Safety net: any parenthetical that ENDS with an HH:MM AM/PM
+  // timestamp. Catches future auto-generated patterns without
+  // updating the keyword list (e.g. "(remixed 10:42 PM)").
+  const m2 = title.match(/^(.*?)\s*\([^)]*\d{1,2}:\d{2}\s*(?:AM|PM|am|pm)\)\s*$/);
+  if (m2) return m2[1].trim();
+  return null;
 }
 
 /** True if the title looks like an autosave-/recovery-/sync-generated alias. */

@@ -468,9 +468,15 @@ export default function SetsPanel({
         </span>
         <button
           type="button"
-          onClick={() => onPickSongs ? onPickSongs(openSet.id) : setAddToSetId(openSet.id)}
+          // Bounce back into the list view with THIS set already
+          // checked. Single workflow for adding songs to any set —
+          // no separate right-pane picker, no inline AddToSetSheet.
+          onClick={() => {
+            setSelectedSetIds(new Set([openSet.id]));
+            setOpenSetId(null);
+          }}
           className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-lg"
-          title="Add multiple songs to this set"
+          title="Go to Sets list with this set checked, then tap Add on each song"
         >
           + Add songs…
         </button>
@@ -491,12 +497,13 @@ export default function SetsPanel({
       )}
 
       <div className="flex-1 overflow-y-auto">
-        {/* Songs in the set, in order, with up/down/remove controls. */}
-        {openSet.songIds.length === 0 ? (
-          <div className="px-5 py-6 text-sm text-gray-500 text-center">
-            Empty set. Tap <strong>+ Add songs…</strong> above to pick songs to add.
-          </div>
-        ) : (
+        {/* Songs in the set, in order, with up/down/remove controls.
+            Empty set just renders an empty list — the same layout as a
+            populated set. Removed the big centered placeholder so the
+            empty and populated states feel like the same UI (just with
+            zero rows). The header's + Add songs button is always the
+            primary action for adding more. */}
+        {openSet.songIds.length === 0 ? null : (
           <ul className="divide-y divide-gray-100">
             {openSet.songIds.map((songId, idx) => {
               const entry = songsById.get(songId);
