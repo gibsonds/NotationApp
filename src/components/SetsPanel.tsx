@@ -101,7 +101,12 @@ export default function SetsPanel({
     if (!name) return;
     const s = createSet(name);
     setNewName("");
-    setOpenSetId(s.id);
+    // Stay on the list view so the user immediately sees the songs
+    // section below — auto-checking the new set means tapping Add on
+    // any song commits to it. The previous flow dumped them into the
+    // detail view of a brand-new empty set, which was just blank
+    // whitespace and required a second hop to start adding songs.
+    setSelectedSetIds(new Set([s.id]));
   };
 
   // Load the first existing song of a set and enter perform mode.
@@ -227,9 +232,22 @@ export default function SetsPanel({
                     />
                     <button
                       type="button"
-                      onClick={() => setOpenSetId(set.id)}
+                      // Empty sets have nothing to manage in detail view
+                      // (no songs to reorder/remove) — just auto-check
+                      // them so the user can immediately add songs from
+                      // the Songs section below. Populated sets go into
+                      // detail view as before.
+                      onClick={() =>
+                        set.songIds.length === 0
+                          ? setSelectedSetIds(new Set([set.id]))
+                          : setOpenSetId(set.id)
+                      }
                       className="flex-1 text-left min-w-0"
-                      title="Open this set to reorder or remove songs"
+                      title={
+                        set.songIds.length === 0
+                          ? "Empty set — check it and add songs below"
+                          : "Open this set to reorder or remove songs"
+                      }
                     >
                       <div className="text-sm font-medium text-gray-900 truncate">{set.name}</div>
                       <div className="text-xs text-gray-400 mt-0.5">
