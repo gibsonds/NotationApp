@@ -67,7 +67,6 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
   );
   const [pasteCode, setPasteCode] = useState("");
   const [showSync, setShowSync] = useState(false);
-  const [showRawCode, setShowRawCode] = useState(false);
   const [activeTab, setActiveTab] = useState<"songs" | "sets">("songs");
   const [linkCopied, setLinkCopied] = useState(false);
   const [codeCopied, setCodeCopied] = useState(false);
@@ -1362,6 +1361,7 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
                   <div className="text-xs text-gray-500 mb-1">
                     Share this songbook with another device
                   </div>
+                  {/* Link row — the URL form, easy to text/email. */}
                   <div className="flex items-center gap-2">
                     <code className="flex-1 px-2 py-1.5 text-xs bg-white border border-gray-200 rounded text-gray-700 truncate">
                       {buildShareLink(deviceId)}
@@ -1373,25 +1373,24 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
                       {linkCopied ? "Copied!" : "Copy link"}
                     </button>
                   </div>
-                  <button
-                    onClick={() => setShowRawCode(s => !s)}
-                    className="text-xs text-gray-500 hover:text-gray-700 mt-2"
-                  >
-                    {showRawCode ? "Hide raw code" : "Show raw code"}
-                  </button>
-                  {showRawCode && (
-                    <div className="flex items-center gap-2 mt-2">
-                      <code className="flex-1 px-2 py-1.5 text-xs font-mono bg-white border border-gray-200 rounded text-gray-700 truncate">
-                        {deviceId}
-                      </code>
-                      <button
-                        onClick={handleCopyDeviceId}
-                        className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-200 hover:bg-gray-100 active:bg-gray-200 rounded transition-colors shrink-0"
-                      >
-                        {codeCopied ? "Copied!" : "Copy"}
-                      </button>
-                    </div>
-                  )}
+                  {/* Code row — the bare UUID. Critical to surface
+                      this prominently: pasting the URL through some
+                      chat apps URL-encodes characters into the
+                      payload (e.g. \ → %5C, which then decodes back
+                      to \<uuid> on the other side and partitions a
+                      separate songbook). Copy code avoids that
+                      whole round-trip. */}
+                  <div className="flex items-center gap-2 mt-2">
+                    <code className="flex-1 px-2 py-1.5 text-xs font-mono bg-white border border-gray-200 rounded text-gray-700 truncate">
+                      {deviceId}
+                    </code>
+                    <button
+                      onClick={handleCopyDeviceId}
+                      className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded transition-colors shrink-0"
+                    >
+                      {codeCopied ? "Copied!" : "Copy code"}
+                    </button>
+                  </div>
                 </div>
                 <div className="pt-2 border-t border-gray-200">
                   <div className="text-xs text-gray-500 mb-1">
