@@ -2,16 +2,18 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  addSongToSet,
   createSet,
   deleteSet,
   getSets,
   removeSongFromSet,
   renameSet,
   reorderSong,
+  songSetMembership,
   SetsUpdatedEvent,
   type SongSet,
 } from "@/lib/song-sets";
-import { getSongs, SongsUpdatedEvent, type SongBankEntry } from "@/lib/song-bank";
+import { getSongs, isAliasTitle, SongsUpdatedEvent, type SongBankEntry } from "@/lib/song-bank";
 import AddToSetSheet from "@/components/AddToSetSheet";
 import { useScoreStore } from "@/store/score-store";
 import { saveSnapshot } from "@/lib/autosave";
@@ -51,6 +53,20 @@ export default function SetsPanel({
   // Live search filter for the songs-in-set list. Critical once a set
   // gets above ~10 songs.
   const [setQuery, setSetQuery] = useState("");
+  // Which sets are checked in the list-view multi-select. When ≥1 is
+  // checked, the Songs section below shows per-row Add buttons that
+  // commit to all checked sets at once. This is the inverse of the
+  // pickSongs sheet flow: instead of pick-songs-then-pick-set, here
+  // it's pick-sets-then-add-songs.
+  const [selectedSetIds, setSelectedSetIds] = useState<Set<string>>(new Set());
+  const toggleSelectedSet = (id: string) => {
+    setSelectedSetIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
   const setScore = useScoreStore((s) => s.setScore);
   const setUIState = useScoreStore((s) => s.setUIState);
   const score = useScoreStore((s) => s.score);
@@ -88,6 +104,30 @@ export default function SetsPanel({
     setOpenSetId(s.id);
   };
 
+  // Load the first existing song of a set and enter perform mode.
+  // Critical for "open a set and play it" — without this, the only
+  // way to load a set was: open detail view → tap a song. This makes
+  // sets usable from the list view directly.
+  const handlePlaySet = async (setId: string) => {
+    const set = sets.find((s) => s.id === setId);
+    if (!set) return;
+    const firstSongId = set.songIds.find((id) => songsById.has(id));
+    if (!firstSongId) {
+      window.alert(`"${set.name}" has no songs yet. Add some songs first.`);
+      return;
+    }
+    await handleLoadSong(firstSongId, setId);
+  };
+
+  // Bulk-add a single song to every currently-checked set. Skips sets
+  // that already contain the song (dedup handled inside addSongToSet).
+  const handleAddSongToSelectedSets = (songId: string) => {
+    if (selectedSetIds.size === 0) return;
+    for (const setId of selectedSetIds) {
+      addSongToSet(setId, songId);
+    }
+  };
+
   const handleLoadSong = async (songId: string, setId: string) => {
     const entry = songsById.get(songId);
     if (!entry) return;
@@ -107,6 +147,16 @@ export default function SetsPanel({
   // ── List view: all sets ─────────────────────────────────────────────
 
   if (!openSet) {
+    // Membership map: songId → SongSets the song belongs to. Drives the
+    // per-song "✓ Added" / "Add" state in the Songs section below.
+    const membership = songSetMembership(sets);
+    // Songs to show in the bottom section. Alias artifacts ("(snapped)"
+    // etc.) hidden so the list stays scannable — same convention as
+    // AddToSetSheet's pickSongs.
+    const songsForAdd = Array.from(songsById.values())
+      .filter((s) => !isAliasTitle(s.title))
+      .sort((a, b) => b.savedAt - a.savedAt);
+
     return (
       <div className="flex flex-col flex-1 min-h-0">
         <div className="px-5 py-3 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
@@ -128,23 +178,54 @@ export default function SetsPanel({
             Create
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto">
-          {sets.length === 0 ? (
-            <div className="px-5 py-10 text-center text-sm text-gray-500">
-              No sets yet. Type a name above to create one — useful for grouping
-              songs you play together at a gig or rehearsal.
+
+        {/* ── Sets section (top): multi-select target picker ─────────
+            Capped at ~40% of available height so the songs section
+            below always has room. When empty, shows an explanatory
+            empty state and skips straight to "No sets yet" guidance. */}
+        {sets.length === 0 ? (
+          <div className="px-5 py-10 text-center text-sm text-gray-500">
+            No sets yet. Type a name above to create one — useful for grouping
+            songs you play together at a gig or rehearsal.
+          </div>
+        ) : (
+          <>
+            <div className="px-5 py-1.5 text-[11px] uppercase tracking-wider text-gray-500 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+              <span>Sets ({sets.length})</span>
+              {selectedSetIds.size > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedSetIds(new Set())}
+                  className="text-[10px] normal-case tracking-normal text-gray-500 hover:text-gray-700"
+                >
+                  Clear selection
+                </button>
+              )}
             </div>
-          ) : (
-            <ul className="divide-y divide-gray-100">
+            <ul className="overflow-y-auto divide-y divide-gray-100 max-h-[40%] shrink-0">
               {sets.map((set) => {
                 const songCount = set.songIds.filter((id) => songsById.has(id)).length;
                 const missingCount = set.songIds.length - songCount;
+                const isSelected = selectedSetIds.has(set.id);
                 return (
-                  <li key={set.id} className="flex items-center px-5 py-3 hover:bg-gray-50 gap-3">
+                  <li
+                    key={set.id}
+                    className={`flex items-center px-5 py-3 hover:bg-gray-50 gap-3 ${
+                      isSelected ? "bg-blue-50/40" : ""
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleSelectedSet(set.id)}
+                      className="w-4 h-4 text-blue-600 shrink-0"
+                      title="Select to bulk-add songs to this set"
+                    />
                     <button
                       type="button"
                       onClick={() => setOpenSetId(set.id)}
                       className="flex-1 text-left min-w-0"
+                      title="Open this set to reorder or remove songs"
                     >
                       <div className="text-sm font-medium text-gray-900 truncate">{set.name}</div>
                       <div className="text-xs text-gray-400 mt-0.5">
@@ -156,18 +237,14 @@ export default function SetsPanel({
                         )}
                       </div>
                     </button>
-                    {/* Inline "+ Add songs" — skips the open-the-set
-                        step. Pre-targets the AddToSetSheet at this set,
-                        so the sheet opens straight into pickSongs mode.
-                        Critical for "I just want to add a song without
-                        clicking into the set first." */}
                     <button
                       type="button"
-                      onClick={() => onPickSongs ? onPickSongs(set.id) : setAddToSetId(set.id)}
-                      className="px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50 active:bg-blue-100 border border-blue-200 rounded"
-                      title={`Add songs to ${set.name}`}
+                      onClick={() => handlePlaySet(set.id)}
+                      disabled={songCount === 0}
+                      className="px-2 py-1 text-xs font-medium text-green-700 hover:bg-green-50 active:bg-green-100 border border-green-200 rounded disabled:opacity-40 disabled:cursor-not-allowed"
+                      title={songCount === 0 ? "Empty set" : `Play ${set.name} from the top in perform mode`}
                     >
-                      + Add songs
+                      ▶ Play
                     </button>
                     <button
                       type="button"
@@ -184,6 +261,11 @@ export default function SetsPanel({
                       onClick={() => {
                         if (confirm(`Delete set "${set.name}"? Songs themselves are not deleted.`)) {
                           deleteSet(set.id);
+                          setSelectedSetIds((prev) => {
+                            const next = new Set(prev);
+                            next.delete(set.id);
+                            return next;
+                          });
                         }
                       }}
                       className="px-2 py-1 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 rounded"
@@ -194,7 +276,105 @@ export default function SetsPanel({
                 );
               })}
             </ul>
-          )}
+          </>
+        )}
+
+        {/* ── Songs section (bottom): per-row Add to selected sets ──
+            Mirrors the Songs tab list but the only action is Add. Disabled
+            until ≥1 set is checked above. When a song is already in every
+            checked set, button flips to "✓ Added" (still tap-friendly so
+            you can tap-add the same song again to MORE sets after
+            checking them — addSongToSet is idempotent). */}
+        {sets.length > 0 && (
+          <>
+            <div className="px-5 py-1.5 text-[11px] uppercase tracking-wider text-gray-500 bg-gray-50 border-y border-gray-100 flex items-center justify-between">
+              <span>
+                Add songs to{" "}
+                {selectedSetIds.size === 0
+                  ? <em className="not-italic text-gray-400">no set selected</em>
+                  : selectedSetIds.size === 1
+                  ? sets.find((s) => selectedSetIds.has(s.id))?.name ?? "1 set"
+                  : `${selectedSetIds.size} sets`}
+              </span>
+            </div>
+            <ul className="flex-1 overflow-y-auto divide-y divide-gray-100">
+              {songsForAdd.length === 0 ? (
+                <li className="px-5 py-6 text-sm text-gray-500 text-center">
+                  No songs saved yet.
+                </li>
+              ) : (
+                songsForAdd.map((entry) => {
+                  const memberOf = membership.get(entry.id) ?? [];
+                  const inSelectedCount = memberOf.filter((s) =>
+                    selectedSetIds.has(s.id),
+                  ).length;
+                  const allSelectedAlreadyHave =
+                    selectedSetIds.size > 0 &&
+                    inSelectedCount === selectedSetIds.size;
+                  const t = scoreTypeOf(entry.score);
+                  return (
+                    <li key={entry.id} className="flex items-center px-5 py-3 hover:bg-gray-50 gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium text-gray-900 truncate inline-flex items-center gap-2">
+                          <span className="truncate">{entry.title}</span>
+                          {t === "chord-chart" && (
+                            <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-pink-100 text-pink-700 shrink-0">
+                              Chart
+                            </span>
+                          )}
+                          {t === "notation" && (
+                            <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 shrink-0">
+                              Score
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs text-gray-400 mt-0.5 flex items-center gap-2 flex-wrap">
+                          {entry.folder && (
+                            <span
+                              className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 border border-gray-200"
+                              title={`Folder: ${entry.folder}`}
+                            >
+                              {entry.folder}
+                            </span>
+                          )}
+                          {memberOf.length > 0 && (
+                            <span
+                              className="text-[10px] px-1.5 py-0.5 rounded bg-pink-50 text-pink-700 border border-pink-100"
+                              title={memberOf.map((s) => s.name).join(", ")}
+                            >
+                              In {memberOf.length} set{memberOf.length === 1 ? "" : "s"}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleAddSongToSelectedSets(entry.id)}
+                        disabled={selectedSetIds.size === 0 || allSelectedAlreadyHave}
+                        className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors shrink-0 ${
+                          allSelectedAlreadyHave
+                            ? "text-green-700 bg-green-50 border border-green-200 cursor-default"
+                            : selectedSetIds.size === 0
+                            ? "text-gray-400 bg-gray-50 border border-gray-200 cursor-not-allowed"
+                            : "text-blue-700 hover:bg-blue-50 active:bg-blue-100 border border-blue-200"
+                        }`}
+                        title={
+                          selectedSetIds.size === 0
+                            ? "Select one or more sets above first"
+                            : allSelectedAlreadyHave
+                            ? "Already in every selected set"
+                            : `Add to ${selectedSetIds.size} selected set${selectedSetIds.size === 1 ? "" : "s"}`
+                        }
+                      >
+                        {allSelectedAlreadyHave ? "✓ Added" : "Add"}
+                      </button>
+                    </li>
+                  );
+                })
+              )}
+            </ul>
+          </>
+        )}
           {renameOpen && (
             <div className="absolute inset-0 bg-black/30 flex items-center justify-center p-4 z-10">
               <div
@@ -236,10 +416,9 @@ export default function SetsPanel({
               </div>
             </div>
           )}
-        </div>
-        {/* AddToSetSheet — also mounted from the list view so the
-            inline "+ Add songs" button on each row works without first
-            opening a set. */}
+        {/* AddToSetSheet — kept for any caller path that still uses
+            addToSetId, but the list-view's row workflow no longer
+            opens it (per-song Add via the new Songs section). */}
         {addToSetId && (
           <AddToSetSheet
             mode="pickSongs"
