@@ -3,6 +3,15 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-13 — 85e1cea
+
+**Per-folder Export JSON + Delete all (archive workflow) (#124)**
+
+- Commit: [`85e1cea`](../../commit/85e1cea791e0f25083242889281e439bf98e4025)
+- Author: gibsonds
+- Files changed:
+  - `src/components/MySongsModal.tsx`
+
 ## 2026-05-13 — 66e4fb4
 
 **MySongsModal right-pane redesign: fewer modals, bigger surface (#123)**
