@@ -381,19 +381,42 @@ export async function syncSongbook(opts?: {
   }
 }
 
-// Parse a pasted value as either a share URL (?join=<id>) or a raw device
-// code. Returns the device id, or null if nothing usable is found.
+// UUID v4-ish shape — 8-4-4-4-12 hex with dashes. crypto.randomUUID()
+// always produces this; cloud-side partitioning depends on the
+// canonical lowercase form.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Parse a pasted value as either a share URL (?join=<id>) or a raw
+// device code. Returns the device id ONLY if it cleans up to a valid
+// UUID shape — otherwise null. Strips non-hex garbage from either end
+// (this catches the "\<uuid>" mishap from URL-encoded paste round-
+// trips). Returns lowercase canonical form so the cloud partition
+// key is consistent.
 export function extractJoinCode(input: string): string | null {
   const trimmed = input.trim();
   if (!trimmed) return null;
+  // URL form: ?join=<id>. URL parsing also URL-decodes %5C → \, so
+  // the sanitize step below still picks up the slash and strips it.
   if (trimmed.includes("?") || trimmed.startsWith("http")) {
     try {
       const url = new URL(trimmed);
       const join = url.searchParams.get("join");
-      if (join) return join;
+      if (join) return sanitizeDeviceCode(join);
     } catch {
       /* not a URL — fall through to raw */
     }
   }
-  return trimmed;
+  return sanitizeDeviceCode(trimmed);
+}
+
+function sanitizeDeviceCode(raw: string): string | null {
+  // Strip everything that isn't hex / dash from the front and back.
+  // Internal garbage (e.g. spaces) would break a real UUID, so we
+  // let the regex check reject it rather than mutate the middle.
+  const cleaned = raw
+    .trim()
+    .replace(/^[^0-9a-fA-F]+/, "")
+    .replace(/[^0-9a-fA-F]+$/, "")
+    .toLowerCase();
+  return UUID_RE.test(cleaned) ? cleaned : null;
 }
