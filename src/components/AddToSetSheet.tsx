@@ -112,7 +112,7 @@ export default function AddToSetSheet(props: Props) {
 
 // ── pickSet mode ───────────────────────────────────────────────────
 
-function PickSetBody({
+export function PickSetBody({
   sets,
   songIds,
   onClose,
@@ -246,7 +246,7 @@ function PickSetBody({
 
 // ── pickSongs mode ────────────────────────────────────────────────
 
-function PickSongsBody({
+export function PickSongsBody({
   sets,
   songs,
   targetSetId,

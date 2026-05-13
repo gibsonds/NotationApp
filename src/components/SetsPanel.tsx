@@ -24,7 +24,19 @@ import { scoreTypeOf } from "@/lib/analytics";
  * No cloud sync yet (per-device only). Cloud-aware sets land alongside
  * #74 OAuth42 since per-set permissions need user identity.
  */
-export default function SetsPanel({ onClose }: { onClose: () => void }) {
+export default function SetsPanel({
+  onClose,
+  onPickSongs,
+}: {
+  onClose: () => void;
+  /** Optional: when set, the "+ Add songs" actions delegate to the
+   *  parent instead of opening SetsPanel's own AddToSetSheet. The
+   *  parent (MySongsModal) uses this to route the pickSongs flow into
+   *  its right pane — no modal-on-modal. When unset, SetsPanel falls
+   *  back to mounting AddToSetSheet itself so it remains usable in
+   *  isolation. */
+  onPickSongs?: (setId: string) => void;
+}) {
   const [sets, setSetsState] = useState<SongSet[]>(() => getSets());
   const [openSetId, setOpenSetId] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
@@ -151,7 +163,7 @@ export default function SetsPanel({ onClose }: { onClose: () => void }) {
                         clicking into the set first." */}
                     <button
                       type="button"
-                      onClick={() => setAddToSetId(set.id)}
+                      onClick={() => onPickSongs ? onPickSongs(set.id) : setAddToSetId(set.id)}
                       className="px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50 active:bg-blue-100 border border-blue-200 rounded"
                       title={`Add songs to ${set.name}`}
                     >
@@ -270,7 +282,7 @@ export default function SetsPanel({ onClose }: { onClose: () => void }) {
         </span>
         <button
           type="button"
-          onClick={() => setAddToSetId(openSet.id)}
+          onClick={() => onPickSongs ? onPickSongs(openSet.id) : setAddToSetId(openSet.id)}
           className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-lg"
           title="Add multiple songs to this set"
         >

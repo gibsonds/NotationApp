@@ -5,7 +5,7 @@ import { useScoreStore } from "@/store/score-store";
 import { saveSnapshot } from "@/lib/autosave";
 import AutosaveRecoveryDialog from "@/components/AutosaveRecoveryDialog";
 import SetsPanel from "@/components/SetsPanel";
-import AddToSetSheet from "@/components/AddToSetSheet";
+import { PickSetBody, PickSongsBody } from "@/components/AddToSetSheet";
 import { getSets, SetsUpdatedEvent, songSetMembership, type SongSet } from "@/lib/song-sets";
 import {
   canonicalSongTitle,
@@ -87,11 +87,22 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
   // Esc exits.
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  // Stacked sheet for "Add to set…" bulk action. Pre-fills with the
-  // current selection; the sheet picks the target set (existing or new).
-  const [addToSetOpen, setAddToSetOpen] = useState(false);
-  // Centered "pick a folder" picker for the bulk Move action.
-  const [bulkFolderOpen, setBulkFolderOpen] = useState(false);
+  // Right-pane state machine. Replaces the previous stacked-sheet
+  // approach (AddToSetSheet, BulkFolderPicker, etc. as modal-on-modal).
+  // The pane lives INSIDE the modal so it's bigger, scrollable, and
+  // doesn't pile chrome on top of chrome.
+  //
+  //  - addToSet: pickSet flow (caller pre-chose songs)
+  //  - pickSongs: pickSongs flow (caller pre-chose the set)
+  //  - moveFolder: bulk folder picker
+  //  - null: pane closed; left pane is full-width
+  type RightPaneState =
+    | { kind: "addToSet"; songIds: string[] }
+    | { kind: "pickSongs"; targetSetId: string }
+    | { kind: "moveFolder"; songIds: string[] }
+    | { kind: null };
+  const [rightPane, setRightPane] = useState<RightPaneState>({ kind: null });
+  const closeRightPane = () => setRightPane({ kind: null });
 
   // Search box state. When non-empty, the list switches from
   // folder-grouped to a flat result list (folder shown inline). Folder
@@ -121,17 +132,25 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
     });
   };
 
+  // Esc layering: close the right pane first, then exit select mode,
+  // then let the parent modal handle Esc itself (close). One layer per
+  // Esc press.
   useEffect(() => {
-    if (!selectMode) return;
+    if (!selectMode && rightPane.kind === null) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
+      if (e.key !== "Escape") return;
+      if (rightPane.kind !== null) {
+        e.stopPropagation();
+        closeRightPane();
+      } else if (selectMode) {
         e.stopPropagation();
         exitSelectMode();
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [selectMode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectMode, rightPane.kind]);
 
   const openKebab = (entry: SongBankEntry, e: React.MouseEvent<HTMLButtonElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -588,17 +607,17 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
     }
   };
 
-  // Bulk move-to-folder. Called from the centered folder picker once
-  // the user picks a target folder (or creates a new one). All selected
-  // ids land in that folder; one sync at the end.
-  const handleBulkMoveToFolder = async (folder: string | null) => {
-    if (selectedIds.size === 0) return;
-    const ids = Array.from(selectedIds);
+  // Apply a folder choice to an arbitrary set of song ids. Used by
+  // the right-pane FolderPickerPaneBody for both the bulk-bar Move
+  // action AND single-row kebab Move (where the right pane targets
+  // just that one song). Local change runs first; cloud push happens
+  // after, with a final runSync().
+  const handleBulkMoveToFolderIds = async (ids: string[], folder: string | null) => {
+    if (ids.length === 0) return;
     for (const id of ids) {
       setSongFolder(id, folder && folder.trim() ? folder.trim() : null);
     }
     refreshLocal();
-    setBulkFolderOpen(false);
     exitSelectMode();
     if (CLOUD_ENABLED) {
       // Push each updated entry so the new folder propagates. Re-read
@@ -662,7 +681,7 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-xl shadow-2xl w-[800px] max-w-[92vw] flex flex-col max-h-[80vh]"
+        className="bg-white rounded-xl shadow-2xl w-[1100px] max-w-[95vw] flex flex-col max-h-[92vh]"
         onClick={e => e.stopPropagation()}
       >
         <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
@@ -724,9 +743,10 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
           )}
         </div>
 
-        {activeTab === "sets" ? (
-          <SetsPanel onClose={onClose} />
-        ) : score ? (() => {
+        {/* Save bar / no-score message — only on the Songs tab. SetsPanel
+            moved into the flex-row below so the right pane can sit
+            alongside either tab's content. */}
+        {activeTab === "songs" && (score ? (() => {
           // Save flow with explicit branching to prevent silent
           // overwrites. Three states:
           //
@@ -817,7 +837,7 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
           <div className="px-5 py-3 bg-gray-50 border-b border-gray-200">
             <p className="text-sm text-gray-500">Open or create a score or chord chart to save it here.</p>
           </div>
-        )}
+        ))}
 
         {/* Search box — pinned above the list. Hidden in Sets tab and
             in select mode (the bulk-action bar already overloads the
@@ -844,6 +864,19 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
           </div>
         )}
 
+        {/* Body row — splits into left pane (Songs list or Sets) and an
+            optional right pane (Add to set / Move to folder / Pick
+            songs for a set). The right pane replaces the previous
+            stacked-modal sheets so users get a bigger working surface
+            with no modal-on-modal. */}
+        <div className="flex-1 flex flex-row min-h-0 overflow-hidden">
+          <div className={`flex flex-col min-w-0 ${rightPane.kind ? "hidden md:flex md:flex-1" : "flex-1"}`}>
+        {activeTab === "sets" ? (
+          <SetsPanel
+            onClose={onClose}
+            onPickSongs={(setId) => setRightPane({ kind: "pickSongs", targetSetId: setId })}
+          />
+        ) : (
         <div className="flex-1 overflow-y-auto">
           {songs.length === 0 ? (
             <div className="px-5 py-10 text-center text-sm text-gray-400">
@@ -1159,6 +1192,47 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
             </div>
           )}
         </div>
+        )}
+          </div>
+          {/* Right pane — contextual action target. Replaces stacked
+              sheets. On wide viewports, sits alongside the left pane
+              (~380px). On narrow viewports (< md ≈ 768px), the left
+              pane is hidden and the right pane takes the whole modal,
+              Master/Detail style. */}
+          {rightPane.kind && (
+            <div className="flex flex-col w-full md:w-[380px] md:max-w-[42%] md:border-l md:border-gray-200 bg-white min-h-0">
+              {rightPane.kind === "addToSet" && (
+                <PickSetBody
+                  sets={sets}
+                  songIds={rightPane.songIds}
+                  onClose={() => {
+                    closeRightPane();
+                    exitSelectMode();
+                  }}
+                />
+              )}
+              {rightPane.kind === "pickSongs" && (
+                <PickSongsBody
+                  sets={sets}
+                  songs={songs}
+                  targetSetId={rightPane.targetSetId}
+                  onClose={closeRightPane}
+                />
+              )}
+              {rightPane.kind === "moveFolder" && (
+                <FolderPickerPaneBody
+                  folderNames={folderNames}
+                  count={rightPane.songIds.length}
+                  onCancel={closeRightPane}
+                  onPick={(folder) => {
+                    void handleBulkMoveToFolderIds(rightPane.songIds, folder);
+                    closeRightPane();
+                  }}
+                />
+              )}
+            </div>
+          )}
+        </div>
 
         {CLOUD_ENABLED && (
           <div className="px-5 py-3 border-t border-gray-100 bg-gray-50">
@@ -1256,13 +1330,13 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
             </span>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setAddToSetOpen(true)}
+                onClick={() => setRightPane({ kind: "addToSet", songIds: Array.from(selectedIds) })}
                 className="px-4 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-lg"
               >
                 Add to set…
               </button>
               <button
-                onClick={() => setBulkFolderOpen(true)}
+                onClick={() => setRightPane({ kind: "moveFolder", songIds: Array.from(selectedIds) })}
                 className="px-4 py-1.5 text-sm text-gray-700 hover:bg-gray-100 active:bg-gray-200 rounded-lg"
               >
                 Move to folder…
@@ -1303,30 +1377,6 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
         </div>
       </div>
 
-      {/* Stacked sheet for "Add to set…" — z-[110] sits above this modal's
-          z-50, matching the kebab-menu z-stack pattern. */}
-      {addToSetOpen && (
-        <AddToSetSheet
-          mode="pickSet"
-          songIds={Array.from(selectedIds)}
-          onClose={() => {
-            setAddToSetOpen(false);
-            exitSelectMode();
-          }}
-        />
-      )}
-
-      {/* Centered bulk folder picker — one picker for the entire selection
-          (vs. the per-row picker reached via the kebab menu). */}
-      {bulkFolderOpen && (
-        <BulkFolderPicker
-          folderNames={folderNames}
-          count={selectedIds.size}
-          onCancel={() => setBulkFolderOpen(false)}
-          onPick={(folder) => handleBulkMoveToFolder(folder)}
-        />
-      )}
-
       {/* Kebab menu — fixed-positioned at the button anchor so it isn't
           clipped by the modal's overflow-y-auto song list (the bug that
           made taps unreliable on iPad). */}
@@ -1356,6 +1406,16 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
               className="w-full text-left px-3 py-2 hover:bg-blue-50 active:bg-blue-100 text-gray-700"
             >
               Move to folder…
+            </button>
+            <button
+              onClick={() => {
+                const e = menuAnchor.entry;
+                setMenuAnchor(null);
+                setRightPane({ kind: "addToSet", songIds: [e.id] });
+              }}
+              className="w-full text-left px-3 py-2 hover:bg-blue-50 active:bg-blue-100 text-gray-700"
+            >
+              Add to set…
             </button>
             <button
               onClick={() => handleViewHistory(menuAnchor.entry)}
@@ -1440,12 +1500,15 @@ function truncate(s: string, max: number): string {
 }
 
 /**
- * Centered folder picker for the bulk Move action. Lists existing
- * folder names + "(Unfiled)" + "+ New folder" inline create. Pops over
- * the entire selection at once (vs. the kebab's per-row anchored
- * picker). Renders at z-[110] above MySongsModal's z-50.
+ * Folder picker body for the bulk Move action — renders inline inside
+ * the MySongsModal right pane, NOT as a standalone modal. (The old
+ * standalone stacked-sheet version was replaced when the modal grew
+ * a right pane; sheets-on-modals were the "small windows" complaint.)
+ *
+ * Lists existing folders + "(Unfiled)" + a "+ New folder" inline
+ * create. Caller owns positioning and Esc handling.
  */
-function BulkFolderPicker({
+function FolderPickerPaneBody({
   folderNames,
   count,
   onCancel,
@@ -1459,114 +1522,92 @@ function BulkFolderPicker({
   const [newFolder, setNewFolder] = useState("");
   const [creating, setCreating] = useState(false);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        onCancel();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onCancel]);
-
   return (
-    <div
-      className="fixed inset-0 z-[110] flex items-start justify-center pt-[12vh] bg-black/40"
-      onClick={(e) => {
-        e.stopPropagation();
-        onCancel();
-      }}
-    >
-      <div
-        className="bg-white rounded-xl shadow-2xl border border-gray-200 w-[440px] max-w-[92vw] max-h-[70vh] flex flex-col overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="px-5 py-3 border-b border-gray-200 flex items-center justify-between">
-          <div>
-            <h2 className="text-base font-semibold text-gray-900">
-              Move {count} {count === 1 ? "song" : "songs"} to a folder
-            </h2>
-            <p className="text-xs text-gray-500 mt-0.5">
-              Pick an existing folder or name a new one.
-            </p>
-          </div>
-          <button
-            onClick={onCancel}
-            className="text-gray-500 hover:text-gray-700 text-lg px-2 shrink-0"
-            aria-label="Close"
-          >
-            ×
-          </button>
+    <>
+      <div className="px-5 py-3 border-b border-gray-200 flex items-center justify-between">
+        <div>
+          <h2 className="text-base font-semibold text-gray-900">
+            Move {count} {count === 1 ? "song" : "songs"} to a folder
+          </h2>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Pick an existing folder or name a new one.
+          </p>
         </div>
-        <div className="flex-1 overflow-y-auto">
-          <ul className="divide-y divide-gray-100">
-            <li>
+        <button
+          onClick={onCancel}
+          className="text-gray-500 hover:text-gray-700 text-lg px-2 shrink-0"
+          aria-label="Close pane"
+        >
+          ×
+        </button>
+      </div>
+      <div className="flex-1 overflow-y-auto">
+        <ul className="divide-y divide-gray-100">
+          <li>
+            <button
+              type="button"
+              onClick={() => onPick(null)}
+              className="w-full text-left px-5 py-3 text-sm hover:bg-gray-50 active:bg-gray-100 text-gray-900"
+            >
+              (Unfiled)
+            </button>
+          </li>
+          {folderNames.map((f) => (
+            <li key={f}>
               <button
                 type="button"
-                onClick={() => onPick(null)}
+                onClick={() => onPick(f)}
                 className="w-full text-left px-5 py-3 text-sm hover:bg-gray-50 active:bg-gray-100 text-gray-900"
               >
-                (Unfiled)
+                {f}
               </button>
             </li>
-            {folderNames.map((f) => (
-              <li key={f}>
-                <button
-                  type="button"
-                  onClick={() => onPick(f)}
-                  className="w-full text-left px-5 py-3 text-sm hover:bg-gray-50 active:bg-gray-100 text-gray-900"
-                >
-                  {f}
-                </button>
-              </li>
-            ))}
-          </ul>
-          <div className="border-t border-gray-100 px-5 py-3">
-            {creating ? (
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  autoFocus
-                  value={newFolder}
-                  onChange={(e) => setNewFolder(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      const t = newFolder.trim();
-                      if (t) onPick(t);
-                    }
-                    if (e.key === "Escape") {
-                      setCreating(false);
-                      setNewFolder("");
-                    }
-                  }}
-                  placeholder="Folder name"
-                  className="flex-1 text-sm text-gray-900 placeholder-gray-400 border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <button
-                  type="button"
-                  onClick={() => {
+          ))}
+        </ul>
+        <div className="border-t border-gray-100 px-5 py-3">
+          {creating ? (
+            <div className="flex gap-2">
+              <input
+                type="text"
+                autoFocus
+                value={newFolder}
+                onChange={(e) => setNewFolder(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
                     const t = newFolder.trim();
                     if (t) onPick(t);
-                  }}
-                  disabled={!newFolder.trim()}
-                  className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:bg-gray-300 rounded-lg"
-                >
-                  Move
-                </button>
-              </div>
-            ) : (
+                  }
+                  if (e.key === "Escape") {
+                    setCreating(false);
+                    setNewFolder("");
+                  }
+                }}
+                placeholder="Folder name"
+                className="flex-1 text-sm text-gray-900 placeholder-gray-400 border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
               <button
                 type="button"
-                onClick={() => setCreating(true)}
-                className="w-full text-left text-sm text-blue-700 hover:underline"
+                onClick={() => {
+                  const t = newFolder.trim();
+                  if (t) onPick(t);
+                }}
+                disabled={!newFolder.trim()}
+                className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:bg-gray-300 rounded-lg"
               >
-                + New folder…
+                Move
               </button>
-            )}
-          </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setCreating(true)}
+              className="w-full text-left text-sm text-blue-700 hover:underline"
+            >
+              + New folder…
+            </button>
+          )}
         </div>
       </div>
-    </div>
+    </>
   );
 }
