@@ -23,6 +23,8 @@ interface MenuBarProps {
   sidebarOpen: boolean;
   onOpenAutosave?: () => void;
   onForcePushCloud?: () => void;
+  onExportAllSongs?: () => void;
+  onResetAndPullFromCloud?: () => void;
   onPasteLyrics?: () => void;
   onMySongs?: () => void;
   onSendFeedback?: () => void;
@@ -119,7 +121,9 @@ function MenuDropdown({ label, items, isOpen, onToggle, onClose, onItemClick }: 
 }
 
 export default function MenuBar({
-  zoom, onZoomChange, onPrint, onOpenAutosave, onForcePushCloud, onPasteLyrics, onMySongs, onApiKeys,
+  zoom, onZoomChange, onPrint, onOpenAutosave, onForcePushCloud,
+  onExportAllSongs, onResetAndPullFromCloud,
+  onPasteLyrics, onMySongs, onApiKeys,
   onToggleSidebar, sidebarOpen, onSendFeedback,
 }: MenuBarProps) {
   const {
@@ -360,10 +364,16 @@ export default function MenuBar({
     { separator: true },
     { label: "Open Project...", shortcut: "", action: () => projectInputRef.current?.click() },
     { label: "Recover from Auto-save...", action: () => onOpenAutosave?.() },
+    // Bulk backup — exports every local song as a single JSON file.
+    // Always-safe operation; run before any destructive cloud action.
+    { label: "Export all songs (backup)...", action: () => onExportAllSongs?.() },
     // Force-pushes every local song to cloud without expectedVersion,
     // bypassing the My Songs sync flow that would otherwise tombstone
     // local entries when cloud has been wiped on another device.
     { label: "Push all songs to cloud (recovery)...", action: () => onForcePushCloud?.() },
+    // Inverse of the force-push: wipe local, pull cloud. Use on a
+    // device that should mirror the cloud state.
+    { label: "Reset local and pull from cloud...", action: () => onResetAndPullFromCloud?.() },
     { label: "Import...", shortcut: "", action: () => fileInputRef.current?.click() },
     { separator: true },
     { label: "Save Revision", shortcut: "Cmd+S", action: handleSave, enabled: !!score },

@@ -24,7 +24,8 @@ import JoinSongbookModal from "@/components/JoinSongbookModal";
 import PerformView from "@/components/PerformView";
 import PersistFailureBanner from "@/components/PersistFailureBanner";
 import FeedbackModal from "@/components/FeedbackModal";
-import { CLOUD_ENABLED, getDeviceId, cloudPutSong } from "@/lib/song-cloud";
+import { CLOUD_ENABLED, getDeviceId, cloudPutSong, syncSongbook } from "@/lib/song-cloud";
+import { setSongs as writeLocalSongs } from "@/lib/song-bank";
 import { autosaveToCloud, CloudSaveEvents } from "@/lib/cloud-autosave";
 import { getSongs, updateSong } from "@/lib/song-bank";
 import type { SongDTO } from "@/lib/song-cloud-types";
@@ -149,6 +150,67 @@ export default function Home() {
     window.alert(
       `Pushed ${pushed} song${pushed === 1 ? "" : "s"} to cloud.${failed > 0 ? `\n${failed} failed (see console).` : ""}\n\nOther devices can now sync to pick them back up.`,
     );
+  }, []);
+
+  // Bulk export: every local song as a single JSON file. Safety net
+  // before any destructive cloud operation. Filename includes a
+  // timestamp so multiple exports don't overwrite each other in the
+  // user's Downloads folder.
+  const handleExportAllSongs = useCallback(() => {
+    const songs = getSongs();
+    if (songs.length === 0) {
+      window.alert("No local songs to export.");
+      return;
+    }
+    const payload = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      deviceId: CLOUD_ENABLED ? getDeviceId() : null,
+      songCount: songs.length,
+      songs,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    a.href = url;
+    a.download = `notation-app-all-songs-${ts}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }, []);
+
+  // Recovery: wipe localStorage's song list and re-pull everything
+  // from cloud. Used after a sync went bad on THIS device and you
+  // want the cloud state as the source of truth. Pairs with the
+  // force-push action — that one runs on the device with the good
+  // local state, this one runs on the device that needs to mirror
+  // cloud.
+  const handleResetAndPullFromCloud = useCallback(async () => {
+    if (!CLOUD_ENABLED) {
+      window.alert("Cloud sync isn't enabled in this build.");
+      return;
+    }
+    const local = getSongs();
+    const ok = window.confirm(
+      `Wipe this device's local song list (${local.length} song${local.length === 1 ? "" : "s"}) and re-pull from cloud?\n\n` +
+        `Use this only if cloud has the data you want and this device's local copy is stale or wrong. Sets stay untouched (they're local-only).\n\n` +
+        `If you're not sure, run File → Export all songs first as a backup.`,
+    );
+    if (!ok) return;
+    writeLocalSongs([]);
+    try {
+      const merged = await syncSongbook();
+      window.alert(
+        `Pulled ${merged.length} song${merged.length === 1 ? "" : "s"} from cloud. Open My Songs to see them.`,
+      );
+    } catch (err) {
+      console.warn("[reset-and-pull] sync failed", err);
+      window.alert(
+        "Cloud pull failed. Local songs were wiped — restore from the JSON backup if needed (File → Import is not yet wired; paste into localStorage's notation-app-songs key as a temporary workaround).",
+      );
+    }
   }, []);
 
   const handlePrint = useCallback(() => {
@@ -818,6 +880,8 @@ export default function Home() {
           sidebarOpen={leftPanelOpen}
           onOpenAutosave={() => setAutosaveDialogOpen(true)}
           onForcePushCloud={handleForcePushCloud}
+          onExportAllSongs={handleExportAllSongs}
+          onResetAndPullFromCloud={handleResetAndPullFromCloud}
           onPasteLyrics={() => setPasteLyricsOpen(true)}
           onMySongs={() => setMySongsOpen(true)}
           onSendFeedback={() => setFeedbackOpen(true)}
