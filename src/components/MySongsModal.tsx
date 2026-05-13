@@ -681,7 +681,7 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-xl shadow-2xl w-[1100px] max-w-[95vw] flex flex-col max-h-[92vh]"
+        className="bg-white rounded-xl shadow-2xl w-[1100px] max-w-[95vw] flex flex-col h-[92vh]"
         onClick={e => e.stopPropagation()}
       >
         <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">

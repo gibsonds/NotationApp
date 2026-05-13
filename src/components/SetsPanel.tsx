@@ -184,9 +184,13 @@ export default function SetsPanel({
             below always has room. When empty, shows an explanatory
             empty state and skips straight to "No sets yet" guidance. */}
         {sets.length === 0 ? (
-          <div className="px-5 py-10 text-center text-sm text-gray-500">
-            No sets yet. Type a name above to create one — useful for grouping
-            songs you play together at a gig or rehearsal.
+          // Compact empty-state — kept small so the Songs section
+          // below stays visible. Without this, the modal collapsed
+          // to a tiny height the moment you switched to the Sets tab
+          // before creating your first set.
+          <div className="px-5 py-3 text-sm text-gray-500 bg-gray-50 border-b border-gray-100">
+            No sets yet. Type a name above to create one — useful for
+            grouping songs you play together at a gig or rehearsal.
           </div>
         ) : (
           <>
@@ -284,8 +288,11 @@ export default function SetsPanel({
             until ≥1 set is checked above. When a song is already in every
             checked set, button flips to "✓ Added" (still tap-friendly so
             you can tap-add the same song again to MORE sets after
-            checking them — addSongToSet is idempotent). */}
-        {sets.length > 0 && (
+            checking them — addSongToSet is idempotent).
+            Rendered regardless of sets count so the layout doesn't
+            jump when you first land on the Sets tab — the Add buttons
+            stay disabled until ≥1 set is selected. */}
+        {(
           <>
             <div className="px-5 py-1.5 text-[11px] uppercase tracking-wider text-gray-500 bg-gray-50 border-y border-gray-100 flex items-center justify-between">
               <span>

@@ -301,9 +301,12 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
         </button>
       </div>
 
-      {/* Top-left nav cluster — Prev / Title (opens picker) / Next */}
+      {/* Top-left nav cluster — Prev / Title (opens picker) / Next.
+          Fixed-width cluster so the ▶ next-song arrow doesn't drift
+          when song titles vary in length. Title button takes flex-1
+          of the remaining space and truncates anything longer. */}
       {songs.length > 0 && (
-        <div className="absolute top-3 left-3 flex items-center gap-1 bg-gray-900/80 backdrop-blur-sm rounded-xl p-1 shadow border border-white/10 max-w-[calc(50vw-1rem)]">
+        <div className="absolute top-3 left-3 flex items-center gap-1 bg-gray-900/80 backdrop-blur-sm rounded-xl p-1 shadow border border-white/10 w-[min(34rem,calc(50vw-1rem))]">
           <button
             type="button"
             onClick={() => loadAt(currentIndex - 1)}
@@ -317,20 +320,20 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
           <button
             type="button"
             onClick={() => setPickerOpen(o => !o)}
-            className="h-11 px-3 flex flex-col items-start justify-center text-gray-100 hover:bg-gray-800 active:bg-gray-700 rounded-lg max-w-[40vw]"
+            className="h-11 px-3 flex flex-col items-start justify-center text-gray-100 hover:bg-gray-800 active:bg-gray-700 rounded-lg flex-1 min-w-0"
             title="Jump to song"
           >
             {activeSet ? (
-              <span className="text-[9px] uppercase tracking-wider text-pink-300 leading-none mb-0.5 truncate max-w-[40vw]">
+              <span className="text-[9px] uppercase tracking-wider text-pink-300 leading-none mb-0.5 truncate max-w-full">
                 Set: {activeSet.name}
               </span>
             ) : performFolder ? (
-              <span className="text-[9px] uppercase tracking-wider text-gray-400 leading-none mb-0.5">
+              <span className="text-[9px] uppercase tracking-wider text-gray-400 leading-none mb-0.5 truncate max-w-full">
                 {performFolder}
               </span>
             ) : null}
-            <span className="flex items-center gap-1 truncate text-sm font-medium leading-tight">
-              <span className="truncate">
+            <span className="flex items-center gap-1 text-sm font-medium leading-tight w-full min-w-0">
+              <span className="truncate flex-1 text-left">
                 {songsInScope[currentIndex]?.title ?? score.title ?? "Untitled"}
               </span>
               <svg className="w-3 h-3 shrink-0 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
