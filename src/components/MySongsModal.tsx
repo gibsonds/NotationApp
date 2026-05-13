@@ -81,6 +81,11 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
   const [menuAnchor, setMenuAnchor] = useState<Anchor | null>(null);
   const [pickerAnchor, setPickerAnchor] = useState<Anchor | null>(null);
   const [historyForTitle, setHistoryForTitle] = useState<string | null>(null);
+  // Folder-header action menu (Export as JSON / Delete all). Stored
+  // as `folder: string` where "" represents the Unfiled bucket — same
+  // convention as the per-song folder field.
+  type FolderAnchor = { folder: string; top: number; right: number };
+  const [folderMenuAnchor, setFolderMenuAnchor] = useState<FolderAnchor | null>(null);
   // Multi-select state for bulk operations (#73 follow-up). When
   // selectMode is on, rows render with leading checkboxes; the title
   // toggles selection instead of starting a rename; Load + kebab hide.
@@ -576,6 +581,67 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
     }
   };
 
+  // Export every song in a given folder as a single JSON file. Use to
+  // back up before bulk-deleting a folder ("archive" workflow). The
+  // file contains full SongBankEntry objects (id, title, score,
+  // savedAt, folder, cloudVersion) so it could feed a future import.
+  // Folder "" represents the Unfiled bucket.
+  const handleExportFolder = (folderName: string) => {
+    const entries = getSongs().filter((s) => (s.folder ?? "") === folderName);
+    if (entries.length === 0) {
+      setFolderMenuAnchor(null);
+      return;
+    }
+    const payload = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      folder: folderName || "_unfiled",
+      songCount: entries.length,
+      songs: entries,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const safeName = (folderName || "unfiled").replace(/[^a-z0-9-_]+/gi, "_");
+    const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    a.href = url;
+    a.download = `notation-app-${safeName}-${ts}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    setFolderMenuAnchor(null);
+  };
+
+  // Bulk-delete every song in a folder. Pairs with Export above for
+  // the "archive a folder" workflow. Confirms with a preview; same
+  // local + cloud delete pattern as handleBulkDelete / handleCleanupAliases.
+  const handleDeleteFolderContents = async (folderName: string) => {
+    const entries = getSongs().filter((s) => (s.folder ?? "") === folderName);
+    if (entries.length === 0) {
+      setFolderMenuAnchor(null);
+      return;
+    }
+    const folderLabel = folderName || "(Unfiled)";
+    const preview = entries.slice(0, 8).map((s) => `• "${s.title}"`).join("\n");
+    const more = entries.length > 8 ? `\n…and ${entries.length - 8} more` : "";
+    const ok = window.confirm(
+      `Delete all ${entries.length} song${entries.length === 1 ? "" : "s"} in folder "${folderLabel}"?\n\nRemoved from local + cloud. Autosave snapshots remain on this device for recovery.\n\n${preview}${more}`,
+    );
+    if (!ok) return;
+    setFolderMenuAnchor(null);
+    for (const entry of entries) {
+      deleteSong(entry.id);
+      if (CLOUD_ENABLED) {
+        try { await cloudDeleteSong(entry.id); } catch { /* best-effort */ }
+      }
+    }
+    refreshLocal();
+    if (CLOUD_ENABLED) {
+      await runSync();
+    }
+  };
+
   // Bulk delete of the currently-selected songs. Confirms with a count
   // + preview. Queues all deletes first (local + cloud) and runs ONE
   // sync at the end — same pattern as handleCleanupAliases. Exits
@@ -1024,26 +1090,55 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
                 return (
                 <div key={group.name || "_unfiled"}>
                   {grouped.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => toggleFolderCollapse(group.name || "_unfiled")}
-                      className="w-full px-5 py-2 text-[11px] font-semibold uppercase tracking-wider text-gray-500 bg-gray-50 hover:bg-gray-100 active:bg-gray-200 border-b border-gray-100 flex items-center gap-2 transition-colors"
-                    >
-                      <svg
-                        className={`w-3 h-3 transition-transform ${collapsed ? "" : "rotate-90"}`}
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                        strokeWidth={2}
+                    <div className="w-full px-5 py-2 text-[11px] font-semibold uppercase tracking-wider text-gray-500 bg-gray-50 border-b border-gray-100 flex items-center gap-2 transition-colors">
+                      <button
+                        type="button"
+                        onClick={() => toggleFolderCollapse(group.name || "_unfiled")}
+                        className="flex-1 flex items-center gap-2 text-left hover:text-gray-700 transition-colors"
                       >
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                      </svg>
-                      <svg className="w-3 h-3 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
-                      </svg>
-                      <span>{group.label}</span>
-                      <span className="text-gray-400 font-normal">{group.entries.length}</span>
-                    </button>
+                        <svg
+                          className={`w-3 h-3 transition-transform ${collapsed ? "" : "rotate-90"}`}
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          strokeWidth={2}
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                        </svg>
+                        <svg className="w-3 h-3 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+                        </svg>
+                        <span>{group.label}</span>
+                        <span className="text-gray-400 font-normal">{group.entries.length}</span>
+                      </button>
+                      {/* Folder-level actions: Export folder as JSON,
+                          Delete all in folder. Hidden in select mode so
+                          the row chrome doesn't compete with the bulk-
+                          action bar. */}
+                      {!selectMode && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            setFolderMenuAnchor({
+                              folder: group.name || "",
+                              top: rect.bottom + 4,
+                              right: window.innerWidth - rect.right,
+                            });
+                          }}
+                          className="p-1 text-gray-400 hover:text-gray-700 hover:bg-gray-200 active:bg-gray-300 rounded transition-colors shrink-0"
+                          title="Folder actions (Export / Delete all)"
+                          aria-label="Folder actions"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+                            <circle cx="5" cy="12" r="2" />
+                            <circle cx="12" cy="12" r="2" />
+                            <circle cx="19" cy="12" r="2" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
                   )}
                   {!collapsed && (
                   <ul className="divide-y divide-gray-100">
@@ -1380,6 +1475,36 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
       {/* Kebab menu — fixed-positioned at the button anchor so it isn't
           clipped by the modal's overflow-y-auto song list (the bug that
           made taps unreliable on iPad). */}
+      {folderMenuAnchor && (
+        <>
+          <div className="fixed inset-0 z-[110]" onClick={() => setFolderMenuAnchor(null)} />
+          <div
+            className="fixed z-[120] w-64 bg-white rounded-lg shadow-2xl border border-gray-200 py-1 text-sm"
+            style={{ top: folderMenuAnchor.top, right: folderMenuAnchor.right }}
+            // Same stopPropagation pattern as the kebab/folder popovers:
+            // these popovers live outside the inner-modal wrapper so
+            // unhandled clicks would bubble to the outer modal-close.
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => handleExportFolder(folderMenuAnchor.folder)}
+              className="w-full text-left px-3 py-2 hover:bg-blue-50 active:bg-blue-100 text-gray-700"
+              title="Download every song in this folder as a JSON backup file"
+            >
+              Export folder as JSON
+            </button>
+            <div className="border-t border-gray-100 my-1" />
+            <button
+              onClick={() => handleDeleteFolderContents(folderMenuAnchor.folder)}
+              className="w-full text-left px-3 py-2 hover:bg-red-50 active:bg-red-100 text-red-600"
+              title="Permanently delete every song in this folder (local + cloud). Confirms before acting."
+            >
+              Delete all songs in this folder
+            </button>
+          </div>
+        </>
+      )}
+
       {menuAnchor && (
         <>
           <div className="fixed inset-0 z-[110]" onClick={() => setMenuAnchor(null)} />
