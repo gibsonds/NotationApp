@@ -86,6 +86,11 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
   // convention as the per-song folder field.
   type FolderAnchor = { folder: string; top: number; right: number };
   const [folderMenuAnchor, setFolderMenuAnchor] = useState<FolderAnchor | null>(null);
+  // Confirm-with-typed-name modal for the destructive "Delete all
+  // in folder" action. After accidentally wiping Unfiled instead of
+  // OLD via a plain window.confirm, this adds friction: the user
+  // must type the folder name before the Delete button enables.
+  const [confirmFolderDelete, setConfirmFolderDelete] = useState<{ folder: string } | null>(null);
   // Multi-select state for bulk operations (#73 follow-up). When
   // selectMode is on, rows render with leading checkboxes; the title
   // toggles selection instead of starting a rename; Load + kebab hide.
@@ -616,20 +621,24 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
   // Bulk-delete every song in a folder. Pairs with Export above for
   // the "archive a folder" workflow. Confirms with a preview; same
   // local + cloud delete pattern as handleBulkDelete / handleCleanupAliases.
-  const handleDeleteFolderContents = async (folderName: string) => {
+  // Opens the type-to-confirm modal for "Delete all in folder". The
+  // destructive action itself lives in doDeleteFolderContents below
+  // and only runs once the user has typed the folder name to match.
+  const handleDeleteFolderContents = (folderName: string) => {
     const entries = getSongs().filter((s) => (s.folder ?? "") === folderName);
     if (entries.length === 0) {
       setFolderMenuAnchor(null);
       return;
     }
-    const folderLabel = folderName || "(Unfiled)";
-    const preview = entries.slice(0, 8).map((s) => `• "${s.title}"`).join("\n");
-    const more = entries.length > 8 ? `\n…and ${entries.length - 8} more` : "";
-    const ok = window.confirm(
-      `Delete all ${entries.length} song${entries.length === 1 ? "" : "s"} in folder "${folderLabel}"?\n\nRemoved from local + cloud. Autosave snapshots remain on this device for recovery.\n\n${preview}${more}`,
-    );
-    if (!ok) return;
     setFolderMenuAnchor(null);
+    setConfirmFolderDelete({ folder: folderName });
+  };
+
+  // Actually delete every song in a folder. Called from the typed-
+  // confirm modal. Same local + cloud + one-final-sync pattern as
+  // handleBulkDelete / handleCleanupAliases.
+  const doDeleteFolderContents = async (folderName: string) => {
+    const entries = getSongs().filter((s) => (s.folder ?? "") === folderName);
     for (const entry of entries) {
       deleteSong(entry.id);
       if (CLOUD_ENABLED) {
@@ -637,6 +646,7 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
       }
     }
     refreshLocal();
+    setConfirmFolderDelete(null);
     if (CLOUD_ENABLED) {
       await runSync();
     }
@@ -1505,6 +1515,19 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
         </>
       )}
 
+      {/* Type-to-confirm modal for "Delete all songs in folder".
+          Replaces the easily-dismissed window.confirm that bit the
+          user when (Unfiled) got wiped on a misclicked kebab. */}
+      {confirmFolderDelete && (
+        <FolderDeleteConfirmModal
+          folder={confirmFolderDelete.folder}
+          entries={getSongs().filter((s) => (s.folder ?? "") === confirmFolderDelete.folder)}
+          onCancel={() => setConfirmFolderDelete(null)}
+          onConfirm={() => doDeleteFolderContents(confirmFolderDelete.folder)}
+          onExport={() => handleExportFolder(confirmFolderDelete.folder)}
+        />
+      )}
+
       {menuAnchor && (
         <>
           <div className="fixed inset-0 z-[110]" onClick={() => setMenuAnchor(null)} />
@@ -1734,5 +1757,130 @@ function FolderPickerPaneBody({
         </div>
       </div>
     </>
+  );
+}
+
+/**
+ * Type-to-confirm modal for "Delete all songs in folder". The Delete
+ * button stays disabled until the user types the folder's display
+ * label exactly (case-insensitive). Offers an "Export folder first"
+ * shortcut so the user can grab a JSON backup without leaving the
+ * confirmation flow. Stacks at z-[130] above the kebab menus.
+ */
+function FolderDeleteConfirmModal({
+  folder,
+  entries,
+  onCancel,
+  onConfirm,
+  onExport,
+}: {
+  folder: string;
+  entries: SongBankEntry[];
+  onCancel: () => void;
+  onConfirm: () => void;
+  onExport: () => void;
+}) {
+  // "(Unfiled)" parens would force the user to type punctuation —
+  // so the canonical label for type-match is "Unfiled" without
+  // parens. Other folders use their stored name verbatim.
+  const label = folder || "Unfiled";
+  const [typed, setTyped] = useState("");
+  const matches = typed.trim().toLowerCase() === label.toLowerCase();
+  const [exported, setExported] = useState(false);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        onCancel();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCancel]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[130] flex items-start justify-center pt-[12vh] bg-black/40"
+      onClick={(e) => {
+        e.stopPropagation();
+        onCancel();
+      }}
+    >
+      <div
+        className="bg-white rounded-xl shadow-2xl border border-red-200 w-[480px] max-w-[92vw] max-h-[80vh] flex flex-col overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-5 py-3 border-b border-red-100 bg-red-50">
+          <h2 className="text-base font-semibold text-red-900">
+            Delete {entries.length} song{entries.length === 1 ? "" : "s"} in{" "}
+            <span className="font-mono">{folder ? folder : "(Unfiled)"}</span>?
+          </h2>
+          <p className="text-xs text-red-700 mt-1">
+            Permanent — removes them from local and cloud. Autosave
+            snapshots remain on this device for recovery via File →
+            Recover from Auto-save.
+          </p>
+        </div>
+        <div className="flex-1 overflow-y-auto px-5 py-3">
+          <ul className="text-xs text-gray-700 space-y-0.5">
+            {entries.slice(0, 12).map((s) => (
+              <li key={s.id} className="truncate">• {s.title}</li>
+            ))}
+            {entries.length > 12 && (
+              <li className="text-gray-400 italic">…and {entries.length - 12} more</li>
+            )}
+          </ul>
+        </div>
+        <div className="px-5 py-3 border-t border-gray-200 space-y-2">
+          <button
+            type="button"
+            onClick={() => {
+              onExport();
+              setExported(true);
+            }}
+            disabled={exported}
+            className={`w-full px-3 py-1.5 text-xs font-medium border rounded-lg transition-colors ${
+              exported
+                ? "text-green-700 bg-green-50 border-green-200"
+                : "text-blue-700 hover:bg-blue-50 active:bg-blue-100 border-blue-200"
+            }`}
+          >
+            {exported ? "✓ Backup downloaded" : "Export folder as JSON first (recommended)"}
+          </button>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">
+              Type <span className="font-mono bg-gray-100 px-1 rounded">{label}</span> to confirm
+            </label>
+            <input
+              type="text"
+              autoFocus
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && matches) onConfirm();
+              }}
+              placeholder={label}
+              className="w-full text-sm text-gray-900 placeholder-gray-400 border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-red-500"
+            />
+          </div>
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <button
+              onClick={onCancel}
+              className="px-4 py-1.5 text-sm text-gray-700 hover:bg-gray-100 active:bg-gray-200 rounded-lg"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={onConfirm}
+              disabled={!matches}
+              className="px-4 py-1.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700 active:bg-red-800 disabled:bg-gray-300 disabled:cursor-not-allowed rounded-lg"
+            >
+              Delete {entries.length} song{entries.length === 1 ? "" : "s"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
