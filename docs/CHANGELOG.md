@@ -3,6 +3,20 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-13 — 66e4fb4
+
+**MySongsModal right-pane redesign: fewer modals, bigger surface (#123)**
+
+- Commit: [`66e4fb4`](../../commit/66e4fb4710b4dc7b4c72d5519243dc0fe72456ce)
+- Author: gibsonds
+- Files changed:
+  - `src/components/AddToSetSheet.tsx`
+  - `src/components/MySongsModal.tsx`
+  - `src/components/PerformView.tsx`
+  - `src/components/SetsPanel.tsx`
+  - `src/lib/__tests__/song-bank-aliases.test.ts`
+  - `src/lib/song-bank.ts`
+
 ## 2026-05-12 — b1c3e02
 
 **Sets + AddToSet quick wins: folder pill, canonical search, inline +Add (#122)**
