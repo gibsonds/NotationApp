@@ -3,6 +3,17 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-13 — bd69dc3
+
+**Harden share-code parser + surface Copy code button (#128)**
+
+- Commit: [`bd69dc3`](../../commit/bd69dc381b5c26c377a975253416ad7baa9accf9)
+- Author: gibsonds
+- Files changed:
+  - `src/components/MySongsModal.tsx`
+  - `src/lib/__tests__/extract-join-code.test.ts`
+  - `src/lib/song-cloud.ts`
+
 ## 2026-05-13 — 3b69f13
 
 **File menu: Export all songs (backup) + Reset and pull from cloud (#127)**
