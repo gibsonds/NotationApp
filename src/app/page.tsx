@@ -26,7 +26,7 @@ import PersistFailureBanner from "@/components/PersistFailureBanner";
 import FeedbackModal from "@/components/FeedbackModal";
 import { CLOUD_ENABLED, getDeviceId, cloudPutSong } from "@/lib/song-cloud";
 import { autosaveToCloud, CloudSaveEvents } from "@/lib/cloud-autosave";
-import { updateSong } from "@/lib/song-bank";
+import { getSongs, updateSong } from "@/lib/song-bank";
 import type { SongDTO } from "@/lib/song-cloud-types";
 import ConflictModal from "@/components/ConflictModal";
 import AnnotationLayer from "@/components/AnnotationLayer";
@@ -102,6 +102,55 @@ export default function Home() {
   >(null);
   const [inlineAI, setInlineAI] = useState<{ note: { measure: number; beat: number; pitch: string; staffIndex: number }; position: { x: number; y: number } } | null>(null);
   const printFnRef = useRef<(() => Promise<void>) | null>(null);
+  // Force-pushes every local song to cloud without expectedVersion.
+  // Recovery action for the case where another device wiped the cloud
+  // copy (e.g. accidental Delete-all-in-folder) and the local songs
+  // on THIS device are the last surviving copies. Lives on File menu
+  // so the user can run it WITHOUT first opening My Songs — which
+  // would trigger runSync and tombstone-drop the local entries
+  // before the recovery has a chance.
+  const handleForcePushCloud = useCallback(async () => {
+    if (!CLOUD_ENABLED) {
+      window.alert("Cloud sync isn't enabled in this build.");
+      return;
+    }
+    const songs = getSongs();
+    if (songs.length === 0) {
+      window.alert("No local songs to push.");
+      return;
+    }
+    const ok = window.confirm(
+      `Push all ${songs.length} song${songs.length === 1 ? "" : "s"} from this device to the cloud?\n\n` +
+        `This overwrites whatever the cloud has — use it if another device deleted songs you still want.\n\n` +
+        `Tip: open My Songs AFTER this finishes; opening it first would sync and could lose songs.`,
+    );
+    if (!ok) return;
+    let pushed = 0;
+    let failed = 0;
+    for (const entry of songs) {
+      try {
+        const dto = await cloudPutSong({
+          id: entry.id,
+          title: entry.title,
+          score: entry.score,
+          savedAt: entry.savedAt,
+          folder: entry.folder ?? null,
+          // No expectedVersion — force overwrite. The cloud row may
+          // have been deleted entirely; expectedVersion would 409 if
+          // we passed the stale cloudVersion.
+        });
+        updateSong(entry.id, { cloudVersion: dto.version });
+        pushed++;
+      } catch (err) {
+        failed++;
+        console.warn("[force-push] failed for", entry.title, err);
+      }
+    }
+    window.alert(
+      `Pushed ${pushed} song${pushed === 1 ? "" : "s"} to cloud.${failed > 0 ? `\n${failed} failed (see console).` : ""}\n\nOther devices can now sync to pick them back up.`,
+    );
+  }, []);
+
   const handlePrint = useCallback(() => {
     const isChordChart = !!(score?.sections && score.sections.length > 0);
     if (!isChordChart && printFnRef.current) {
@@ -768,6 +817,7 @@ export default function Home() {
           onToggleSidebar={() => setLeftPanelOpen(p => !p)}
           sidebarOpen={leftPanelOpen}
           onOpenAutosave={() => setAutosaveDialogOpen(true)}
+          onForcePushCloud={handleForcePushCloud}
           onPasteLyrics={() => setPasteLyricsOpen(true)}
           onMySongs={() => setMySongsOpen(true)}
           onSendFeedback={() => setFeedbackOpen(true)}
