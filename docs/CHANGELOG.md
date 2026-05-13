@@ -3,6 +3,16 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-13 — 3b69f13
+
+**File menu: Export all songs (backup) + Reset and pull from cloud (#127)**
+
+- Commit: [`3b69f13`](../../commit/3b69f13e2df3a4585e5117a8c35d1e651be28b8c)
+- Author: gibsonds
+- Files changed:
+  - `src/app/page.tsx`
+  - `src/components/MenuBar.tsx`
+
 ## 2026-05-13 — 7815808
 
 **File → 'Push all songs to cloud (recovery)' action (#126)**
