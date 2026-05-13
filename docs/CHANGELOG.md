@@ -3,6 +3,16 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-13 — 7815808
+
+**File → 'Push all songs to cloud (recovery)' action (#126)**
+
+- Commit: [`7815808`](../../commit/78158081997ec3da8917f1c796a0a2730b19096f)
+- Author: gibsonds
+- Files changed:
+  - `src/app/page.tsx`
+  - `src/components/MenuBar.tsx`
+
 ## 2026-05-13 — f6175f4
 
 **Type-to-confirm guard on Delete-all-in-folder (#125)**
