@@ -3,6 +3,15 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-13 — f6175f4
+
+**Type-to-confirm guard on Delete-all-in-folder (#125)**
+
+- Commit: [`f6175f4`](../../commit/f6175f47cb452ea287dd638aa57579be7bda32ff)
+- Author: gibsonds
+- Files changed:
+  - `src/components/MySongsModal.tsx`
+
 ## 2026-05-13 — 85e1cea
 
 **Per-folder Export JSON + Delete all (archive workflow) (#124)**
