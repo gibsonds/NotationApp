@@ -3,6 +3,16 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-14 — 6945509
+
+**Bar inventory: count chord-content edges as implicit bars (#135)**
+
+- Commit: [`6945509`](../../commit/69455094282b99187be7b45cc60f2492559b46f2)
+- Author: gibsonds
+- Files changed:
+  - `src/lib/__tests__/chord-bar-inventory.test.ts`
+  - `src/lib/chord-bar-inventory.ts`
+
 ## 2026-05-14 — b5b017a
 
 **Auto-scroll: lock scroll to bar transitions + perform-tempo override (#134)**
