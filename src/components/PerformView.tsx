@@ -259,34 +259,50 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
         beatsPerBar,
       );
       setActiveBarIdx((prev) => (prev === nextBarIdx ? prev : nextBarIdx));
-      // Constant px/sec scroll — used ONLY when the song has no bar
-      // inventory (no `|` markers OR no tempo). With bar tracking
-      // active, scroll is driven by the separate scroll-to-line
-      // effect below so it stays locked to bar transitions instead
-      // of drifting at an independent rate (which was the "skipping
-      // measures" perception — highlight and scroll moving at
-      // different speeds caused bars to slide off-screen before the
-      // user saw them flash).
-      if (barInventory.length === 0 || effectiveTempo <= 0) {
-        const delta = effectiveScrollSpeed * dt;
-        scrollAccumRef.current += delta;
-        if (scrollAccumRef.current >= 1) {
-          const whole = Math.floor(scrollAccumRef.current);
-          scrollAccumRef.current -= whole;
-          if (prefs.columns === 2) {
-            const el = horizScrollRef.current;
-            if (el) {
-              const max = el.scrollWidth - el.clientWidth;
-              el.scrollLeft = Math.min(max, el.scrollLeft + whole);
-              if (el.scrollLeft >= max) setAutoScroll(false);
-            }
-          } else {
-            const el = scrollRef.current;
-            if (el) {
-              const max = el.scrollHeight - el.clientHeight;
-              el.scrollTop = Math.min(max, el.scrollTop + whole);
-              if (el.scrollTop >= max) setAutoScroll(false);
-            }
+      // Choose scroll rate:
+      //   - Songs WITH bar inventory + tempo: bar-derived rate that
+      //     finishes scrolling exactly when the last bar plays.
+      //     Total scrollable distance ÷ total song duration. Both
+      //     sides scale with the perform-tempo override, so practice-
+      //     slow scrolls slower.
+      //   - Songs WITHOUT bar inventory OR no tempo: the legacy
+      //     constant px/sec scaled by tempo factor (effectiveScrollSpeed).
+      //
+      // The bar-derived path replaces the previous "snap to next line
+      // on bar change" model — that one stalled between line
+      // transitions on songs with many bars per line and read as
+      // "stopped autoscrolling".
+      let speed = effectiveScrollSpeed;
+      if (barInventory.length > 0 && effectiveTempo > 0) {
+        const songDurationSec =
+          barInventory.length * (60 / effectiveTempo) * beatsPerBar;
+        const el = prefs.columns === 2 ? horizScrollRef.current : scrollRef.current;
+        if (el && songDurationSec > 0) {
+          const scrollable =
+            prefs.columns === 2
+              ? el.scrollWidth - el.clientWidth
+              : el.scrollHeight - el.clientHeight;
+          if (scrollable > 0) speed = scrollable / songDurationSec;
+        }
+      }
+      const delta = speed * dt;
+      scrollAccumRef.current += delta;
+      if (scrollAccumRef.current >= 1) {
+        const whole = Math.floor(scrollAccumRef.current);
+        scrollAccumRef.current -= whole;
+        if (prefs.columns === 2) {
+          const el = horizScrollRef.current;
+          if (el) {
+            const max = el.scrollWidth - el.clientWidth;
+            el.scrollLeft = Math.min(max, el.scrollLeft + whole);
+            if (el.scrollLeft >= max) setAutoScroll(false);
+          }
+        } else {
+          const el = scrollRef.current;
+          if (el) {
+            const max = el.scrollHeight - el.clientHeight;
+            el.scrollTop = Math.min(max, el.scrollTop + whole);
+            if (el.scrollTop >= max) setAutoScroll(false);
           }
         }
       }
@@ -301,29 +317,6 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
       scrollAccumRef.current = 0;
     };
   }, [autoScroll, effectiveScrollSpeed, prefs.columns, barInventory, effectiveTempo, beatsPerBar]);
-
-  // Scroll-to-active-line: when the active bar's line changes,
-  // smooth-scroll the chord chart so that line is centered in view.
-  // Only fires once per line transition (not per bar within a line),
-  // so reading stays still while the playhead walks the bars on a
-  // line, then advances to the next line in lockstep with the music.
-  const lastScrolledLineRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!autoScroll) {
-      lastScrolledLineRef.current = null;
-      return;
-    }
-    if (activeBarIdx === null) return;
-    const bar = barInventory[activeBarIdx];
-    if (!bar) return;
-    const lineKey = `${bar.sectionId}-${bar.lineIdx}`;
-    if (lineKey === lastScrolledLineRef.current) return;
-    lastScrolledLineRef.current = lineKey;
-    const el = document.querySelector(`[data-bar-line="${CSS.escape(lineKey)}"]`);
-    if (el instanceof HTMLElement) {
-      el.scrollIntoView({ behavior: "smooth", block: "center" });
-    }
-  }, [autoScroll, activeBarIdx, barInventory]);
 
   // Manual pager / picker / Escape should all pause auto-scroll so the
   // user isn't fighting the loop while interacting with the chrome.
