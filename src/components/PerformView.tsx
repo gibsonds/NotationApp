@@ -14,6 +14,10 @@ import {
   beatsPerBarOf,
   computeBarInventory,
 } from "@/lib/chord-bar-inventory";
+import {
+  computeLineScrollTarget,
+  isLineTransition,
+} from "@/lib/perform-scroll";
 
 const PREFS_KEY = "notation-app-perform-prefs";
 
@@ -316,11 +320,16 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
   // the top of the viewport, eased over one bar's duration. Within the
   // same line: no scroll (long-line pause). At the start of the song
   // before any line crosses the 1/3 mark: target is 0, no scroll (warmup).
-  const lastScrolledLineRef = useRef<string | null>(null);
+  //
+  // Pure logic (computeLineScrollTarget / isLineTransition) lives in
+  // src/lib/perform-scroll.ts and is covered by perform-scroll.test.ts —
+  // tests guard the warmup / long-line-pause / off-the-page regressions
+  // we've hit on this surface.
+  const lastActiveBarRef = useRef<typeof activeBarIdx extends infer T ? T : null>(null);
   const scrollAnimHandleRef = useRef<number | null>(null);
   useEffect(() => {
     if (!autoScroll) {
-      lastScrolledLineRef.current = null;
+      lastActiveBarRef.current = null;
       if (scrollAnimHandleRef.current !== null) {
         cancelAnimationFrame(scrollAnimHandleRef.current);
         scrollAnimHandleRef.current = null;
@@ -330,13 +339,15 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
     if (activeBarIdx === null) return;
     const bar = barInventory[activeBarIdx];
     if (!bar) return;
-    const lineKey = `${bar.sectionId}-${bar.lineIdx}`;
-    if (lineKey === lastScrolledLineRef.current) return;
-    lastScrolledLineRef.current = lineKey;
+    const prevBar = lastActiveBarRef.current != null ? barInventory[lastActiveBarRef.current as number] ?? null : null;
+    lastActiveBarRef.current = activeBarIdx;
+    // Only trigger scroll when the LINE changes (not on every bar
+    // within a line). The pure helper makes this rule testable.
+    if (!isLineTransition(prevBar, bar)) return;
     const container = prefs.columns === 2 ? horizScrollRef.current : scrollRef.current;
     if (!container) return;
     const el = document.querySelector<HTMLElement>(
-      `[data-bar-line="${CSS.escape(lineKey)}"]`,
+      `[data-bar-line="${CSS.escape(`${bar.sectionId}-${bar.lineIdx}`)}"]`,
     );
     if (!el) return;
     const containerRect = container.getBoundingClientRect();
@@ -348,7 +359,7 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
     const max = horizontal
       ? container.scrollWidth - container.clientWidth
       : container.scrollHeight - container.clientHeight;
-    const target = Math.max(0, Math.min(max, elStart - viewport / 3));
+    const target = computeLineScrollTarget(elStart, viewport, max);
     const startScroll = horizontal ? container.scrollLeft : container.scrollTop;
     if (target === startScroll) return; // nothing to do
     // Duration matches one bar's worth of music time, so the line
