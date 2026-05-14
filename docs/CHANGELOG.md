@@ -3,6 +3,15 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-14 — 1f9fb69
+
+**Auto-scroll: drop top spacer (keep warmup model) (#141)**
+
+- Commit: [`1f9fb69`](../../commit/1f9fb69ee4f2e34a768ed28623b235f456170e49)
+- Author: gibsonds
+- Files changed:
+  - `src/components/PerformView.tsx`
+
 ## 2026-05-14 — 7940808
 
 **Auto-scroll: teleprompter spacers keep active bar at 1/3 (#140)**
