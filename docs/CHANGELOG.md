@@ -3,6 +3,15 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-14 — 76a0baa
+
+**Auto-scroll: animate on line transition, not every frame (#138)**
+
+- Commit: [`76a0baa`](../../commit/76a0baae77b12f16092e9b1775ab071f1c339559)
+- Author: gibsonds
+- Files changed:
+  - `src/components/PerformView.tsx`
+
 ## 2026-05-14 — 2777d10
 
 **Position-driven scroll: chord chart follows active bar's line (#137)**
