@@ -3,6 +3,15 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-14 — 7940808
+
+**Auto-scroll: teleprompter spacers keep active bar at 1/3 (#140)**
+
+- Commit: [`7940808`](../../commit/79408089e734eccffecd3e533157956e1ffbb170)
+- Author: gibsonds
+- Files changed:
+  - `src/components/PerformView.tsx`
+
 ## 2026-05-14 — dc0f2a1
 
 **Auto-scroll test harness + helper extraction (#139)**
