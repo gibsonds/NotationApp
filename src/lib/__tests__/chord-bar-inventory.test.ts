@@ -118,9 +118,9 @@ describe("beatsPerBarOf", () => {
 
 describe("activeBarFromElapsed", () => {
   const inv = [
-    { globalIdx: 0, sectionIdx: 0, lineIdx: 0, startCol: 0, endCol: 4 },
-    { globalIdx: 1, sectionIdx: 0, lineIdx: 0, startCol: 4, endCol: 8 },
-    { globalIdx: 2, sectionIdx: 0, lineIdx: 0, startCol: 8, endCol: 12 },
+    { globalIdx: 0, sectionIdx: 0, sectionId: "v", lineIdx: 0, startCol: 0, endCol: 4 },
+    { globalIdx: 1, sectionIdx: 0, sectionId: "v", lineIdx: 0, startCol: 4, endCol: 8 },
+    { globalIdx: 2, sectionIdx: 0, sectionId: "v", lineIdx: 0, startCol: 8, endCol: 12 },
   ];
 
   it("returns 0 at t=0", () => {

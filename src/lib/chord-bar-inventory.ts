@@ -22,6 +22,9 @@ export interface BarPos {
   globalIdx: number;
   /** Index of the section in score.sections[]. */
   sectionIdx: number;
+  /** Stable section id (matches Score.sections[i].id). Used to address
+   *  the DOM line wrapper when PerformView scroll-tracks the active bar. */
+  sectionId: string;
   /** Index of the line within the section's lines[]. */
   lineIdx: number;
   /** Inclusive start column in the chord line (the leading `|`). */
@@ -45,6 +48,7 @@ export function computeBarInventory(score: Score): BarPos[] {
         out.push({
           globalIdx: out.length,
           sectionIdx: si,
+          sectionId: sections[si].id,
           lineIdx: li,
           startCol: pipes[p],
           endCol: pipes[p + 1],

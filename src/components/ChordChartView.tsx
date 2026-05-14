@@ -213,7 +213,16 @@ function SectionBlock({
           ].filter(Boolean).join(" ");
           const isActiveBarLine = !!activeBarInSection && activeBarInSection.lineIdx === i;
           return (
-            <div key={i} className={`mb-2 relative ${markerClasses}`}>
+            <div
+              key={i}
+              className={`mb-2 relative ${markerClasses}`}
+              // Addressable by PerformView's scroll-track-active-bar
+              // effect. Uses stable section id (not idx) so reorders
+              // don't break the lookup. Lyric-only / blank lines also
+              // carry this attribute — cheap, lets future features
+              // (e.g. lyrics-line-aware features) reuse the addressing.
+              data-bar-line={`${section.id}-${i}`}
+            >
               {/* Auto-scroll playhead: lights the bar-line `|` character
                   itself (1ch wide at startCol) when this bar is active.
                   Narrow target — no whole-bar tint, no animated slide
