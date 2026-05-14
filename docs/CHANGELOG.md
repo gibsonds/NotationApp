@@ -3,6 +3,16 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-14 — c868ab9
+
+**Auto-scroll: separate trigger threshold from target position (#142)**
+
+- Commit: [`c868ab9`](../../commit/c868ab9abb75d6c9bd633f52132c1c4e8f8cf536)
+- Author: gibsonds
+- Files changed:
+  - `src/lib/__tests__/perform-scroll.test.ts`
+  - `src/lib/perform-scroll.ts`
+
 ## 2026-05-14 — 1f9fb69
 
 **Auto-scroll: drop top spacer (keep warmup model) (#141)**
