@@ -469,6 +469,12 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
           ref={scrollRef}
           className="absolute inset-0 overflow-auto pt-[7vh] pb-16"
         >
+          {/* Top spacer: pushes the first chord line down so when
+              scrollTop=0 the first line sits at ~1/3 of the viewport
+              from the top — the "1/3 of the page above the active
+              bar" position the user wants throughout playback.
+              7vh from pt + 26vh from spacer = 33vh total top offset. */}
+          <div style={{ height: "26vh" }} aria-hidden />
           <div className="relative">
             <ChordChartView
               score={score}
@@ -478,6 +484,12 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
             />
             <AnnotationLayer />
           </div>
+          {/* Bottom spacer: extends the scrollable range so the LAST
+              line can still scroll up to the 1/3 mark instead of
+              hitting max_scroll clamp at some lower position. Without
+              this, the active-bar overlay drifts below 1/3 toward the
+              end of the song and looks "off the rails". */}
+          <div style={{ height: "67vh" }} aria-hidden />
         </div>
       ) : (
         <PaginatedPerformChart
