@@ -3,6 +3,15 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-14 — 092fce4
+
+**Auto-scroll: highlight bar-line char only, not whole bar (#132)**
+
+- Commit: [`092fce4`](../../commit/092fce49e01b17894bcf8f0fc6a6fea67734137c)
+- Author: gibsonds
+- Files changed:
+  - `src/components/ChordChartView.tsx`
+
 ## 2026-05-14 — 12b5847
 
 **Auto-scroll: green per-bar highlight as bars are 'played' (#131)**
