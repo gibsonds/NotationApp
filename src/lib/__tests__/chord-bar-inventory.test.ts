@@ -67,6 +67,27 @@ describe("computeBarInventory", () => {
     ]);
   });
 
+  it("treats || as a real bar that carries forward the previous chord", () => {
+    // `||` is "same chord as the previous bar" — a real bar that
+    // consumes time, just visually compact. We MUST keep it in the
+    // inventory so playhead beat-counting stays correct; dropping
+    // it would silently shorten the song by N×beatsPerBar beats
+    // for every `||` and the highlight would lag the music.
+    //
+    // "| C || F |" → 4 pipes → 3 bars:
+    //   bar 0: | C   (cols 0-4)
+    //   bar 1: |     (cols 4-5)  the implied-C
+    //   bar 2: | F   (cols 5-9)
+    const s = score([{ id: "v", lines: [{ chords: "| C || F |" }] }]);
+    const inv = computeBarInventory(s);
+    expect(inv).toHaveLength(3);
+    expect(inv.map((b) => [b.startCol, b.endCol])).toEqual([
+      [0, 4],
+      [4, 5],
+      [5, 9],
+    ]);
+  });
+
   it("tolerates pipes at non-zero starting columns", () => {
     // chord line starts with a chord, then has bars later
     const s = score([
