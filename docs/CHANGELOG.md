@@ -3,6 +3,18 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-14 — 12b5847
+
+**Auto-scroll: green per-bar highlight as bars are 'played' (#131)**
+
+- Commit: [`12b5847`](../../commit/12b58475d084c2bc70ed2eb13ba4aae8822808a6)
+- Author: gibsonds
+- Files changed:
+  - `src/components/ChordChartView.tsx`
+  - `src/components/PerformView.tsx`
+  - `src/lib/__tests__/chord-bar-inventory.test.ts`
+  - `src/lib/chord-bar-inventory.ts`
+
 ## 2026-05-14 — a1a1241
 
 **Auto-scroll: tempo-aware speed + big floating PAUSE (#130)**
