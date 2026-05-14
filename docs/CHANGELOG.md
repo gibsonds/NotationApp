@@ -3,6 +3,15 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-14 — a1a1241
+
+**Auto-scroll: tempo-aware speed + big floating PAUSE (#130)**
+
+- Commit: [`a1a1241`](../../commit/a1a1241f62ef17f7aba3991e2bfc1cc1919d97ee)
+- Author: gibsonds
+- Files changed:
+  - `src/components/PerformView.tsx`
+
 ## 2026-05-14 — a2a3c13
 
 **File → Import songbook from JSON (Fork / Replace) (#129)**
