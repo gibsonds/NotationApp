@@ -214,17 +214,17 @@ function SectionBlock({
           const isActiveBarLine = !!activeBarInSection && activeBarInSection.lineIdx === i;
           return (
             <div key={i} className={`mb-2 relative ${markerClasses}`}>
-              {/* Auto-scroll bar-highlight overlay. Positioned by character
-                  column (1ch = one monospace char width); covers the full
-                  vertical extent of this line (chord row + lyric row),
-                  behind both via z-0. Stays out of the way of clicks
-                  via pointer-events:none. */}
+              {/* Auto-scroll playhead: lights the bar-line `|` character
+                  itself (1ch wide at startCol) when this bar is active.
+                  Narrow target — no whole-bar tint, no animated slide
+                  across intermediate columns that could read as "skipped".
+                  Stays out of click handling via pointer-events:none. */}
               {isActiveBarLine && (
                 <div
-                  className="absolute top-0 bottom-0 bg-green-400/30 border border-green-400/60 rounded pointer-events-none z-0 transition-all duration-100"
+                  className="absolute top-0 bottom-0 bg-green-400/70 rounded-sm pointer-events-none z-0"
                   style={{
                     left: `${activeBarInSection!.startCol}ch`,
-                    width: `${Math.max(1, activeBarInSection!.endCol - activeBarInSection!.startCol)}ch`,
+                    width: `1ch`,
                   }}
                   aria-hidden
                 />
