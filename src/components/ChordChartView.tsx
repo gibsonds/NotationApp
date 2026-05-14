@@ -59,6 +59,10 @@ interface ChordChartViewProps {
   /** On-screen column count (1 or 2). Only consulted when performMode is on;
    *  defaults to 1. PerformView toggles this for landscape layouts. */
   performColumns?: 1 | 2;
+  /** Optional currently-playing bar position from PerformView's auto-scroll
+   *  loop. Rendered as a green overlay over the bar's char-column range on
+   *  the matching line. `null` = no highlight. */
+  activeBar?: { sectionIdx: number; lineIdx: number; startCol: number; endCol: number } | null;
 }
 
 interface EditState {
@@ -111,6 +115,7 @@ function SectionBlock({
   labelPosition,
   headerFont,
   chartFont,
+  activeBarInSection,
 }: {
   section: ChordChartSection;
   onLineClick: (sectionId: string, lineIdx: number, col: number) => void;
@@ -129,6 +134,9 @@ function SectionBlock({
   labelPosition: LabelPosition;
   headerFont: TextFont;
   chartFont: ChartFont;
+  /** When the auto-scroll playhead is on a bar belonging to THIS section,
+   *  this is the line + column range to highlight. null otherwise. */
+  activeBarInSection: { lineIdx: number; startCol: number; endCol: number } | null;
 }) {
   // Side-label modes use a flex row with the rotated label centered against
   // the section content. Tight gap so the label sits close to the lyrics.
@@ -203,8 +211,24 @@ function SectionBlock({
             line.highlight ? "bg-yellow-300/20 -mx-2 px-2 rounded" : "",
             line.underline ? "border-b-2 border-yellow-400/80" : "",
           ].filter(Boolean).join(" ");
+          const isActiveBarLine = !!activeBarInSection && activeBarInSection.lineIdx === i;
           return (
             <div key={i} className={`mb-2 relative ${markerClasses}`}>
+              {/* Auto-scroll bar-highlight overlay. Positioned by character
+                  column (1ch = one monospace char width); covers the full
+                  vertical extent of this line (chord row + lyric row),
+                  behind both via z-0. Stays out of the way of clicks
+                  via pointer-events:none. */}
+              {isActiveBarLine && (
+                <div
+                  className="absolute top-0 bottom-0 bg-green-400/30 border border-green-400/60 rounded pointer-events-none z-0 transition-all duration-100"
+                  style={{
+                    left: `${activeBarInSection!.startCol}ch`,
+                    width: `${Math.max(1, activeBarInSection!.endCol - activeBarInSection!.startCol)}ch`,
+                  }}
+                  aria-hidden
+                />
+              )}
               {isEditingThisLine && (
                 <div
                   className="absolute top-0 bottom-0 w-px bg-pink-400 pointer-events-none z-0"
@@ -817,7 +841,7 @@ interface HeaderContextMenuState {
   y: number;
 }
 
-export default function ChordChartView({ score, performMode = false, performColumns = 1 }: ChordChartViewProps) {
+export default function ChordChartView({ score, performMode = false, performColumns = 1, activeBar = null }: ChordChartViewProps) {
   const applyPatches = useScoreStore((s) => s.applyPatches);
   const [editing, setEditing] = useState<EditState | null>(null);
   const [textEditing, setTextEditing] = useState<TextEditState | null>(null);
@@ -1557,7 +1581,7 @@ export default function ChordChartView({ score, performMode = false, performColu
         </div>
       ) : (
         <>
-          {displayOrder.map(section => (
+          {displayOrder.map((section, sIdx) => (
             <SectionBlock
               key={section.id}
               section={section}
@@ -1577,6 +1601,11 @@ export default function ChordChartView({ score, performMode = false, performColu
               labelPosition={labelPosition}
               headerFont={headerFont}
               chartFont={chartFont}
+              activeBarInSection={
+                activeBar && activeBar.sectionIdx === sIdx
+                  ? { lineIdx: activeBar.lineIdx, startCol: activeBar.startCol, endCol: activeBar.endCol }
+                  : null
+              }
             />
           ))}
           {!performMode && (
