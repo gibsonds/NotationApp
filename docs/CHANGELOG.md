@@ -3,6 +3,15 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-14 — 2777d10
+
+**Position-driven scroll: chord chart follows active bar's line (#137)**
+
+- Commit: [`2777d10`](../../commit/2777d10b460fbd6343f87053eadcea920c1841bd)
+- Author: gibsonds
+- Files changed:
+  - `src/components/PerformView.tsx`
+
 ## 2026-05-14 — 8953d6a
 
 **Continuous bar-derived scroll (replace jump-to-line) (#136)**
