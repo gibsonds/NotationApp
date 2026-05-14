@@ -3,6 +3,17 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-14 — dc0f2a1
+
+**Auto-scroll test harness + helper extraction (#139)**
+
+- Commit: [`dc0f2a1`](../../commit/dc0f2a19df29538cb3bf2c4f4c12d5f2eefd5acd)
+- Author: gibsonds
+- Files changed:
+  - `src/components/PerformView.tsx`
+  - `src/lib/__tests__/perform-scroll.test.ts`
+  - `src/lib/perform-scroll.ts`
+
 ## 2026-05-14 — 76a0baa
 
 **Auto-scroll: animate on line transition, not every frame (#138)**
