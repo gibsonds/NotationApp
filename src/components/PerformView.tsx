@@ -201,7 +201,17 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
   // as bars are "played") is a follow-up slice — needs ChordChartView
   // to split chord-line text into per-bar spans first.
   const songTempo = score?.tempo ?? 0;
-  const tempoFactor = songTempo > 0 ? songTempo / 120 : 1;
+  // Perform-mode tempo override — for practicing slower without
+  // mutating the song's saved tempo. Resets when the loaded song
+  // changes so a slow rehearsal of Song A doesn't leak into Song B.
+  // null = use song's tempo; otherwise this value drives both the
+  // scroll rate AND the bar-highlight advance rate.
+  const [performTempoOverride, setPerformTempoOverride] = useState<number | null>(null);
+  useEffect(() => {
+    setPerformTempoOverride(null);
+  }, [score?.id]);
+  const effectiveTempo = performTempoOverride ?? songTempo;
+  const tempoFactor = effectiveTempo > 0 ? effectiveTempo / 120 : 1;
   const effectiveScrollSpeed = prefs.scrollSpeed * tempoFactor;
 
   // Bar inventory drives the green per-bar highlight overlay during
@@ -245,29 +255,38 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
       const nextBarIdx = activeBarFromElapsed(
         barInventory,
         autoScrollElapsedRef.current,
-        songTempo,
+        effectiveTempo,
         beatsPerBar,
       );
       setActiveBarIdx((prev) => (prev === nextBarIdx ? prev : nextBarIdx));
-      const delta = effectiveScrollSpeed * dt;
-      scrollAccumRef.current += delta;
-      if (scrollAccumRef.current >= 1) {
-        const whole = Math.floor(scrollAccumRef.current);
-        scrollAccumRef.current -= whole;
-        if (prefs.columns === 2) {
-          const el = horizScrollRef.current;
-          if (el) {
-            const max = el.scrollWidth - el.clientWidth;
-            el.scrollLeft = Math.min(max, el.scrollLeft + whole);
-            // Stop at end of page strip rather than spinning.
-            if (el.scrollLeft >= max) setAutoScroll(false);
-          }
-        } else {
-          const el = scrollRef.current;
-          if (el) {
-            const max = el.scrollHeight - el.clientHeight;
-            el.scrollTop = Math.min(max, el.scrollTop + whole);
-            if (el.scrollTop >= max) setAutoScroll(false);
+      // Constant px/sec scroll — used ONLY when the song has no bar
+      // inventory (no `|` markers OR no tempo). With bar tracking
+      // active, scroll is driven by the separate scroll-to-line
+      // effect below so it stays locked to bar transitions instead
+      // of drifting at an independent rate (which was the "skipping
+      // measures" perception — highlight and scroll moving at
+      // different speeds caused bars to slide off-screen before the
+      // user saw them flash).
+      if (barInventory.length === 0 || effectiveTempo <= 0) {
+        const delta = effectiveScrollSpeed * dt;
+        scrollAccumRef.current += delta;
+        if (scrollAccumRef.current >= 1) {
+          const whole = Math.floor(scrollAccumRef.current);
+          scrollAccumRef.current -= whole;
+          if (prefs.columns === 2) {
+            const el = horizScrollRef.current;
+            if (el) {
+              const max = el.scrollWidth - el.clientWidth;
+              el.scrollLeft = Math.min(max, el.scrollLeft + whole);
+              if (el.scrollLeft >= max) setAutoScroll(false);
+            }
+          } else {
+            const el = scrollRef.current;
+            if (el) {
+              const max = el.scrollHeight - el.clientHeight;
+              el.scrollTop = Math.min(max, el.scrollTop + whole);
+              if (el.scrollTop >= max) setAutoScroll(false);
+            }
           }
         }
       }
@@ -281,7 +300,30 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
       }
       scrollAccumRef.current = 0;
     };
-  }, [autoScroll, effectiveScrollSpeed, prefs.columns, barInventory, songTempo, beatsPerBar]);
+  }, [autoScroll, effectiveScrollSpeed, prefs.columns, barInventory, effectiveTempo, beatsPerBar]);
+
+  // Scroll-to-active-line: when the active bar's line changes,
+  // smooth-scroll the chord chart so that line is centered in view.
+  // Only fires once per line transition (not per bar within a line),
+  // so reading stays still while the playhead walks the bars on a
+  // line, then advances to the next line in lockstep with the music.
+  const lastScrolledLineRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!autoScroll) {
+      lastScrolledLineRef.current = null;
+      return;
+    }
+    if (activeBarIdx === null) return;
+    const bar = barInventory[activeBarIdx];
+    if (!bar) return;
+    const lineKey = `${bar.sectionId}-${bar.lineIdx}`;
+    if (lineKey === lastScrolledLineRef.current) return;
+    lastScrolledLineRef.current = lineKey;
+    const el = document.querySelector(`[data-bar-line="${CSS.escape(lineKey)}"]`);
+    if (el instanceof HTMLElement) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [autoScroll, activeBarIdx, barInventory]);
 
   // Manual pager / picker / Escape should all pause auto-scroll so the
   // user isn't fighting the loop while interacting with the chrome.
@@ -764,6 +806,53 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
             ⊕
           </button>
         </div>
+        {/* Perform-tempo override cluster — adjust tempo just for
+            this performance (e.g. practice slower). Does NOT save
+            back to the song; resets when you load a different song.
+            ♩ button reverts to the song's saved tempo. Only shown
+            when the song has a tempo set. */}
+        {songTempo > 0 && (
+          <div className="flex items-center gap-1 bg-gray-900/80 backdrop-blur-sm rounded-xl p-1 shadow border border-white/10">
+            <button
+              type="button"
+              onClick={() =>
+                setPerformTempoOverride((cur) => Math.max(20, (cur ?? songTempo) - 5))
+              }
+              className={btn}
+              aria-label="Slower tempo"
+              title={`Slower (${Math.max(20, effectiveTempo - 5)} bpm)`}
+            >
+              ♩−
+            </button>
+            <button
+              type="button"
+              onClick={() => setPerformTempoOverride(null)}
+              disabled={performTempoOverride === null}
+              className="h-11 px-3 flex items-center text-sm font-medium text-gray-100 hover:bg-gray-800 active:bg-gray-700 rounded-lg disabled:opacity-60 disabled:cursor-default"
+              title={
+                performTempoOverride === null
+                  ? `Song tempo: ${songTempo} bpm`
+                  : `Click to reset to song tempo (${songTempo} bpm)`
+              }
+            >
+              {effectiveTempo} bpm
+              {performTempoOverride !== null && (
+                <span className="ml-1.5 text-[9px] uppercase tracking-wider opacity-60">⟲</span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                setPerformTempoOverride((cur) => Math.min(300, (cur ?? songTempo) + 5))
+              }
+              className={btn}
+              aria-label="Faster tempo"
+              title={`Faster (${Math.min(300, effectiveTempo + 5)} bpm)`}
+            >
+              ♩+
+            </button>
+          </div>
+        )}
         {onOpenMySongs && (
           <button
             type="button"
