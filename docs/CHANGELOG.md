@@ -3,6 +3,17 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-14 — a2a3c13
+
+**File → Import songbook from JSON (Fork / Replace) (#129)**
+
+- Commit: [`a2a3c13`](../../commit/a2a3c134d14a8dd81943a9e0a423017ef6164506)
+- Author: gibsonds
+- Files changed:
+  - `src/app/page.tsx`
+  - `src/components/ImportSongbookDialog.tsx`
+  - `src/components/MenuBar.tsx`
+
 ## 2026-05-14 — 9f71249
 
 **PerformView auto-scroll scaffolding (#23) (#120)**
