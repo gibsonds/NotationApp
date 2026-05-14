@@ -259,50 +259,73 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
         beatsPerBar,
       );
       setActiveBarIdx((prev) => (prev === nextBarIdx ? prev : nextBarIdx));
-      // Choose scroll rate:
-      //   - Songs WITH bar inventory + tempo: bar-derived rate that
-      //     finishes scrolling exactly when the last bar plays.
-      //     Total scrollable distance ÷ total song duration. Both
-      //     sides scale with the perform-tempo override, so practice-
-      //     slow scrolls slower.
-      //   - Songs WITHOUT bar inventory OR no tempo: the legacy
-      //     constant px/sec scaled by tempo factor (effectiveScrollSpeed).
+      // Scroll model:
+      //   - With bar inventory + tempo: scroll is driven by the active
+      //     line's actual Y position. Target = max(0, lineTop - 1/3
+      //     viewport). Lerp toward target ~8% per frame for smooth
+      //     easing. This gives two behaviours for free:
+      //       • Warmup: lineTop < viewport/3 → target=0 → no scroll.
+      //         Chart stays still while you read the first ~1/3 worth
+      //         of chord chart.
+      //       • Long-line pause: while bars walk across one line, the
+      //         line's Y stays constant → target stays constant →
+      //         scroll stays put.
+      //   - Without bar inventory OR tempo: fall back to legacy constant
+      //     px/sec scaled by tempo factor (effectiveScrollSpeed).
       //
-      // The bar-derived path replaces the previous "snap to next line
-      // on bar change" model — that one stalled between line
-      // transitions on songs with many bars per line and read as
-      // "stopped autoscrolling".
-      let speed = effectiveScrollSpeed;
-      if (barInventory.length > 0 && effectiveTempo > 0) {
-        const songDurationSec =
-          barInventory.length * (60 / effectiveTempo) * beatsPerBar;
-        const el = prefs.columns === 2 ? horizScrollRef.current : scrollRef.current;
-        if (el && songDurationSec > 0) {
-          const scrollable =
-            prefs.columns === 2
-              ? el.scrollWidth - el.clientWidth
-              : el.scrollHeight - el.clientHeight;
-          if (scrollable > 0) speed = scrollable / songDurationSec;
-        }
+      // End-of-song: activeBarFromElapsed returns null when elapsed
+      // outruns the inventory; when that happens (and we WERE tracking),
+      // stop auto-scroll.
+      const tracking = barInventory.length > 0 && effectiveTempo > 0;
+      if (tracking && nextBarIdx === null && autoScrollElapsedRef.current > 0) {
+        setAutoScroll(false);
+        autoScrollHandleRef.current = requestAnimationFrame(step);
+        return;
       }
-      const delta = speed * dt;
-      scrollAccumRef.current += delta;
-      if (scrollAccumRef.current >= 1) {
-        const whole = Math.floor(scrollAccumRef.current);
-        scrollAccumRef.current -= whole;
-        if (prefs.columns === 2) {
-          const el = horizScrollRef.current;
-          if (el) {
-            const max = el.scrollWidth - el.clientWidth;
-            el.scrollLeft = Math.min(max, el.scrollLeft + whole);
-            if (el.scrollLeft >= max) setAutoScroll(false);
+      const container = prefs.columns === 2 ? horizScrollRef.current : scrollRef.current;
+      if (tracking && nextBarIdx !== null && container) {
+        const bar = barInventory[nextBarIdx];
+        const lineEl = bar
+          ? document.querySelector<HTMLElement>(`[data-bar-line="${CSS.escape(`${bar.sectionId}-${bar.lineIdx}`)}"]`)
+          : null;
+        if (lineEl) {
+          const containerRect = container.getBoundingClientRect();
+          if (prefs.columns === 2) {
+            // Horizontal: keep active line 1/3 from left edge.
+            const elLeft = lineEl.getBoundingClientRect().left - containerRect.left + container.scrollLeft;
+            const target = Math.max(0, elLeft - container.clientWidth / 3);
+            const next = container.scrollLeft + (target - container.scrollLeft) * 0.08;
+            const max = container.scrollWidth - container.clientWidth;
+            container.scrollLeft = Math.min(max, next);
+          } else {
+            const elTop = lineEl.getBoundingClientRect().top - containerRect.top + container.scrollTop;
+            const target = Math.max(0, elTop - container.clientHeight / 3);
+            const next = container.scrollTop + (target - container.scrollTop) * 0.08;
+            const max = container.scrollHeight - container.clientHeight;
+            container.scrollTop = Math.min(max, next);
           }
-        } else {
-          const el = scrollRef.current;
-          if (el) {
-            const max = el.scrollHeight - el.clientHeight;
-            el.scrollTop = Math.min(max, el.scrollTop + whole);
-            if (el.scrollTop >= max) setAutoScroll(false);
+        }
+      } else if (!tracking) {
+        // Legacy constant px/sec — songs without bar markers.
+        const delta = effectiveScrollSpeed * dt;
+        scrollAccumRef.current += delta;
+        if (scrollAccumRef.current >= 1) {
+          const whole = Math.floor(scrollAccumRef.current);
+          scrollAccumRef.current -= whole;
+          if (prefs.columns === 2) {
+            const el = horizScrollRef.current;
+            if (el) {
+              const max = el.scrollWidth - el.clientWidth;
+              el.scrollLeft = Math.min(max, el.scrollLeft + whole);
+              if (el.scrollLeft >= max) setAutoScroll(false);
+            }
+          } else {
+            const el = scrollRef.current;
+            if (el) {
+              const max = el.scrollHeight - el.clientHeight;
+              el.scrollTop = Math.min(max, el.scrollTop + whole);
+              if (el.scrollTop >= max) setAutoScroll(false);
+            }
           }
         }
       }
