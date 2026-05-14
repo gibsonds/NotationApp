@@ -3,6 +3,15 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-14 — 09017ea
+
+**Test: || is a real bar in the inventory (locks behaviour) (#133)**
+
+- Commit: [`09017ea`](../../commit/09017eacc462a38293ffdfb7adbf23586699cd6a)
+- Author: gibsonds
+- Files changed:
+  - `src/lib/__tests__/chord-bar-inventory.test.ts`
+
 ## 2026-05-14 — 092fce4
 
 **Auto-scroll: highlight bar-line char only, not whole bar (#132)**
