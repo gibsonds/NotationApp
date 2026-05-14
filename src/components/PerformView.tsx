@@ -259,54 +259,24 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
         beatsPerBar,
       );
       setActiveBarIdx((prev) => (prev === nextBarIdx ? prev : nextBarIdx));
-      // Scroll model:
-      //   - With bar inventory + tempo: scroll is driven by the active
-      //     line's actual Y position. Target = max(0, lineTop - 1/3
-      //     viewport). Lerp toward target ~8% per frame for smooth
-      //     easing. This gives two behaviours for free:
-      //       • Warmup: lineTop < viewport/3 → target=0 → no scroll.
-      //         Chart stays still while you read the first ~1/3 worth
-      //         of chord chart.
-      //       • Long-line pause: while bars walk across one line, the
-      //         line's Y stays constant → target stays constant →
-      //         scroll stays put.
-      //   - Without bar inventory OR tempo: fall back to legacy constant
-      //     px/sec scaled by tempo factor (effectiveScrollSpeed).
-      //
-      // End-of-song: activeBarFromElapsed returns null when elapsed
-      // outruns the inventory; when that happens (and we WERE tracking),
-      // stop auto-scroll.
+      // End-of-song detection: when bars run out, stop the loop.
       const tracking = barInventory.length > 0 && effectiveTempo > 0;
       if (tracking && nextBarIdx === null && autoScrollElapsedRef.current > 0) {
         setAutoScroll(false);
         autoScrollHandleRef.current = requestAnimationFrame(step);
         return;
       }
-      const container = prefs.columns === 2 ? horizScrollRef.current : scrollRef.current;
-      if (tracking && nextBarIdx !== null && container) {
-        const bar = barInventory[nextBarIdx];
-        const lineEl = bar
-          ? document.querySelector<HTMLElement>(`[data-bar-line="${CSS.escape(`${bar.sectionId}-${bar.lineIdx}`)}"]`)
-          : null;
-        if (lineEl) {
-          const containerRect = container.getBoundingClientRect();
-          if (prefs.columns === 2) {
-            // Horizontal: keep active line 1/3 from left edge.
-            const elLeft = lineEl.getBoundingClientRect().left - containerRect.left + container.scrollLeft;
-            const target = Math.max(0, elLeft - container.clientWidth / 3);
-            const next = container.scrollLeft + (target - container.scrollLeft) * 0.08;
-            const max = container.scrollWidth - container.clientWidth;
-            container.scrollLeft = Math.min(max, next);
-          } else {
-            const elTop = lineEl.getBoundingClientRect().top - containerRect.top + container.scrollTop;
-            const target = Math.max(0, elTop - container.clientHeight / 3);
-            const next = container.scrollTop + (target - container.scrollTop) * 0.08;
-            const max = container.scrollHeight - container.clientHeight;
-            container.scrollTop = Math.min(max, next);
-          }
-        }
-      } else if (!tracking) {
-        // Legacy constant px/sec — songs without bar markers.
+      // Scroll model:
+      //   - With bar inventory + tempo: scroll is driven by the separate
+      //     scroll-on-line-transition effect below. This RAF loop only
+      //     updates elapsed + activeBarIdx; nothing scrolls per-frame.
+      //     Within a line, scroll stays still. On line transition, the
+      //     effect animates scroll to the new line's target position
+      //     over one bar's duration — fast enough to feel "musical",
+      //     slow enough to not race.
+      //   - Without bar inventory OR tempo: legacy constant px/sec scaled
+      //     by tempo factor (effectiveScrollSpeed).
+      if (!tracking) {
         const delta = effectiveScrollSpeed * dt;
         scrollAccumRef.current += delta;
         if (scrollAccumRef.current >= 1) {
@@ -340,6 +310,70 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
       scrollAccumRef.current = 0;
     };
   }, [autoScroll, effectiveScrollSpeed, prefs.columns, barInventory, effectiveTempo, beatsPerBar]);
+
+  // Scroll-on-line-transition. When the active bar moves to a DIFFERENT
+  // line, animate the chord chart scroll to position that line 1/3 from
+  // the top of the viewport, eased over one bar's duration. Within the
+  // same line: no scroll (long-line pause). At the start of the song
+  // before any line crosses the 1/3 mark: target is 0, no scroll (warmup).
+  const lastScrolledLineRef = useRef<string | null>(null);
+  const scrollAnimHandleRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!autoScroll) {
+      lastScrolledLineRef.current = null;
+      if (scrollAnimHandleRef.current !== null) {
+        cancelAnimationFrame(scrollAnimHandleRef.current);
+        scrollAnimHandleRef.current = null;
+      }
+      return;
+    }
+    if (activeBarIdx === null) return;
+    const bar = barInventory[activeBarIdx];
+    if (!bar) return;
+    const lineKey = `${bar.sectionId}-${bar.lineIdx}`;
+    if (lineKey === lastScrolledLineRef.current) return;
+    lastScrolledLineRef.current = lineKey;
+    const container = prefs.columns === 2 ? horizScrollRef.current : scrollRef.current;
+    if (!container) return;
+    const el = document.querySelector<HTMLElement>(
+      `[data-bar-line="${CSS.escape(lineKey)}"]`,
+    );
+    if (!el) return;
+    const containerRect = container.getBoundingClientRect();
+    const horizontal = prefs.columns === 2;
+    const elStart = horizontal
+      ? el.getBoundingClientRect().left - containerRect.left + container.scrollLeft
+      : el.getBoundingClientRect().top - containerRect.top + container.scrollTop;
+    const viewport = horizontal ? container.clientWidth : container.clientHeight;
+    const max = horizontal
+      ? container.scrollWidth - container.clientWidth
+      : container.scrollHeight - container.clientHeight;
+    const target = Math.max(0, Math.min(max, elStart - viewport / 3));
+    const startScroll = horizontal ? container.scrollLeft : container.scrollTop;
+    if (target === startScroll) return; // nothing to do
+    // Duration matches one bar's worth of music time, so the line
+    // transition feels in tempo with what just played.
+    const secsPerBar = effectiveTempo > 0 ? (60 / effectiveTempo) * beatsPerBar : 1;
+    const durationMs = Math.max(150, Math.min(3000, secsPerBar * 1000));
+    const startTime = performance.now();
+    if (scrollAnimHandleRef.current !== null) {
+      cancelAnimationFrame(scrollAnimHandleRef.current);
+    }
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - startTime) / durationMs);
+      // Cosine ease-in-out — softer than linear, no overshoot.
+      const eased = 0.5 - 0.5 * Math.cos(t * Math.PI);
+      const next = startScroll + (target - startScroll) * eased;
+      if (horizontal) container.scrollLeft = next;
+      else container.scrollTop = next;
+      if (t < 1) {
+        scrollAnimHandleRef.current = requestAnimationFrame(tick);
+      } else {
+        scrollAnimHandleRef.current = null;
+      }
+    };
+    scrollAnimHandleRef.current = requestAnimationFrame(tick);
+  }, [autoScroll, activeBarIdx, barInventory, prefs.columns, effectiveTempo, beatsPerBar]);
 
   // Manual pager / picker / Escape should all pause auto-scroll so the
   // user isn't fighting the loop while interacting with the chrome.
