@@ -3,6 +3,15 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-14 — 8953d6a
+
+**Continuous bar-derived scroll (replace jump-to-line) (#136)**
+
+- Commit: [`8953d6a`](../../commit/8953d6a3511727634a84dbf14e728e1c0e0f4721)
+- Author: gibsonds
+- Files changed:
+  - `src/components/PerformView.tsx`
+
 ## 2026-05-14 — 6945509
 
 **Bar inventory: count chord-content edges as implicit bars (#135)**
