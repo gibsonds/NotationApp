@@ -9,31 +9,46 @@ import { computeBarInventory } from "@/lib/chord-bar-inventory";
 
 // A typical iPad-ish viewport in portrait.
 const VIEWPORT = 900;
-const ONE_THIRD = VIEWPORT / 3; // 300
+// Default trigger threshold = viewport/2 = 450.
+// Default target settling position = viewport/3 = 300.
 
-describe("computeLineScrollTarget — warmup behaviour", () => {
-  it("returns 0 when the line is at the top of content (warmup)", () => {
-    // Line at content-Y 0 → ideal = -300 → clamp to 0.
+describe("computeLineScrollTarget — warmup (trigger threshold)", () => {
+  it("returns 0 when the line is at the top of content", () => {
     expect(computeLineScrollTarget(0, VIEWPORT, 5000)).toBe(0);
   });
 
-  it("returns 0 when the line is within the top 1/3 of the viewport", () => {
-    // Line at content-Y 200, viewport/3 = 300 → ideal = -100 → 0.
+  it("returns 0 when the line is within the top half (default trigger 0.5)", () => {
+    // viewport/2 = 450. Line at 200 → well under threshold → 0.
     expect(computeLineScrollTarget(200, VIEWPORT, 5000)).toBe(0);
   });
 
-  it("returns 0 exactly at the 1/3 boundary", () => {
-    expect(computeLineScrollTarget(ONE_THIRD, VIEWPORT, 5000)).toBe(0);
+  // REGRESSION (Twig): line 2 at content-Y ≈ 200 was producing a
+  // non-zero target under the old single-fraction model (trigger=
+  // target=viewport/3=300) because line 2 in some chord charts sits
+  // past viewport/3 due to section headers + line-height. With the
+  // new trigger=viewport/2 default, scroll stays parked for line 2.
+  it("REGRESSION: line 2 at content-Y 350 does NOT engage scroll", () => {
+    expect(computeLineScrollTarget(350, VIEWPORT, 5000)).toBe(0);
+  });
+
+  it("returns 0 exactly at the trigger boundary (450)", () => {
+    expect(computeLineScrollTarget(450, VIEWPORT, 5000)).toBe(0);
+  });
+
+  it("returns 0 just below trigger boundary (449)", () => {
+    expect(computeLineScrollTarget(449, VIEWPORT, 5000)).toBe(0);
   });
 });
 
-describe("computeLineScrollTarget — normal scroll", () => {
-  it("places the line at viewport/3 once it crosses that mark", () => {
-    // Line at 400 → ideal = 400 - 300 = 100.
-    expect(computeLineScrollTarget(400, VIEWPORT, 5000)).toBe(100);
+describe("computeLineScrollTarget — engagement and settling", () => {
+  it("engages scroll once the line crosses the trigger threshold", () => {
+    // Line at 451 → past trigger 450, settle target = lineY - viewport/3
+    //   = 451 - 300 = 151
+    expect(computeLineScrollTarget(451, VIEWPORT, 5000)).toBe(151);
   });
 
-  it("scales linearly as the line moves further down", () => {
+  it("settles deeper lines at viewport/3 from top", () => {
+    expect(computeLineScrollTarget(600, VIEWPORT, 5000)).toBe(300);
     expect(computeLineScrollTarget(1000, VIEWPORT, 5000)).toBe(700);
     expect(computeLineScrollTarget(2000, VIEWPORT, 5000)).toBe(1700);
   });
@@ -41,13 +56,10 @@ describe("computeLineScrollTarget — normal scroll", () => {
 
 describe("computeLineScrollTarget — end-of-content clamp", () => {
   it("never exceeds maxScroll (would scroll past the bottom)", () => {
-    // Line content-Y 10000, viewport 900, maxScroll 5000.
-    // Ideal would be 9700 — but scrollable range is only 5000.
     expect(computeLineScrollTarget(10000, VIEWPORT, 5000)).toBe(5000);
   });
 
   it("respects the clamp exactly at the max", () => {
-    // Ideal = 5000 → target = 5000.
     expect(computeLineScrollTarget(5300, VIEWPORT, 5000)).toBe(5000);
   });
 });
@@ -59,6 +71,40 @@ describe("computeLineScrollTarget — defensive zero / negative input", () => {
 
   it("returns 0 when maxScroll is zero (content fits in viewport)", () => {
     expect(computeLineScrollTarget(500, VIEWPORT, 0)).toBe(0);
+  });
+});
+
+describe("computeLineScrollTarget — custom trigger / target fractions", () => {
+  it("respects a deeper trigger (2/3 viewport) for slower engagement", () => {
+    // Trigger at viewport*2/3 = 600. Line at 500 → still parked.
+    const target = computeLineScrollTarget(500, VIEWPORT, 5000, {
+      triggerFraction: 2 / 3,
+    });
+    expect(target).toBe(0);
+  });
+
+  it("respects a shallower trigger (1/4 viewport) for earlier engagement", () => {
+    // Trigger at 225. Line at 300 → engaged.
+    const target = computeLineScrollTarget(300, VIEWPORT, 5000, {
+      triggerFraction: 1 / 4,
+    });
+    // Settle: 300 - viewport/3 = 0 (clamp to 0 since ideal isn't positive)
+    expect(target).toBe(0);
+    // Try a deeper line so settle is positive:
+    const target2 = computeLineScrollTarget(400, VIEWPORT, 5000, {
+      triggerFraction: 1 / 4,
+    });
+    expect(target2).toBe(100); // 400 - 300
+  });
+
+  it("targetFraction overrides the settling position", () => {
+    // Trigger 0.5, target 0.25. Line at 500 → past trigger; settle
+    //   at 500 - viewport*0.25 = 500 - 225 = 275.
+    const target = computeLineScrollTarget(500, VIEWPORT, 5000, {
+      triggerFraction: 0.5,
+      targetFraction: 0.25,
+    });
+    expect(target).toBe(275);
   });
 });
 
