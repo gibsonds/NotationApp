@@ -3,6 +3,18 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-14 — b5b017a
+
+**Auto-scroll: lock scroll to bar transitions + perform-tempo override (#134)**
+
+- Commit: [`b5b017a`](../../commit/b5b017ac53253dcdc5269ac7d57b6f80253c1fff)
+- Author: gibsonds
+- Files changed:
+  - `src/components/ChordChartView.tsx`
+  - `src/components/PerformView.tsx`
+  - `src/lib/__tests__/chord-bar-inventory.test.ts`
+  - `src/lib/chord-bar-inventory.ts`
+
 ## 2026-05-14 — 09017ea
 
 **Test: || is a real bar in the inventory (locks behaviour) (#133)**
