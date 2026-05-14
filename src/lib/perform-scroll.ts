@@ -24,18 +24,46 @@
 import type { BarPos } from "@/lib/chord-bar-inventory";
 
 /**
- * Position the active line at the 1/3-from-top mark of the viewport,
- * but never propose scrolling above 0 (warmup) or past the maximum
- * scroll (end-of-content clamp).
+ * Compute the scrollTop position that should hold the active line at
+ * `targetFraction` from the top of the viewport, but DON'T engage
+ * scroll until the line's content-Y has passed `triggerFraction` of
+ * the viewport. Separating the two means scroll can stay parked while
+ * early lines are read (line 1, 2, 3 in the top half), then start
+ * tracking the active line once it's past the trigger zone.
+ *
+ *  - `triggerFraction` (default 0.5): "warm-up zone." While the
+ *    active line's content-Y is at or below `viewport × triggerFraction`,
+ *    target stays at 0. The chord chart doesn't scroll at all during
+ *    the song's opening — the user reads top-down while the playhead
+ *    walks toward the trigger.
+ *
+ *  - `targetFraction` (default 1/3): where the active line settles
+ *    once scroll is engaged. The user said "1/3 of the page above the
+ *    active bar," which matches.
+ *
+ * Why two values and not one: testing on Twig showed the
+ * single-fraction model engaged scroll on line 2, because line 2's
+ * content-Y already exceeded viewport/3. Pulling the trigger deeper
+ * (viewport/2) keeps line 2 parked, while still settling the active
+ * line at 1/3 once engagement happens.
  */
 export function computeLineScrollTarget(
   lineContentY: number,
   viewportSize: number,
   maxScroll: number,
+  options: {
+    triggerFraction?: number;
+    targetFraction?: number;
+  } = {},
 ): number {
+  const triggerFraction = options.triggerFraction ?? 0.5;
+  const targetFraction = options.targetFraction ?? 1 / 3;
   if (viewportSize <= 0) return 0;
   if (maxScroll <= 0) return 0;
-  const ideal = lineContentY - viewportSize / 3;
+  // Warm-up: don't engage scroll until the active line has crossed
+  // the trigger threshold.
+  if (lineContentY <= viewportSize * triggerFraction) return 0;
+  const ideal = lineContentY - viewportSize * targetFraction;
   if (ideal <= 0) return 0;
   if (ideal >= maxScroll) return maxScroll;
   return ideal;
