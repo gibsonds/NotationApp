@@ -187,6 +187,17 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
   // frame. Pauses on pager tap, picker open, or perform-mode exit.
   const [autoScroll, setAutoScroll] = useState(false);
   const autoScrollHandleRef = useRef<number | null>(null);
+  // Tempo-aware speed: when the score has a tempo set, scale the
+  // user's px/sec preference linearly by tempo/120. So a song at
+  // 240 BPM scrolls twice as fast as a song at 120 BPM at the same
+  // px/sec setting — closer to "moves with the song". 120 BPM is a
+  // neutral reference; ± buttons still adjust prefs.scrollSpeed
+  // around it. True bar-accurate scrolling (with green bar highlight
+  // as bars are "played") is a follow-up slice — needs ChordChartView
+  // to split chord-line text into per-bar spans first.
+  const songTempo = score?.tempo ?? 0;
+  const tempoFactor = songTempo > 0 ? songTempo / 120 : 1;
+  const effectiveScrollSpeed = prefs.scrollSpeed * tempoFactor;
   // Track the fractional pixel position separately from element
   // scrollTop, which only accepts integers — without this, slow speeds
   // (e.g. 5 px/sec ≈ 0.08 px/frame) would round to 0 every frame and
@@ -199,7 +210,7 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
     const step = (now: number) => {
       const dt = (now - lastTime) / 1000;
       lastTime = now;
-      const delta = prefs.scrollSpeed * dt;
+      const delta = effectiveScrollSpeed * dt;
       scrollAccumRef.current += delta;
       if (scrollAccumRef.current >= 1) {
         const whole = Math.floor(scrollAccumRef.current);
@@ -231,7 +242,7 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
       }
       scrollAccumRef.current = 0;
     };
-  }, [autoScroll, prefs.scrollSpeed, prefs.columns]);
+  }, [autoScroll, effectiveScrollSpeed, prefs.columns]);
 
   // Manual pager / picker / Escape should all pause auto-scroll so the
   // user isn't fighting the loop while interacting with the chrome.
@@ -673,7 +684,11 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
             onClick={() => setAutoScroll((on) => !on)}
             className={`${btn} ${autoScroll ? "bg-blue-700 hover:bg-blue-700" : ""}`}
             aria-label={autoScroll ? "Pause auto-scroll" : "Start auto-scroll"}
-            title={autoScroll ? `Pause auto-scroll (${prefs.scrollSpeed} px/sec)` : `Start auto-scroll (${prefs.scrollSpeed} px/sec)`}
+            title={
+              songTempo > 0
+                ? `${autoScroll ? "Pause" : "Start"} auto-scroll (${effectiveScrollSpeed.toFixed(0)} px/sec @ ${songTempo} bpm)`
+                : `${autoScroll ? "Pause" : "Start"} auto-scroll (${prefs.scrollSpeed} px/sec — no tempo set)`
+            }
           >
             {autoScroll ? (
               <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
@@ -719,6 +734,32 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
           </button>
         )}
       </div>
+
+      {/* Big floating PAUSE — only when auto-scroll is active. The
+          toolbar play/pause is small and easy to miss while reading;
+          a big always-reachable button covers the user's "wait, stop"
+          reflex. Tap anywhere on the button to pause; the regular
+          toolbar button still works. */}
+      {autoScroll && (
+        <button
+          type="button"
+          onClick={() => setAutoScroll(false)}
+          className="absolute bottom-20 left-1/2 -translate-x-1/2 z-40 px-6 py-3 rounded-full bg-red-600/90 hover:bg-red-700 active:bg-red-800 text-white text-base font-semibold shadow-2xl backdrop-blur-sm border border-white/20 flex items-center gap-2"
+          aria-label="Pause auto-scroll"
+          title="Pause auto-scroll"
+        >
+          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+            <rect x="6" y="5" width="4" height="14" rx="1" />
+            <rect x="14" y="5" width="4" height="14" rx="1" />
+          </svg>
+          <span>Pause</span>
+          {songTempo > 0 && (
+            <span className="text-xs opacity-80 font-normal ml-1">
+              {songTempo} bpm
+            </span>
+          )}
+        </button>
+      )}
 
     </div>
   );
