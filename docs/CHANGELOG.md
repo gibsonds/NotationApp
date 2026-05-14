@@ -3,6 +3,15 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-14 — 9f71249
+
+**PerformView auto-scroll scaffolding (#23) (#120)**
+
+- Commit: [`9f71249`](../../commit/9f71249ac125df0e864fd46e36924cea3c78e8b1)
+- Author: gibsonds
+- Files changed:
+  - `src/components/PerformView.tsx`
+
 ## 2026-05-13 — bd69dc3
 
 **Harden share-code parser + surface Copy code button (#128)**
