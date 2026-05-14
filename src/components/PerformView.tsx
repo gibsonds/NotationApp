@@ -17,6 +17,11 @@ interface PerformPrefs {
   lineHeight: number;     // unitless multiplier
   letterSpacing: number;  // em
   columns: 1 | 2;
+  /** Auto-scroll speed in pixels-per-second. Applies in 1-col (vertical
+   *  scroll on the outer container) and 2-col (horizontal scroll on the
+   *  PaginatedPerformChart pages strip). Defaults to 30, slow enough to
+   *  read; user dials in their own speed via toolbar buttons. */
+  scrollSpeed: number;
 }
 
 const DEFAULT_PREFS: PerformPrefs = {
@@ -24,6 +29,7 @@ const DEFAULT_PREFS: PerformPrefs = {
   lineHeight: 1.4,
   letterSpacing: 0.02,
   columns: 1,
+  scrollSpeed: 30,
 };
 
 function loadPrefs(): PerformPrefs {
@@ -175,6 +181,64 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
 
   useEffect(() => savePrefs(prefs), [prefs]);
 
+  // Auto-scroll for hands-free reading (#23). Off by default; the user
+  // toggles via the toolbar button. While on, requestAnimationFrame
+  // advances scrollTop (1-col) or scrollLeft (2-col) by speed/60 each
+  // frame. Pauses on pager tap, picker open, or perform-mode exit.
+  const [autoScroll, setAutoScroll] = useState(false);
+  const autoScrollHandleRef = useRef<number | null>(null);
+  // Track the fractional pixel position separately from element
+  // scrollTop, which only accepts integers — without this, slow speeds
+  // (e.g. 5 px/sec ≈ 0.08 px/frame) would round to 0 every frame and
+  // never advance.
+  const scrollAccumRef = useRef(0);
+
+  useEffect(() => {
+    if (!autoScroll) return;
+    let lastTime = performance.now();
+    const step = (now: number) => {
+      const dt = (now - lastTime) / 1000;
+      lastTime = now;
+      const delta = prefs.scrollSpeed * dt;
+      scrollAccumRef.current += delta;
+      if (scrollAccumRef.current >= 1) {
+        const whole = Math.floor(scrollAccumRef.current);
+        scrollAccumRef.current -= whole;
+        if (prefs.columns === 2) {
+          const el = horizScrollRef.current;
+          if (el) {
+            const max = el.scrollWidth - el.clientWidth;
+            el.scrollLeft = Math.min(max, el.scrollLeft + whole);
+            // Stop at end of page strip rather than spinning.
+            if (el.scrollLeft >= max) setAutoScroll(false);
+          }
+        } else {
+          const el = scrollRef.current;
+          if (el) {
+            const max = el.scrollHeight - el.clientHeight;
+            el.scrollTop = Math.min(max, el.scrollTop + whole);
+            if (el.scrollTop >= max) setAutoScroll(false);
+          }
+        }
+      }
+      autoScrollHandleRef.current = requestAnimationFrame(step);
+    };
+    autoScrollHandleRef.current = requestAnimationFrame(step);
+    return () => {
+      if (autoScrollHandleRef.current !== null) {
+        cancelAnimationFrame(autoScrollHandleRef.current);
+        autoScrollHandleRef.current = null;
+      }
+      scrollAccumRef.current = 0;
+    };
+  }, [autoScroll, prefs.scrollSpeed, prefs.columns]);
+
+  // Manual pager / picker / Escape should all pause auto-scroll so the
+  // user isn't fighting the loop while interacting with the chrome.
+  useEffect(() => {
+    if (pickerOpen && autoScroll) setAutoScroll(false);
+  }, [pickerOpen, autoScroll]);
+
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -191,6 +255,7 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
   // Chart's pages strip by one client-width — which is one full
   // book-page-turn (both columns advance together to a new page).
   const pageBy = (direction: 1 | -1) => {
+    if (autoScroll) setAutoScroll(false);
     if (prefs.columns === 2) {
       const el = horizScrollRef.current;
       if (el && el.clientWidth > 0) {
@@ -599,6 +664,47 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
             </svg>
           )}
         </button>
+        {/* Auto-scroll cluster (#23) — play/pause + speed adjusts.
+            Speed is in pixels/sec; clamped to a readable range. Initial
+            scaffolding; tempo-aware sync is a future slice. */}
+        <div className="flex items-center gap-1 bg-gray-900/80 backdrop-blur-sm rounded-xl p-1 shadow border border-white/10">
+          <button
+            type="button"
+            onClick={() => setAutoScroll((on) => !on)}
+            className={`${btn} ${autoScroll ? "bg-blue-700 hover:bg-blue-700" : ""}`}
+            aria-label={autoScroll ? "Pause auto-scroll" : "Start auto-scroll"}
+            title={autoScroll ? `Pause auto-scroll (${prefs.scrollSpeed} px/sec)` : `Start auto-scroll (${prefs.scrollSpeed} px/sec)`}
+          >
+            {autoScroll ? (
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                <rect x="6" y="5" width="4" height="14" rx="1" />
+                <rect x="14" y="5" width="4" height="14" rx="1" />
+              </svg>
+            ) : (
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => adjust("scrollSpeed", -5, 5, 200)}
+            className={btn}
+            aria-label="Slower auto-scroll"
+            title={`Slower (${Math.max(5, prefs.scrollSpeed - 5)} px/sec)`}
+          >
+            ⊖
+          </button>
+          <button
+            type="button"
+            onClick={() => adjust("scrollSpeed", 5, 5, 200)}
+            className={btn}
+            aria-label="Faster auto-scroll"
+            title={`Faster (${Math.min(200, prefs.scrollSpeed + 5)} px/sec)`}
+          >
+            ⊕
+          </button>
+        </div>
         {onOpenMySongs && (
           <button
             type="button"
