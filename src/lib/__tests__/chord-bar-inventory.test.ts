@@ -32,22 +32,29 @@ describe("computeBarInventory", () => {
     ]);
   });
 
-  it("skips lines with zero or one pipe", () => {
-    // First line: no pipes → 0 bars. Second line: 1 pipe → 0 bars.
-    // Third line: 2 pipes → 1 bar.
+  it("contributes zero bars for a line with no pipes (no bar markers)", () => {
+    // Without any | the parser has no anchors — fall back to constant
+    // tempo-scaled scroll. User must add | markers to enable bar
+    // tracking on a chord line.
     const s = score([
-      {
-        id: "v",
-        lines: [
-          { chords: "G D Em C" },
-          { chords: "Am | C" },
-          { chords: "| C |" },
-        ],
-      },
+      { id: "v", lines: [{ chords: "G D Em C" }] },
+    ]);
+    expect(computeBarInventory(s)).toEqual([]);
+  });
+
+  it("counts 'Am | C' as 2 bars (implicit leading + trailing)", () => {
+    // Both sides have chord content outside the single pipe — both
+    // edges become bars. Was 0 under the old strict-pipe-bracketed
+    // model; now correctly 2.
+    const s = score([
+      { id: "v", lines: [{ chords: "Am | C" }] },
     ]);
     const inv = computeBarInventory(s);
-    expect(inv).toHaveLength(1);
-    expect(inv[0]).toMatchObject({ sectionIdx: 0, lineIdx: 2, startCol: 0, endCol: 4 });
+    expect(inv).toHaveLength(2);
+    expect(inv.map((b) => [b.startCol, b.endCol])).toEqual([
+      [0, 3],  // Am
+      [3, 6],  // | C
+    ]);
   });
 
   it("preserves section + line ordering across the song", () => {
@@ -88,15 +95,63 @@ describe("computeBarInventory", () => {
     ]);
   });
 
+  it("counts a leading chord without a leading | as a real bar", () => {
+    // "Em | Bm | C |" — Em is a bar even though no | precedes it.
+    // Previously counted as 2 bars (Bm, C); should be 3 (Em, Bm, C).
+    const s = score([{ id: "v", lines: [{ chords: "Em | Bm | C |" }] }]);
+    const inv = computeBarInventory(s);
+    expect(inv).toHaveLength(3);
+    expect(inv.map((b) => [b.startCol, b.endCol])).toEqual([
+      [0, 3],   // Em (implicit start to first |)
+      [3, 8],   // | Bm
+      [8, 12],  // | C
+    ]);
+  });
+
+  it("counts a trailing chord without a trailing | as a real bar", () => {
+    // "| C | F | G" — G is a bar even though no | follows it.
+    // Previously counted as 2 (C, F); should be 3 (C, F, G).
+    const s = score([{ id: "v", lines: [{ chords: "| C | F | G" }] }]);
+    const inv = computeBarInventory(s);
+    expect(inv).toHaveLength(3);
+    expect(inv.map((b) => [b.startCol, b.endCol])).toEqual([
+      [0, 4],   // | C
+      [4, 8],   // | F
+      [8, 11],  // | G (implicit end after last non-space char)
+    ]);
+  });
+
+  it("counts both leading and trailing implicit bars in the same line", () => {
+    const s = score([{ id: "v", lines: [{ chords: "Em | Bm | C" }] }]);
+    const inv = computeBarInventory(s);
+    expect(inv).toHaveLength(3);
+    expect(inv.map((b) => [b.startCol, b.endCol])).toEqual([
+      [0, 3],   // Em
+      [3, 8],   // | Bm
+      [8, 11],  // | C
+    ]);
+  });
+
+  it("ignores trailing whitespace when computing the trailing-content boundary", () => {
+    // "| C | F | G   " — the `G` is a bar; trailing spaces don't extend it.
+    const s = score([{ id: "v", lines: [{ chords: "| C | F | G   " }] }]);
+    const inv = computeBarInventory(s);
+    expect(inv).toHaveLength(3);
+    expect(inv[2]).toMatchObject({ startCol: 8, endCol: 11 });
+  });
+
   it("tolerates pipes at non-zero starting columns", () => {
-    // chord line starts with a chord, then has bars later
+    // "G   | C | F |" — the leading G is a real bar (3 bars: G, C, F).
     const s = score([
       { id: "v", lines: [{ chords: "G   | C | F |" }] },
     ]);
     const inv = computeBarInventory(s);
-    expect(inv).toHaveLength(2);
-    expect(inv[0].startCol).toBe(4);
-    expect(inv[1].startCol).toBe(8);
+    expect(inv).toHaveLength(3);
+    expect(inv.map((b) => [b.startCol, b.endCol])).toEqual([
+      [0, 4],   // G (implicit)
+      [4, 8],   // | C
+      [8, 12],  // | F
+    ]);
   });
 });
 

@@ -44,14 +44,45 @@ export function computeBarInventory(score: Score): BarPos[] {
       for (let c = 0; c < chords.length; c++) {
         if (chords[c] === "|") pipes.push(c);
       }
-      for (let p = 0; p < pipes.length - 1; p++) {
+      // A line with no pipes contributes no bars — fall back to
+      // constant tempo-scaled scroll for that line. (User must add
+      // `|` markers to enable bar tracking on that line.)
+      if (pipes.length === 0) continue;
+
+      // Implicit boundaries: chord content that sits OUTSIDE the
+      // pipe-bracketed region still represents bars. Two common
+      // patterns we used to miss:
+      //
+      //   "Em | Bm | C |"  — leading Em chord before the first `|`
+      //                       is a real bar (3 bars total, not 2).
+      //   "| C | F | G"    — trailing G chord after the last `|` is
+      //                       a real bar (3 bars total, not 2).
+      //
+      // Treat the first non-space col as an implicit boundary when
+      // it precedes the first pipe; treat the position just past the
+      // last non-space col as an implicit boundary when it follows
+      // the last pipe.
+      const firstNonSpace = chords.search(/\S/);
+      // Index just past the last non-space character (exclusive end).
+      const lastNonSpaceEnd = chords.replace(/\s+$/, "").length;
+      const hasLeadingContent =
+        firstNonSpace !== -1 && firstNonSpace < pipes[0];
+      const hasTrailingContent =
+        lastNonSpaceEnd > pipes[pipes.length - 1] + 1;
+
+      const boundaries: number[] = [];
+      if (hasLeadingContent) boundaries.push(firstNonSpace);
+      for (const p of pipes) boundaries.push(p);
+      if (hasTrailingContent) boundaries.push(lastNonSpaceEnd);
+
+      for (let p = 0; p < boundaries.length - 1; p++) {
         out.push({
           globalIdx: out.length,
           sectionIdx: si,
           sectionId: sections[si].id,
           lineIdx: li,
-          startCol: pipes[p],
-          endCol: pipes[p + 1],
+          startCol: boundaries[p],
+          endCol: boundaries[p + 1],
         });
       }
     }
