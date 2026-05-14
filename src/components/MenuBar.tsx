@@ -24,6 +24,7 @@ interface MenuBarProps {
   onOpenAutosave?: () => void;
   onForcePushCloud?: () => void;
   onExportAllSongs?: () => void;
+  onImportSongbook?: () => void;
   onResetAndPullFromCloud?: () => void;
   onPasteLyrics?: () => void;
   onMySongs?: () => void;
@@ -122,7 +123,7 @@ function MenuDropdown({ label, items, isOpen, onToggle, onClose, onItemClick }: 
 
 export default function MenuBar({
   zoom, onZoomChange, onPrint, onOpenAutosave, onForcePushCloud,
-  onExportAllSongs, onResetAndPullFromCloud,
+  onExportAllSongs, onImportSongbook, onResetAndPullFromCloud,
   onPasteLyrics, onMySongs, onApiKeys,
   onToggleSidebar, sidebarOpen, onSendFeedback,
 }: MenuBarProps) {
@@ -367,6 +368,12 @@ export default function MenuBar({
     // Bulk backup — exports every local song as a single JSON file.
     // Always-safe operation; run before any destructive cloud action.
     { label: "Export all songs (backup)...", action: () => onExportAllSongs?.() },
+    // Pairs with Export: read a previously-exported JSON file and
+    // load it as the local songbook. Fork mode (default) gives this
+    // device a fresh deviceId so changes don't push back to your
+    // shared songbook — use it to experiment on the same songs in
+    // isolation.
+    { label: "Import songbook from JSON...", action: () => onImportSongbook?.() },
     // Force-pushes every local song to cloud without expectedVersion,
     // bypassing the My Songs sync flow that would otherwise tombstone
     // local entries when cloud has been wiped on another device.

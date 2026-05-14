@@ -24,8 +24,9 @@ import JoinSongbookModal from "@/components/JoinSongbookModal";
 import PerformView from "@/components/PerformView";
 import PersistFailureBanner from "@/components/PersistFailureBanner";
 import FeedbackModal from "@/components/FeedbackModal";
-import { CLOUD_ENABLED, getDeviceId, cloudPutSong, syncSongbook } from "@/lib/song-cloud";
-import { setSongs as writeLocalSongs } from "@/lib/song-bank";
+import { CLOUD_ENABLED, getDeviceId, setDeviceId, cloudPutSong, syncSongbook } from "@/lib/song-cloud";
+import { setSongs as writeLocalSongs, type SongBankEntry } from "@/lib/song-bank";
+import ImportSongbookDialog, { type ImportSongbookPayload } from "@/components/ImportSongbookDialog";
 import { autosaveToCloud, CloudSaveEvents } from "@/lib/cloud-autosave";
 import { getSongs, updateSong } from "@/lib/song-bank";
 import type { SongDTO } from "@/lib/song-cloud-types";
@@ -150,6 +151,73 @@ export default function Home() {
     window.alert(
       `Pushed ${pushed} song${pushed === 1 ? "" : "s"} to cloud.${failed > 0 ? `\n${failed} failed (see console).` : ""}\n\nOther devices can now sync to pick them back up.`,
     );
+  }, []);
+
+  // Import flow: file → parse → preview modal (Fork / Replace).
+  const songbookInputRef = useRef<HTMLInputElement | null>(null);
+  const [importPayload, setImportPayload] = useState<ImportSongbookPayload | null>(null);
+
+  const handleImportSongbookClick = useCallback(() => {
+    songbookInputRef.current?.click();
+  }, []);
+
+  const handleSongbookFileSelected = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-picking the same file
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      // Accept either { songs: [...] } (full export shape) or a bare
+      // array of song entries. Keeps the format forgiving.
+      const songs: SongBankEntry[] = Array.isArray(parsed)
+        ? parsed
+        : Array.isArray(parsed?.songs)
+          ? parsed.songs
+          : [];
+      if (songs.length === 0) {
+        window.alert("That file didn't contain any songs. Expected a JSON export from File → Export all songs.");
+        return;
+      }
+      // Light sanity check on the first entry's shape.
+      const sample = songs[0];
+      if (!sample || typeof sample.id !== "string" || typeof sample.title !== "string" || !sample.score) {
+        window.alert("That file doesn't look like a NotationApp songbook export. Expected entries with id / title / score fields.");
+        return;
+      }
+      setImportPayload({
+        fileName: file.name,
+        songs,
+        exportedAt: typeof parsed?.exportedAt === "string" ? parsed.exportedAt : undefined,
+        sourceDeviceId: typeof parsed?.deviceId === "string" ? parsed.deviceId : undefined,
+      });
+    } catch (err) {
+      console.warn("[import-songbook] parse failed", err);
+      window.alert(`Couldn't read that file as JSON: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }, []);
+
+  const doImportSongs = useCallback(async (mode: "fork" | "replace", songs: SongBankEntry[]) => {
+    writeLocalSongs(songs);
+    if (mode === "fork" && CLOUD_ENABLED) {
+      // Fresh deviceId = fresh cloud partition. No songs land in the
+      // shared songbook on next sync; this device pushes up to its
+      // own brand-new bucket.
+      const fresh = (typeof crypto !== "undefined" && "randomUUID" in crypto)
+        ? crypto.randomUUID()
+        : `${Date.now().toString(16)}-${Math.random().toString(36).slice(2, 10)}`;
+      setDeviceId(fresh);
+    }
+    setImportPayload(null);
+    if (CLOUD_ENABLED) {
+      // Kick a sync so the cloud partition (fresh for fork, existing
+      // for replace) gets the imported songs pushed up.
+      try { await syncSongbook(); } catch { /* best-effort */ }
+    }
+    // Reload so every component re-reads localStorage state (deviceId,
+    // songs) from scratch — simpler than threading the change through
+    // every subscriber.
+    location.reload();
   }, []);
 
   // Bulk export: every local song as a single JSON file. Safety net
@@ -882,6 +950,7 @@ export default function Home() {
           onForcePushCloud={handleForcePushCloud}
           onExportAllSongs={handleExportAllSongs}
           onResetAndPullFromCloud={handleResetAndPullFromCloud}
+          onImportSongbook={handleImportSongbookClick}
           onPasteLyrics={() => setPasteLyricsOpen(true)}
           onMySongs={() => setMySongsOpen(true)}
           onSendFeedback={() => setFeedbackOpen(true)}
@@ -1427,6 +1496,25 @@ export default function Home() {
       {/* Autosave recovery dialog */}
       {autosaveDialogOpen && (
         <AutosaveRecoveryDialog onClose={() => setAutosaveDialogOpen(false)} />
+      )}
+
+      {/* Songbook JSON import — hidden file input + preview/choice modal */}
+      <input
+        ref={songbookInputRef}
+        type="file"
+        accept=".json,application/json"
+        className="hidden"
+        onChange={handleSongbookFileSelected}
+      />
+      {importPayload && (
+        <ImportSongbookDialog
+          payload={importPayload}
+          currentDeviceId={CLOUD_ENABLED ? getDeviceId() : ""}
+          currentLocalCount={getSongs().length}
+          onCancel={() => setImportPayload(null)}
+          onFork={() => doImportSongs("fork", importPayload.songs)}
+          onReplace={() => doImportSongs("replace", importPayload.songs)}
+        />
       )}
 
       {/* Join shared songbook prompt (from ?join=<deviceId> link) */}
