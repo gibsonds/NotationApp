@@ -469,12 +469,12 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
           ref={scrollRef}
           className="absolute inset-0 overflow-auto pt-[7vh] pb-16"
         >
-          {/* Top spacer: pushes the first chord line down so when
-              scrollTop=0 the first line sits at ~1/3 of the viewport
-              from the top — the "1/3 of the page above the active
-              bar" position the user wants throughout playback.
-              7vh from pt + 26vh from spacer = 33vh total top offset. */}
-          <div style={{ height: "26vh" }} aria-hidden />
+          {/* No top spacer — user wants the chord chart to start at
+              the top of the viewport. computeLineScrollTarget already
+              clamps target to 0 while the active line's content-Y is
+              within the top viewport/3 (the "warmup" period), so
+              scroll stays at 0 until the active line passes the 1/3
+              mark, then engages to hold the line at that mark. */}
           <div className="relative">
             <ChordChartView
               score={score}
