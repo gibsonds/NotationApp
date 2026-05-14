@@ -9,6 +9,11 @@ import AnnotateToggle from "@/components/AnnotateToggle";
 import { useScoreStore } from "@/store/score-store";
 import { getSongs, SongsUpdatedEvent, type SongBankEntry } from "@/lib/song-bank";
 import { getSets, SetsUpdatedEvent, songSetMembership, type SongSet } from "@/lib/song-sets";
+import {
+  activeBarFromElapsed,
+  beatsPerBarOf,
+  computeBarInventory,
+} from "@/lib/chord-bar-inventory";
 
 const PREFS_KEY = "notation-app-perform-prefs";
 
@@ -198,6 +203,22 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
   const songTempo = score?.tempo ?? 0;
   const tempoFactor = songTempo > 0 ? songTempo / 120 : 1;
   const effectiveScrollSpeed = prefs.scrollSpeed * tempoFactor;
+
+  // Bar inventory drives the green per-bar highlight overlay during
+  // auto-scroll. Computed once per score; activeBarIdx is the only
+  // value that changes during the RAF loop, and it only changes
+  // ~once per bar (~once every 2 seconds at 120 BPM 4/4) — far less
+  // often than every frame, so React reconciliation stays cheap.
+  const barInventory = useMemo(
+    () => (score ? computeBarInventory(score) : []),
+    [score],
+  );
+  const beatsPerBar = useMemo(
+    () => beatsPerBarOf(score?.timeSignature),
+    [score?.timeSignature],
+  );
+  const autoScrollElapsedRef = useRef(0);
+  const [activeBarIdx, setActiveBarIdx] = useState<number | null>(null);
   // Track the fractional pixel position separately from element
   // scrollTop, which only accepts integers — without this, slow speeds
   // (e.g. 5 px/sec ≈ 0.08 px/frame) would round to 0 every frame and
@@ -205,11 +226,29 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
   const scrollAccumRef = useRef(0);
 
   useEffect(() => {
-    if (!autoScroll) return;
+    if (!autoScroll) {
+      // Reset elapsed when scroll stops, so a re-press of play starts
+      // bar tracking from bar 0 again (matches the user expectation:
+      // pause+play = "play from where I am visually" — and the active
+      // bar starts from the visual top).
+      autoScrollElapsedRef.current = 0;
+      setActiveBarIdx(null);
+      return;
+    }
     let lastTime = performance.now();
     const step = (now: number) => {
       const dt = (now - lastTime) / 1000;
       lastTime = now;
+      autoScrollElapsedRef.current += dt;
+      // Active bar derivation — only setState when the value changes
+      // so we don't churn the chord chart every frame.
+      const nextBarIdx = activeBarFromElapsed(
+        barInventory,
+        autoScrollElapsedRef.current,
+        songTempo,
+        beatsPerBar,
+      );
+      setActiveBarIdx((prev) => (prev === nextBarIdx ? prev : nextBarIdx));
       const delta = effectiveScrollSpeed * dt;
       scrollAccumRef.current += delta;
       if (scrollAccumRef.current >= 1) {
@@ -242,7 +281,7 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
       }
       scrollAccumRef.current = 0;
     };
-  }, [autoScroll, effectiveScrollSpeed, prefs.columns]);
+  }, [autoScroll, effectiveScrollSpeed, prefs.columns, barInventory, songTempo, beatsPerBar]);
 
   // Manual pager / picker / Escape should all pause auto-scroll so the
   // user isn't fighting the loop while interacting with the chrome.
@@ -328,7 +367,12 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
           className="absolute inset-0 overflow-auto pt-[7vh] pb-16"
         >
           <div className="relative">
-            <ChordChartView score={score} performMode performColumns={1} />
+            <ChordChartView
+              score={score}
+              performMode
+              performColumns={1}
+              activeBar={activeBarIdx !== null ? barInventory[activeBarIdx] ?? null : null}
+            />
             <AnnotationLayer />
           </div>
         </div>
