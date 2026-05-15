@@ -97,16 +97,20 @@ interface OverlayProbe {
   bottom?: number;
   viewportH?: number;
   scrollTop?: number;
+  scrollHeight?: number;
+  clientHeight?: number;
+  lineContentY?: number;
   /** key of the currently-highlighted bar's line, for sanity-tracing. */
   activeLineKey?: string;
 }
 
-/** Capture the green active-bar overlay's viewport position + container
- *  scroll position. Run repeatedly during a playthrough to verify the
- *  overlay never leaves the viewport. */
+/** Capture the green active-bar overlay's viewport position, plus its
+ *  scroll container's state and the line's absolute content-Y. Walks
+ *  the DOM up from the overlay to find the actual scrollable ancestor
+ *  (the `.overflow-auto` class isn't unique enough — there are nested
+ *  scroll containers). */
 async function probeActiveBar(page: Page): Promise<OverlayProbe> {
   return page.evaluate<OverlayProbe>(() => {
-    // Active bar overlay uses bg-green-400/70 (per ChordChartView).
     const overlay = document.querySelector<HTMLElement>(
       'div[aria-hidden="true"].bg-green-400\\/70',
     );
@@ -114,14 +118,31 @@ async function probeActiveBar(page: Page): Promise<OverlayProbe> {
     const rect = overlay.getBoundingClientRect();
     const lineWrapper = overlay.parentElement;
     const activeLineKey = lineWrapper?.getAttribute("data-bar-line") ?? undefined;
-    // Scroll container is the absolute inset-0 overflow-auto div.
-    const container = document.querySelector<HTMLElement>(".overflow-auto");
+    // Walk up to find the nearest scrollable ancestor.
+    let scrollContainer: HTMLElement | null = lineWrapper;
+    while (scrollContainer && scrollContainer !== document.body) {
+      const style = window.getComputedStyle(scrollContainer);
+      if (style.overflowY === "auto" || style.overflowY === "scroll") break;
+      scrollContainer = scrollContainer.parentElement;
+    }
+    if (!scrollContainer || scrollContainer === document.body) {
+      return { found: true, top: rect.top, bottom: rect.bottom, viewportH: window.innerHeight, activeLineKey };
+    }
+    const containerRect = scrollContainer.getBoundingClientRect();
+    let lineContentY: number | undefined;
+    if (lineWrapper) {
+      const lineRect = lineWrapper.getBoundingClientRect();
+      lineContentY = lineRect.top - containerRect.top + scrollContainer.scrollTop;
+    }
     return {
       found: true,
       top: rect.top,
       bottom: rect.bottom,
       viewportH: window.innerHeight,
-      scrollTop: container?.scrollTop,
+      scrollTop: scrollContainer.scrollTop,
+      scrollHeight: scrollContainer.scrollHeight,
+      clientHeight: scrollContainer.clientHeight,
+      lineContentY,
       activeLineKey,
     };
   });
@@ -153,12 +174,24 @@ test.describe("Auto-scroll regression: active bar stays in viewport", () => {
       }
     }
 
-    // Surface the trace so failures are debuggable.
-    if (offScreenMisses.length > 0) {
-      console.log("Active-bar off-screen samples:", JSON.stringify(offScreenMisses, null, 2));
-      console.log("Full timeline:", JSON.stringify(samples, null, 2));
-    }
-    expect(offScreenMisses, "active bar went off-screen during playthrough").toEqual([]);
+    // Build a compact timeline string so the failure message shows
+    // when scroll departed from the expected target — Playwright
+    // workers swallow most console output, but assertion messages
+    // surface reliably.
+    const timeline = samples
+      .filter((s) => s.found)
+      .map((s) => {
+        const expected =
+          s.lineContentY !== undefined
+            ? Math.max(0, s.lineContentY - (s.viewportH ?? 0) / 3).toFixed(0)
+            : "?";
+        return `t=${s.t} key=${s.activeLineKey} lineY=${s.lineContentY?.toFixed(0)} scroll=${s.scrollTop} want=${expected} barTop=${s.top?.toFixed(0)}`;
+      })
+      .join("\n");
+    expect(
+      offScreenMisses.length,
+      `active bar went off-screen during playthrough.\n\nTimeline:\n${timeline}`,
+    ).toBe(0);
   });
 
   test("active bar viewport position stays near 1/3-from-top once scroll engages", async ({ page }) => {

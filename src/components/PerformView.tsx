@@ -346,7 +346,14 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
     if (!isLineTransition(prevBar, bar)) return;
     const container = prefs.columns === 2 ? horizScrollRef.current : scrollRef.current;
     if (!container) return;
-    const el = document.querySelector<HTMLElement>(
+    // SCOPE the query to the perform-mode scroll container. The editor's
+    // ChordChartView is still mounted underneath the fixed-inset perform
+    // overlay and ALSO renders [data-bar-line] attributes — without
+    // scoping, document.querySelector grabs the EDITOR's line, whose Y
+    // coordinates are unrelated to where the perform chord chart actually
+    // sits. That mismatch was producing wildly wrong scroll targets
+    // (overshooting the active line off the top of the page).
+    const el = container.querySelector<HTMLElement>(
       `[data-bar-line="${CSS.escape(`${bar.sectionId}-${bar.lineIdx}`)}"]`,
     );
     if (!el) return;
