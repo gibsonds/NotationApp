@@ -216,6 +216,11 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
   const [performTempoOverride, setPerformTempoOverride] = useState<number | null>(null);
   useEffect(() => {
     setPerformTempoOverride(null);
+    // New song = fresh playback state. Without this, switching songs
+    // mid-rehearsal would resume the new song from the old song's
+    // elapsed time, landing the highlight on a bogus bar.
+    autoScrollElapsedRef.current = 0;
+    setActiveBarIdx(null);
   }, [score?.id]);
   const effectiveTempo = performTempoOverride ?? songTempo;
   const tempoFactor = effectiveTempo > 0 ? effectiveTempo / 120 : 1;
@@ -244,12 +249,9 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
 
   useEffect(() => {
     if (!autoScroll) {
-      // Reset elapsed when scroll stops, so a re-press of play starts
-      // bar tracking from bar 0 again (matches the user expectation:
-      // pause+play = "play from where I am visually" — and the active
-      // bar starts from the visual top).
-      autoScrollElapsedRef.current = 0;
-      setActiveBarIdx(null);
+      // PAUSE preserves elapsed + activeBarIdx so Continue resumes
+      // from the same bar instead of restarting from the top. End-of-
+      // song and song-change paths handle their own resets below.
       return;
     }
     let lastTime = performance.now();
@@ -266,10 +268,14 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
         beatsPerBar,
       );
       setActiveBarIdx((prev) => (prev === nextBarIdx ? prev : nextBarIdx));
-      // End-of-song detection: when bars run out, stop the loop.
+      // End-of-song detection: when bars run out, stop the loop and
+      // reset elapsed so a fresh tap on Continue starts the song over
+      // from bar 0 rather than instantly re-finishing.
       const tracking = barInventory.length > 0 && effectiveTempo > 0;
       if (tracking && nextBarIdx === null && autoScrollElapsedRef.current > 0) {
         setAutoScroll(false);
+        autoScrollElapsedRef.current = 0;
+        setActiveBarIdx(null);
         autoScrollHandleRef.current = requestAnimationFrame(step);
         return;
       }
@@ -951,31 +957,40 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
         )}
       </div>
 
-      {/* Big floating PAUSE — only when auto-scroll is active. The
-          toolbar play/pause is small and easy to miss while reading;
-          a big always-reachable button covers the user's "wait, stop"
-          reflex. Tap anywhere on the button to pause; the regular
-          toolbar button still works. */}
-      {autoScroll && (
-        <button
-          type="button"
-          onClick={() => setAutoScroll(false)}
-          className="absolute bottom-20 left-1/2 -translate-x-1/2 z-40 px-6 py-3 rounded-full bg-red-600/90 hover:bg-red-700 active:bg-red-800 text-white text-base font-semibold shadow-2xl backdrop-blur-sm border border-white/20 flex items-center gap-2"
-          aria-label="Pause auto-scroll"
-          title="Pause auto-scroll"
-        >
+      {/* Big floating Pause / Continue — always visible during perform
+          mode. The toolbar play/pause is small and easy to miss while
+          reading; this is the always-reachable transport. Pause when
+          rolling, Continue (green) when paused so the user can resume
+          from where they left off (elapsed + activeBar are preserved
+          across pauses; only song change or end-of-song resets them). */}
+      <button
+        type="button"
+        onClick={() => setAutoScroll((on) => !on)}
+        className={`absolute bottom-20 left-1/2 -translate-x-1/2 z-40 px-6 py-3 rounded-full text-white text-base font-semibold shadow-2xl backdrop-blur-sm border border-white/20 flex items-center gap-2 ${
+          autoScroll
+            ? "bg-red-600/90 hover:bg-red-700 active:bg-red-800"
+            : "bg-emerald-600/90 hover:bg-emerald-700 active:bg-emerald-800"
+        }`}
+        aria-label={autoScroll ? "Pause auto-scroll" : "Continue auto-scroll"}
+        title={autoScroll ? "Pause auto-scroll" : "Continue auto-scroll"}
+      >
+        {autoScroll ? (
           <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
             <rect x="6" y="5" width="4" height="14" rx="1" />
             <rect x="14" y="5" width="4" height="14" rx="1" />
           </svg>
-          <span>Pause</span>
-          {songTempo > 0 && (
-            <span className="text-xs opacity-80 font-normal ml-1">
-              {songTempo} bpm
-            </span>
-          )}
-        </button>
-      )}
+        ) : (
+          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M8 5v14l11-7z" />
+          </svg>
+        )}
+        <span>{autoScroll ? "Pause" : "Continue"}</span>
+        {songTempo > 0 && (
+          <span className="text-xs opacity-80 font-normal ml-1">
+            {songTempo} bpm
+          </span>
+        )}
+      </button>
 
     </div>
   );
