@@ -226,6 +226,21 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
   const tempoFactor = effectiveTempo > 0 ? effectiveTempo / 120 : 1;
   const effectiveScrollSpeed = prefs.scrollSpeed * tempoFactor;
 
+  // Tempo change without rescaling elapsed would jump the bar index —
+  // the active bar derives from `floor(elapsed * tempo / 60 / beatsPerBar)`,
+  // so the same elapsed under a different tempo lands on a different
+  // bar. Preserve the musical position (beats consumed so far) by
+  // rescaling elapsed inversely with the tempo ratio.
+  const changeTempoOverride = (next: number | null) => {
+    const oldTempo = effectiveTempo;
+    const newTempo = next ?? songTempo;
+    if (oldTempo > 0 && newTempo > 0 && oldTempo !== newTempo) {
+      autoScrollElapsedRef.current =
+        autoScrollElapsedRef.current * (oldTempo / newTempo);
+    }
+    setPerformTempoOverride(next);
+  };
+
   // Bar inventory drives the green per-bar highlight overlay during
   // auto-scroll. Computed once per score; activeBarIdx is the only
   // value that changes during the RAF loop, and it only changes
@@ -904,18 +919,16 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
           <div className="flex items-center gap-1 bg-gray-900/80 backdrop-blur-sm rounded-xl p-1 shadow border border-white/10">
             <button
               type="button"
-              onClick={() =>
-                setPerformTempoOverride((cur) => Math.max(20, (cur ?? songTempo) - 5))
-              }
+              onClick={() => changeTempoOverride(Math.max(20, effectiveTempo - 2))}
               className={btn}
               aria-label="Slower tempo"
-              title={`Slower (${Math.max(20, effectiveTempo - 5)} bpm)`}
+              title={`Slower (${Math.max(20, effectiveTempo - 2)} bpm)`}
             >
               ♩−
             </button>
             <button
               type="button"
-              onClick={() => setPerformTempoOverride(null)}
+              onClick={() => changeTempoOverride(null)}
               disabled={performTempoOverride === null}
               className="h-11 px-3 flex items-center text-sm font-medium text-gray-100 hover:bg-gray-800 active:bg-gray-700 rounded-lg disabled:opacity-60 disabled:cursor-default"
               title={
@@ -931,12 +944,10 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
             </button>
             <button
               type="button"
-              onClick={() =>
-                setPerformTempoOverride((cur) => Math.min(300, (cur ?? songTempo) + 5))
-              }
+              onClick={() => changeTempoOverride(Math.min(300, effectiveTempo + 2))}
               className={btn}
               aria-label="Faster tempo"
-              title={`Faster (${Math.min(300, effectiveTempo + 5)} bpm)`}
+              title={`Faster (${Math.min(300, effectiveTempo + 2)} bpm)`}
             >
               ♩+
             </button>
