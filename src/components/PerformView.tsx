@@ -165,8 +165,11 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
     [songs],
   );
 
-  // Find the position of the current song in the SCOPED list. Falls back
-  // to 0 if the loaded song isn't in scope (so prev/next still work).
+  // Find the position of the current song in the SCOPED list. Returns
+  // -1 when the loaded song isn't in scope (e.g., user switched folder
+  // or set after loading the song) — that disables prev/next and lets
+  // the chip fall through to `score.title` so it displays the
+  // ACTUALLY-loaded song rather than lying about being on scope[0].
   const currentIndex = useMemo(() => {
     if (!songsInScope.length) return -1;
     const byId = currentSongId
@@ -174,7 +177,7 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
       : -1;
     if (byId !== -1) return byId;
     const byTitle = songsInScope.findIndex(s => s.title === score.title);
-    return byTitle !== -1 ? byTitle : 0;
+    return byTitle;
   }, [songsInScope, currentSongId, score.title]);
 
   const loadAt = (idx: number) => {
