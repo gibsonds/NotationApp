@@ -3,6 +3,17 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-15 — 2136aca
+
+**Auto-scroll overshoot fix + out-of-scope title chip (#143)**
+
+- Commit: [`2136aca`](../../commit/2136aca6e3e21311eff3f5dac5aabd63face2ddc)
+- Author: gibsonds
+- Files changed:
+  - `e2e/auto-scroll.spec.ts`
+  - `playwright.config.ts`
+  - `src/components/PerformView.tsx`
+
 ## 2026-05-14 — c868ab9
 
 **Auto-scroll: separate trigger threshold from target position (#142)**
