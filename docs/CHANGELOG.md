@@ -3,6 +3,15 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-15 — a075ce5
+
+**PerformView: always-visible Pause/Continue button + resumable pause (#144)**
+
+- Commit: [`a075ce5`](../../commit/a075ce5d28330d522ea18a56948cc05f44f111b0)
+- Author: gibsonds
+- Files changed:
+  - `src/components/PerformView.tsx`
+
 ## 2026-05-15 — 2136aca
 
 **Auto-scroll overshoot fix + out-of-scope title chip (#143)**
