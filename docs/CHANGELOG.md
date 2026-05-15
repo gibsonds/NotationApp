@@ -3,6 +3,15 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-15 — a5ba1ab
+
+**PerformView: tempo override step 2 bpm, no bar jump on change (#145)**
+
+- Commit: [`a5ba1ab`](../../commit/a5ba1ab0f7abab75249121f942d0b91bc6d194d1)
+- Author: gibsonds
+- Files changed:
+  - `src/components/PerformView.tsx`
+
 ## 2026-05-15 — a075ce5
 
 **PerformView: always-visible Pause/Continue button + resumable pause (#144)**
