@@ -3,6 +3,19 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-17 — a486af9
+
+**BYOK on the static deploy: AI calls go direct from browser (#147)**
+
+- Commit: [`a486af9`](../../commit/a486af9f426d464b5f8155d560d1851614d0b006)
+- Author: gibsonds
+- Files changed:
+  - `src/components/InlineAIPrompt.tsx`
+  - `src/components/PromptPanel.tsx`
+  - `src/lib/ai-logger.ts`
+  - `src/lib/ai-provider.ts`
+  - `src/lib/score-client.ts`
+
 ## 2026-05-17 — 336737a
 
 **2-col perform: wrap long lines at bar boundaries (#146)**
