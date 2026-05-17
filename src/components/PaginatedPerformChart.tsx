@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ChordChartSection, ChordChartLine, Score } from "@/lib/schema";
+import { wrapChordLineAtBars } from "@/lib/chord-line-wrap";
 
 const MONO_FONT_STACK =
   "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace";
@@ -57,9 +58,16 @@ export default function PaginatedPerformChart({
   const outerRef = useRef<HTMLDivElement | null>(null);
   const measureContainerRef = useRef<HTMLDivElement | null>(null);
   const measureRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
+  // Hidden probe used to measure rendered char width in the same font /
+  // size / kerning as visible chord lines. Without this we'd have to
+  // guess `ch` and the wrap point would drift on font-size changes.
+  const charProbeRef = useRef<HTMLSpanElement | null>(null);
 
   const [pages, setPages] = useState<Page[]>([]);
   const [currentPage, setCurrentPage] = useState(0);
+  // Max characters a single chord line can occupy before the wrap helper
+  // splits it across multiple visual rows. Null until first layout pass.
+  const [maxCharsPerRow, setMaxCharsPerRow] = useState<number | null>(null);
 
   // Flatten the score into per-line blocks. Headers are their own block so
   // we can measure them and decide whether to keep the header attached to
@@ -180,16 +188,42 @@ export default function PaginatedPerformChart({
     void pageW;
   }, [blocks]);
 
+  // Recompute the per-row character budget. Column width in px ÷ rendered
+  // char width in px. The wrap helper splits chord lines that exceed this
+  // so long lines stop getting clipped in narrow 2-col columns.
+  const recomputeMaxChars = useCallback(() => {
+    const outer = outerRef.current;
+    const probe = charProbeRef.current;
+    if (!outer || !probe) return;
+    // Page = full outer width; grid uses px-4 (32px total) + gap-8 (32px).
+    // So each column gets (clientWidth - 64) / 2.
+    const colW = (outer.clientWidth - 64) / 2;
+    const text = probe.textContent ?? "";
+    if (text.length === 0) return;
+    const chW = probe.getBoundingClientRect().width / text.length;
+    if (chW <= 0 || colW <= 0) return;
+    // Min of 8 chars/row guards against degenerate viewports where the
+    // column shrinks below a single chord token's width.
+    const next = Math.max(8, Math.floor(colW / chW));
+    setMaxCharsPerRow((cur) => (cur === next ? cur : next));
+  }, []);
+
   // Measure-then-pack on mount, when score or prefs change, and on resize.
+  // maxCharsPerRow goes first because pagination's height measurements
+  // depend on whether lines have wrapped into multiple sub-rows.
   useLayoutEffect(() => {
+    recomputeMaxChars();
     recompute();
-  }, [recompute, prefs.fontSize, prefs.lineHeight, prefs.letterSpacing]);
+  }, [recompute, recomputeMaxChars, prefs.fontSize, prefs.lineHeight, prefs.letterSpacing, maxCharsPerRow]);
 
   useEffect(() => {
-    const ro = new ResizeObserver(() => recompute());
+    const ro = new ResizeObserver(() => {
+      recomputeMaxChars();
+      recompute();
+    });
     if (outerRef.current) ro.observe(outerRef.current);
     return () => ro.disconnect();
-  }, [recompute]);
+  }, [recompute, recomputeMaxChars]);
 
   // Track current page from scroll position (for the page indicator).
   useEffect(() => {
@@ -230,6 +264,7 @@ export default function PaginatedPerformChart({
               : undefined
           }
           lines={runLines}
+          maxCharsPerRow={maxCharsPerRow}
         />,
       );
       runSectionId = null;
@@ -262,6 +297,25 @@ export default function PaginatedPerformChart({
       ref={outerRef}
       className="absolute inset-0 pt-[7vh] pb-16 overflow-hidden"
     >
+      {/* Hidden char-width probe. Rendered in the SAME font / size /
+          letter-spacing as visible chord lines, so `boundingRect.width /
+          textContent.length` gives us the actual rendered `ch` width
+          including kerning. Drives the wrap helper's column budget. */}
+      <span
+        ref={charProbeRef}
+        aria-hidden
+        className="absolute opacity-0 pointer-events-none top-0 left-0"
+        style={{
+          fontFamily: MONO_FONT_STACK,
+          fontSize: "var(--perf-font-size, 0.875rem)",
+          lineHeight: "var(--perf-line-height, 1.25)",
+          letterSpacing: "var(--perf-letter-spacing, normal)",
+          whiteSpace: "pre",
+        }}
+      >
+        {"0".repeat(40)}
+      </span>
+
       {/* Hidden measurement column. Width matches a real visible column
           (page px-4 + grid gap-8 = 64px non-column overhead per page).
           Each block — section header and individual line — is measured
@@ -282,7 +336,7 @@ export default function PaginatedPerformChart({
               {b.kind === "header" ? (
                 <PerformSectionHeader section={b.section} />
               ) : (
-                <PerformLine line={b.line} />
+                <PerformLine line={b.line} maxCharsPerRow={maxCharsPerRow} />
               )}
             </div>
           );
@@ -399,11 +453,30 @@ function PerformSectionHeader({ section }: { section: ChordChartSection }) {
   );
 }
 
-function PerformLine({ line }: { line: ChordChartLine }) {
+function PerformLine({
+  line,
+  maxCharsPerRow,
+}: {
+  line: ChordChartLine;
+  maxCharsPerRow: number | null;
+}) {
   const markerClasses = [
     line.highlight ? "bg-yellow-300/20 rounded px-1" : "",
     line.underline ? "border-b-2 border-yellow-400/80" : "",
   ].filter(Boolean).join(" ");
+
+  // Wrap long lines so they don't get clipped in narrow 2-col columns.
+  // Each sub-row preserves the chord/lyric column alignment of the
+  // original. When maxCharsPerRow is null (first render before
+  // measurement) skip wrapping — the post-measure pass will re-render
+  // with the right budget.
+  const lyrics = line.lyrics ?? "";
+  const chords = line.chords ?? "";
+  const subRows =
+    maxCharsPerRow !== null && (chords.length > maxCharsPerRow || lyrics.length > maxCharsPerRow)
+      ? wrapChordLineAtBars(chords, lyrics, maxCharsPerRow)
+      : [{ chords, lyrics, offset: 0 }];
+
   return (
     <div
       className={`mb-2 ${markerClasses}`}
@@ -414,25 +487,53 @@ function PerformLine({ line }: { line: ChordChartLine }) {
         letterSpacing: "var(--perf-letter-spacing, normal)",
       }}
     >
-      {line.chords && (
-        <div className="text-yellow-300 whitespace-pre min-h-[1em]">
-          {line.chords}
-        </div>
-      )}
-      {line.lyrics && (
-        <div className="text-gray-100 whitespace-pre">
-          <PerformMarkedLyric
-            text={line.lyrics}
-            highlightRanges={line.highlightRanges}
-            underlineRanges={line.underlineRanges}
-          />
-        </div>
-      )}
-      {!line.chords && !line.lyrics && (
-        <div className="text-gray-500 whitespace-pre min-h-[1em]">&nbsp;</div>
-      )}
+      {subRows.map((row, idx) => {
+        const hasChords = row.chords.length > 0;
+        const hasLyrics = row.lyrics.length > 0;
+        return (
+          <div key={idx}>
+            {hasChords && (
+              <div className="text-yellow-300 whitespace-pre min-h-[1em]">
+                {row.chords}
+              </div>
+            )}
+            {hasLyrics && (
+              <div className="text-gray-100 whitespace-pre">
+                <PerformMarkedLyric
+                  text={row.lyrics}
+                  // Shift highlight / underline ranges into the sub-row's
+                  // local coordinate space. Ranges that don't intersect
+                  // this sub-row drop out cleanly.
+                  highlightRanges={shiftRanges(line.highlightRanges, row.offset, row.lyrics.length)}
+                  underlineRanges={shiftRanges(line.underlineRanges, row.offset, row.lyrics.length)}
+                />
+              </div>
+            )}
+            {idx === 0 && !hasChords && !hasLyrics && (
+              <div className="text-gray-500 whitespace-pre min-h-[1em]">&nbsp;</div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
+}
+
+/** Clip an array of [start,end) ranges to a sub-row's window
+ *  `[offset, offset+length)` and re-base them to start at 0. */
+function shiftRanges(
+  ranges: ReadonlyArray<readonly [number, number]> | undefined,
+  offset: number,
+  length: number,
+): ReadonlyArray<readonly [number, number]> | undefined {
+  if (!ranges?.length) return ranges;
+  const end = offset + length;
+  const out: [number, number][] = [];
+  for (const [s, e] of ranges) {
+    if (e <= offset || s >= end) continue;
+    out.push([Math.max(s, offset) - offset, Math.min(e, end) - offset]);
+  }
+  return out;
 }
 
 /** A run of one or more consecutive lines from the same section — either
@@ -444,11 +545,13 @@ function PerformSectionGroup({
   continuation,
   continuationLabel,
   lines,
+  maxCharsPerRow,
 }: {
   section: ChordChartSection | null;
   continuation: boolean;
   continuationLabel?: string;
   lines: { line: ChordChartLine; lineIdx: number }[];
+  maxCharsPerRow: number | null;
 }) {
   return (
     <section className="mb-3">
@@ -459,7 +562,7 @@ function PerformSectionGroup({
         </div>
       )}
       {lines.map(({ line, lineIdx }) => (
-        <PerformLine key={lineIdx} line={line} />
+        <PerformLine key={lineIdx} line={line} maxCharsPerRow={maxCharsPerRow} />
       ))}
     </section>
   );
