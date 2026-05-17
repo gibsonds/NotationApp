@@ -196,6 +196,12 @@ export class ClaudeProvider implements ScoreIntentProvider {
           "Content-Type": "application/json",
           "x-api-key": this.apiKey,
           "anthropic-version": "2023-06-01",
+          // Allow this call from a browser context (BYOK on the static
+          // GitHub Pages deploy). Anthropic requires this header for
+          // any direct-from-browser request; without it the SDK fetch
+          // is rejected by CORS preflight. On a server runtime the
+          // header is a no-op.
+          "anthropic-dangerous-direct-browser-access": "true",
         },
         body: JSON.stringify({
           model: this.model,
@@ -257,6 +263,12 @@ export class ClaudeProvider implements ScoreIntentProvider {
           "Content-Type": "application/json",
           "x-api-key": this.apiKey,
           "anthropic-version": "2023-06-01",
+          // Allow this call from a browser context (BYOK on the static
+          // GitHub Pages deploy). Anthropic requires this header for
+          // any direct-from-browser request; without it the SDK fetch
+          // is rejected by CORS preflight. On a server runtime the
+          // header is a no-op.
+          "anthropic-dangerous-direct-browser-access": "true",
         },
         body: JSON.stringify({
           model: this.model,
