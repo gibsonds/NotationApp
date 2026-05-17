@@ -3,8 +3,15 @@
 import { useState, useRef, useEffect } from "react";
 import { useScoreStore, ChatMessage, RecordedOperation } from "@/store/score-store";
 import { matchBuiltinCommand, BUILTIN_COMMANDS } from "@/lib/transforms";
-import { IS_STATIC_EXPORT, STATIC_FEATURE_DISABLED_MESSAGE } from "@/lib/api-availability";
-import { getApiKey, getByokHeaders } from "@/lib/api-key-store";
+import { IS_STATIC_EXPORT } from "@/lib/api-availability";
+import { getApiKey } from "@/lib/api-key-store";
+import type { Score, ScorePatch } from "@/lib/schema";
+import {
+  requestCreateScore,
+  requestReviseScore,
+  aiAvailable,
+  aiUnavailableMessage,
+} from "@/lib/score-client";
 import { v4 as uuidv4 } from "uuid";
 import { logEvent, scoreTypeOf } from "@/lib/analytics";
 
@@ -132,19 +139,21 @@ export default function PromptPanel({ onOpenApiKeys }: PromptPanelProps = {}) {
       }
     }
 
-    // AI request
-    if (IS_STATIC_EXPORT) {
+    // AI request — needs either a server-side default key (npm run dev)
+    // or a BYOK key in localStorage (static deploy). aiAvailable() covers
+    // both. The aiUnavailableMessage steers static-deploy users to enter
+    // a key rather than pointing them at local dev.
+    if (!aiAvailable()) {
       addMessage({
         id: crypto.randomUUID(),
         role: "assistant",
-        content: STATIC_FEATURE_DISABLED_MESSAGE,
+        content: aiUnavailableMessage(),
         timestamp: Date.now(),
       });
       return;
     }
     setIsGenerating(true);
     try {
-      const endpoint = score ? "/api/score/revise" : "/api/score/create";
       // Build selection context: use explicit selection range, or derive from stepEntry (selected note)
       let effectiveSelection = selection ?? undefined;
       if (!effectiveSelection && stepEntry && score) {
@@ -176,40 +185,43 @@ export default function PromptPanel({ onOpenApiKeys }: PromptPanelProps = {}) {
           }
         }
       }
-      const body = score
-        ? { prompt, currentScore: score, selection: effectiveSelection, selectedNote: selectedNoteInfo }
-        : { prompt };
-
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...getByokHeaders() },
-        body: JSON.stringify(body),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to process request");
+      // Branch on whether we have a score to revise. Splitting the call
+      // here (vs. accessing a union after) keeps `patches` strongly typed
+      // on the revise path without union-narrowing acrobatics.
+      let resultScore: Score | undefined;
+      let resultPatches: ScorePatch[] = [];
+      let resultMessage = "";
+      let resultWarnings: string[] = [];
+      if (score) {
+        const r = await requestReviseScore(prompt, score, effectiveSelection, selectedNoteInfo);
+        resultScore = r.score;
+        resultPatches = r.patches;
+        resultMessage = r.message;
+        resultWarnings = r.warnings;
+      } else {
+        const r = await requestCreateScore(prompt);
+        resultScore = r.score;
+        resultMessage = r.message;
+        resultWarnings = r.warnings;
       }
 
-      const hasChanges = data.score || (data.patches && data.patches.length > 0);
+      const hasChanges = !!resultScore || resultPatches.length > 0;
 
-      if (data.score) {
-        setScore(data.score);
-      } else if (data.patches && data.patches.length > 0) {
-        applyPatches(data.patches);
+      if (resultScore) {
+        setScore(resultScore);
+      } else if (resultPatches.length > 0) {
+        applyPatches(resultPatches);
       }
 
-      if (data.warnings?.length) {
-        setWarnings(data.warnings);
+      if (resultWarnings.length) {
+        setWarnings(resultWarnings);
       }
 
-      // Only record operation for replay if there were actual changes
       if (hasChanges) {
         setLastOperation({
           prompt,
           type: "ai",
-          patches: data.patches,
+          patches: resultPatches.length > 0 ? resultPatches : undefined,
           selection: selection ?? undefined,
         });
       }
@@ -217,7 +229,7 @@ export default function PromptPanel({ onOpenApiKeys }: PromptPanelProps = {}) {
       addMessage({
         id: uuidv4(),
         role: "assistant",
-        content: data.message || (score ? "Score updated." : "Score created."),
+        content: resultMessage || (score ? "Score updated." : "Score created."),
         timestamp: Date.now(),
       });
     } catch (err: any) {
@@ -256,29 +268,19 @@ export default function PromptPanel({ onOpenApiKeys }: PromptPanelProps = {}) {
       return;
     }
 
-    // Replay AI operation with new selection
-    if (IS_STATIC_EXPORT) {
-      addMessage({ id: uuidv4(), role: "assistant", content: STATIC_FEATURE_DISABLED_MESSAGE, timestamp: Date.now() });
+    // Replay AI operation with new selection — same dispatcher as the
+    // first run (server route in dev, direct browser call on static).
+    if (!aiAvailable()) {
+      addMessage({ id: uuidv4(), role: "assistant", content: aiUnavailableMessage(), timestamp: Date.now() });
       return;
     }
     setIsGenerating(true);
     try {
-      const res = await fetch("/api/score/revise", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...getByokHeaders() },
-        body: JSON.stringify({
-          prompt: lastOperation.prompt,
-          currentScore: score,
-          selection: sel,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Replay failed");
+      const data = await requestReviseScore(lastOperation.prompt, score, sel);
 
       if (data.score) {
         setScore(data.score);
-      } else if (data.patches) {
+      } else if (data.patches.length > 0) {
         applyPatches(data.patches);
       }
 

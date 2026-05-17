@@ -2,8 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useScoreStore } from "@/store/score-store";
-import { IS_STATIC_EXPORT, STATIC_FEATURE_DISABLED_MESSAGE } from "@/lib/api-availability";
-import { getByokHeaders } from "@/lib/api-key-store";
+import { requestReviseScore, aiAvailable, aiUnavailableMessage } from "@/lib/score-client";
 import { v4 as uuidv4 } from "uuid";
 
 interface InlineAIPromptProps {
@@ -38,8 +37,8 @@ export default function InlineAIPrompt({ note, position, onClose }: InlineAIProm
     if (!input.trim() || !score || loading) return;
 
     const prompt = input.trim();
-    if (IS_STATIC_EXPORT) {
-      addMessage({ id: uuidv4(), role: "assistant", content: STATIC_FEATURE_DISABLED_MESSAGE, timestamp: Date.now() });
+    if (!aiAvailable()) {
+      addMessage({ id: uuidv4(), role: "assistant", content: aiUnavailableMessage(), timestamp: Date.now() });
       onClose();
       return;
     }
@@ -52,7 +51,6 @@ export default function InlineAIPrompt({ note, position, onClose }: InlineAIProm
         .filter(n => n.pitch !== "rest")
         .sort((a, b) => a.measure - b.measure || a.beat - b.beat) || [];
       const idx = sorted.findIndex(n => n.measure === note.measure && Math.abs(n.beat - note.beat) < 0.05);
-      const curNote = idx >= 0 ? sorted[idx] : null;
       const prev = idx > 0 ? sorted[idx - 1] : null;
       const next = idx < sorted.length - 1 ? sorted[idx + 1] : null;
 
@@ -60,27 +58,15 @@ export default function InlineAIPrompt({ note, position, onClose }: InlineAIProm
       if (prev) selectedNoteInfo += `. Previous note: ${prev.pitch} m${prev.measure} b${prev.beat}`;
       if (next) selectedNoteInfo += `. Next note: ${next.pitch} m${next.measure} b${next.beat}`;
 
-      const res = await fetch("/api/score/revise", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...getByokHeaders() },
-        body: JSON.stringify({
-          prompt,
-          currentScore: score,
-          selection: {
-            startMeasure: note.measure,
-            endMeasure: note.measure,
-            staffIds: staff ? [staff.id] : undefined,
-          },
-          selectedNote: selectedNoteInfo,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed");
+      const data = await requestReviseScore(prompt, score, {
+        startMeasure: note.measure,
+        endMeasure: note.measure,
+        staffIds: staff ? [staff.id] : undefined,
+      }, selectedNoteInfo);
 
       if (data.score) {
         setScore(data.score);
-      } else if (data.patches?.length) {
+      } else if (data.patches.length) {
         applyPatches(data.patches);
       }
 
