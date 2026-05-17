@@ -3,6 +3,17 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-17 — 336737a
+
+**2-col perform: wrap long lines at bar boundaries (#146)**
+
+- Commit: [`336737a`](../../commit/336737ad58ed58f534987568d88037f8451c3575)
+- Author: gibsonds
+- Files changed:
+  - `src/components/PaginatedPerformChart.tsx`
+  - `src/lib/__tests__/chord-line-wrap.test.ts`
+  - `src/lib/chord-line-wrap.ts`
+
 ## 2026-05-15 — a5ba1ab
 
 **PerformView: tempo override step 2 bpm, no bar jump on change (#145)**
