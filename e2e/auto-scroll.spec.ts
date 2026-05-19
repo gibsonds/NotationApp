@@ -289,6 +289,48 @@ test.describe("Auto-scroll: pause / continue transport", () => {
     ).not.toBe("intro-0");
   });
 
+  test("Tempo ♩+ / ♩− doesn't jump the active bar (PR #145 rescaling)", async ({ page }) => {
+    // The bug: tempo change recomputed activeBarIdx = floor(elapsed *
+    // newTempo / 60 / beatsPerBar) without rescaling elapsed, so the
+    // same wall-clock elapsed mapped to a different bar under the new
+    // tempo — visible jumps forward or backward through the chart.
+    // Fix (PR #145): rescale elapsed inversely with tempo ratio at
+    // change time. Musical position (consumed beats) is preserved.
+    await seedScoreAndEnterPerform(page);
+    await page.locator('button[aria-label="Start auto-scroll"]').click();
+
+    // Settle into intro-1 (~4s past intro-0 at 240 BPM 4/4).
+    await page.waitForTimeout(4500);
+    const before = await probeActiveBar(page);
+    expect(before.found, "overlay present before tempo change").toBe(true);
+    const lineBefore = before.activeLineKey;
+
+    // Tap ♩+ five times in quick succession. Each step is +2 BPM, so
+    // tempo moves 240 → 250 across these clicks. With rescaling, each
+    // click reshifts elapsed so the bar index stays put. Without it,
+    // floor(elapsed * newTempo / 60 / 4) could tip across a boundary.
+    const faster = page.locator('button[aria-label="Faster tempo"]');
+    for (let i = 0; i < 5; i++) await faster.click();
+
+    // Sample immediately (no wait) — RAF hasn't had a chance to advance
+    // by a measurable amount of time.
+    const afterFaster = await probeActiveBar(page);
+    expect(
+      afterFaster.activeLineKey,
+      `Tempo ♩+ jumped the bar. before=${lineBefore} after=${afterFaster.activeLineKey}`,
+    ).toBe(lineBefore);
+
+    // And the same for the other direction — ♩− brings tempo back
+    // down. The rescaling math has to be symmetric.
+    const slower = page.locator('button[aria-label="Slower tempo"]');
+    for (let i = 0; i < 5; i++) await slower.click();
+    const afterSlower = await probeActiveBar(page);
+    expect(
+      afterSlower.activeLineKey,
+      `Tempo ♩− jumped the bar. before=${lineBefore} after=${afterSlower.activeLineKey}`,
+    ).toBe(lineBefore);
+  });
+
   test("Continue after end-of-song restarts from the first bar", async ({ page }) => {
     // Short chart (6 bars at 240 BPM ≈ 6s) so end-of-song fires inside
     // the per-test 30s timeout with room to verify the reset.
