@@ -69,7 +69,13 @@ const SHORT_CHORD_CHART = {
   ],
 };
 
-async function seedScoreAndEnterPerform(page: Page, chart: typeof TEST_CHORD_CHART | typeof SHORT_CHORD_CHART = TEST_CHORD_CHART) {
+async function seedScoreAndEnterPerform(
+  page: Page,
+  chart:
+    | typeof TEST_CHORD_CHART
+    | typeof SHORT_CHORD_CHART
+    | typeof WIDE_LINE_CHART = TEST_CHORD_CHART,
+) {
   await page.goto("/");
   await page.evaluate((score) => {
     localStorage.setItem("notation-app-store", JSON.stringify({
@@ -240,6 +246,29 @@ test.describe("Auto-scroll regression: active bar stays in viewport", () => {
   });
 });
 
+// Chord chart with one deliberately wide line — 12 bars on a single
+// line, ~55 chars — so 2-col perform mode (column ≈ 350-400px on a
+// typical Playwright viewport) is guaranteed to need to wrap it.
+const WIDE_LINE_CHART = {
+  id: "test-chord-chart-wide",
+  title: "Wide line test",
+  composer: "",
+  tempo: 120,
+  timeSignature: "4/4",
+  keySignature: "C",
+  measures: 12,
+  staves: [],
+  sections: [
+    {
+      id: "v",
+      label: "Verse",
+      lines: [
+        { chords: "| Em | Bm | C | D | Em | Bm | C | D | Em | Bm | C | D |", lyrics: "" },
+      ],
+    },
+  ],
+};
+
 // Pause / Continue transport (#144). The big floating button stays in
 // place across the autoScroll on/off transition. Pause preserves the
 // elapsed counter + activeBarIdx so Continue resumes on the same bar
@@ -355,5 +384,57 @@ test.describe("Auto-scroll: pause / continue transport", () => {
       afterRestart.activeLineKey,
       `Continue after end-of-song should restart from v-0, got ${afterRestart.activeLineKey}`,
     ).toBe("v-0");
+  });
+});
+
+// 2-col line wrap (#146). Long chord lines used to be clipped by the
+// `overflow-hidden` columns of PaginatedPerformChart because they
+// rendered with `whitespace-pre`. PR #146 wraps them at bar boundaries
+// into multiple sub-rows that each fit the column.
+test.describe("Auto-scroll: 2-col line wrap", () => {
+  test("Long chord line wraps into multiple sub-rows without horizontal overflow", async ({ page }) => {
+    await seedScoreAndEnterPerform(page, WIDE_LINE_CHART);
+
+    // Switch to 2-col mode — the toolbar's column-toggle button.
+    await page.locator('button[aria-label="Toggle columns"]').click();
+    // PaginatedPerformChart re-measures + re-paginates on column change;
+    // give layout a beat to settle before sampling DOM.
+    await page.waitForTimeout(400);
+
+    // Count the visible chord-row sub-rows for the one seeded chord
+    // line. The yellow-300 class identifies chord rows; we filter to
+    // those that aren't in the hidden measure column.
+    const result = await page.evaluate(() => {
+      const all = Array.from(
+        document.querySelectorAll<HTMLElement>(".text-yellow-300.whitespace-pre"),
+      );
+      const visible = all.filter((el) => {
+        let cur: HTMLElement | null = el;
+        while (cur && cur !== document.body) {
+          if (cur.getAttribute("aria-hidden") === "true") return false;
+          cur = cur.parentElement;
+        }
+        return true;
+      });
+      return visible.map((el) => ({
+        text: el.textContent ?? "",
+        scrollWidth: el.scrollWidth,
+        clientWidth: el.clientWidth,
+      }));
+    });
+
+    expect(
+      result.length,
+      `expected the 12-bar line to render as multiple sub-rows in 2-col mode, got ${result.length}: ${result.map((r) => r.text).join(" | ")}`,
+    ).toBeGreaterThan(1);
+
+    // Each sub-row must fit within its column — no horizontal overflow.
+    // (+1 px tolerance for sub-pixel rounding in the layout engine.)
+    for (const row of result) {
+      expect(
+        row.scrollWidth,
+        `chord sub-row "${row.text}" overflows its column (scrollWidth=${row.scrollWidth}, clientWidth=${row.clientWidth})`,
+      ).toBeLessThanOrEqual(row.clientWidth + 1);
+    }
   });
 });
