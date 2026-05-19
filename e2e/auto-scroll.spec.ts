@@ -43,7 +43,33 @@ const TEST_CHORD_CHART = {
   ],
 };
 
-async function seedScoreAndEnterPerform(page: Page) {
+// Slimmer chord chart for tests that exercise the play/pause transport
+// — small enough that the song finishes in ~6s at 240 BPM, leaving
+// headroom for the end-of-song reset assertion below Playwright's 30s
+// per-test timeout.
+const SHORT_CHORD_CHART = {
+  id: "test-chord-chart-short",
+  title: "Short auto-scroll test song",
+  composer: "",
+  tempo: 240,
+  timeSignature: "4/4",
+  keySignature: "C",
+  measures: 4,
+  staves: [],
+  sections: [
+    {
+      id: "v",
+      label: "Verse",
+      lines: [
+        { chords: "| Em | Bm |", lyrics: "" },
+        { chords: "| C | D |", lyrics: "" },
+        { chords: "| Em | Bm |", lyrics: "" },
+      ],
+    },
+  ],
+};
+
+async function seedScoreAndEnterPerform(page: Page, chart: typeof TEST_CHORD_CHART | typeof SHORT_CHORD_CHART = TEST_CHORD_CHART) {
   await page.goto("/");
   await page.evaluate((score) => {
     localStorage.setItem("notation-app-store", JSON.stringify({
@@ -84,7 +110,7 @@ async function seedScoreAndEnterPerform(page: Page) {
       },
       version: 9,
     }));
-  }, TEST_CHORD_CHART);
+  }, chart);
   await page.reload();
   // Wait for chord chart lines to render — the data-bar-line attribute
   // is what the scroll logic queries to find line positions.
@@ -211,5 +237,81 @@ test.describe("Auto-scroll regression: active bar stays in viewport", () => {
     // covers initial warm-up + transition animations.
     expect(top, `active bar at y=${top}, expected near ${oneThird}`).toBeGreaterThan(0);
     expect(top, `active bar at y=${top}, expected near ${oneThird}`).toBeLessThan(viewportH * 0.85);
+  });
+});
+
+// Pause / Continue transport (#144). The big floating button stays in
+// place across the autoScroll on/off transition. Pause preserves the
+// elapsed counter + activeBarIdx so Continue resumes on the same bar
+// instead of restarting from the top. End-of-song and song-change paths
+// still reset.
+test.describe("Auto-scroll: pause / continue transport", () => {
+  test("Pause then Continue resumes from the SAME line, not from intro-0", async ({ page }) => {
+    await seedScoreAndEnterPerform(page);
+    await page.locator('button[aria-label="Start auto-scroll"]').click();
+
+    // Play long enough that the active bar has clearly moved off intro-0
+    // (at 240 BPM and 4 bars in intro-0, ~4 seconds covers that line).
+    await page.waitForTimeout(4500);
+    const beforePause = await probeActiveBar(page);
+    expect(beforePause.found, "overlay present before pause").toBe(true);
+    expect(
+      beforePause.activeLineKey,
+      "test setup: pause should happen on a line past intro-0",
+    ).not.toBe("intro-0");
+
+    // Pause via the big floating button. There are two buttons with
+    // this aria-label while playing (toolbar + floating); the toolbar
+    // one is rendered first in the DOM so .first() picks it. Either
+    // toggles autoScroll, so it doesn't matter which we click.
+    await page.locator('button[aria-label="Pause auto-scroll"]').first().click();
+
+    // Mid-pause: the active bar overlay should NOT have moved.
+    await page.waitForTimeout(500);
+    const duringPause = await probeActiveBar(page);
+    expect(duringPause.activeLineKey, "pause preserves activeLineKey").toBe(
+      beforePause.activeLineKey,
+    );
+
+    // Continue. With the PR #144 fix, elapsed + activeBar are preserved
+    // across pause, so resume starts on the same line. The buggy
+    // pre-fix behavior was: pause reset elapsed to 0, so resume put
+    // the highlight back on intro-0.
+    await page.locator('button[aria-label="Continue auto-scroll"]').click();
+    // Brief wait — long enough for the RAF loop to tick at least once,
+    // short enough that we haven't advanced more than one bar's worth
+    // (≤ 1 second at 240 BPM).
+    await page.waitForTimeout(200);
+    const afterContinue = await probeActiveBar(page);
+    expect(
+      afterContinue.activeLineKey,
+      `Continue restarted from intro-0 (pre-fix bug). before=${beforePause.activeLineKey} after=${afterContinue.activeLineKey}`,
+    ).not.toBe("intro-0");
+  });
+
+  test("Continue after end-of-song restarts from the first bar", async ({ page }) => {
+    // Short chart (6 bars at 240 BPM ≈ 6s) so end-of-song fires inside
+    // the per-test 30s timeout with room to verify the reset.
+    await seedScoreAndEnterPerform(page, SHORT_CHORD_CHART);
+    await page.locator('button[aria-label="Start auto-scroll"]').click();
+
+    // Let the song finish. The step() loop calls setAutoScroll(false) +
+    // resets elapsed when activeBarFromElapsed returns null past end.
+    await page.waitForTimeout(7500);
+
+    // Auto-scroll should have auto-stopped. The floating button label
+    // flipped from "Pause" back to "Continue" once autoScroll=false.
+    const continueBtn = page.locator('button[aria-label="Continue auto-scroll"]');
+    await expect(continueBtn, "auto-scroll should have stopped at end-of-song").toBeVisible();
+
+    // Tap Continue. End-of-song reset means elapsed is back at 0, so
+    // the active bar should be on the first line (v-0).
+    await continueBtn.click();
+    await page.waitForTimeout(300);
+    const afterRestart = await probeActiveBar(page);
+    expect(
+      afterRestart.activeLineKey,
+      `Continue after end-of-song should restart from v-0, got ${afterRestart.activeLineKey}`,
+    ).toBe("v-0");
   });
 });
