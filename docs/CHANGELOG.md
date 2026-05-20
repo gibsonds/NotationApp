@@ -3,6 +3,18 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-20 — 550c204
+
+**Duplicate-song resolver: banner + per-group keep/compare (#154)**
+
+- Commit: [`550c204`](../../commit/550c2047b9b454354b85d9172c14e0a0a0bc8e51)
+- Author: gibsonds
+- Files changed:
+  - `src/components/DuplicateResolver.tsx`
+  - `src/components/MySongsModal.tsx`
+  - `src/lib/__tests__/song-bank-dedup.test.ts`
+  - `src/lib/song-bank.ts`
+
 ## 2026-05-20 — 96c86b8
 
 **Persistent reflow: reflow_section patch + section-header command (#151)**
