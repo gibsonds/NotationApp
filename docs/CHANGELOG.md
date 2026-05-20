@@ -3,6 +3,21 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-20 — 96c86b8
+
+**Persistent reflow: reflow_section patch + section-header command (#151)**
+
+- Commit: [`96c86b8`](../../commit/96c86b87c4e1a5a8a0abf035228c5730c317773b)
+- Author: gibsonds
+- Files changed:
+  - `src/components/ChordChartView.tsx`
+  - `src/lib/__tests__/chord-line-wrap.test.ts`
+  - `src/lib/__tests__/patches-reflow.test.ts`
+  - `src/lib/ai-provider.ts`
+  - `src/lib/chord-line-wrap.ts`
+  - `src/lib/patches.ts`
+  - `src/lib/schema.ts`
+
 ## 2026-05-17 — a486af9
 
 **BYOK on the static deploy: AI calls go direct from browser (#147)**
