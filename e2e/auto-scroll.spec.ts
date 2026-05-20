@@ -306,6 +306,11 @@ test.describe("Auto-scroll: pause / continue transport", () => {
     // across pause, so resume starts on the same line. The buggy
     // pre-fix behavior was: pause reset elapsed to 0, so resume put
     // the highlight back on intro-0.
+    // Capture scroll position before Continue. After Continue we'll
+    // assert the scroll didn't snap back toward the top — user-reported
+    // bug: "the cursor goes to the top of the screen on resume."
+    const scrollBeforeContinue = duringPause.scrollTop ?? 0;
+
     await page.locator('button[aria-label="Continue auto-scroll"]').click();
     // Brief wait — long enough for the RAF loop to tick at least once,
     // short enough that we haven't advanced more than one bar's worth
@@ -316,6 +321,19 @@ test.describe("Auto-scroll: pause / continue transport", () => {
       afterContinue.activeLineKey,
       `Continue restarted from intro-0 (pre-fix bug). before=${beforePause.activeLineKey} after=${afterContinue.activeLineKey}`,
     ).not.toBe("intro-0");
+
+    // Scroll preservation: 200ms after Continue, the chord chart
+    // should still be at roughly the same scroll position. If a regression
+    // resets scrollTop to 0 (or animates it back toward the top via
+    // some line-transition glitch), the gap balloons. Tolerance: 250px
+    // — enough headroom for one engaged-line scroll animation to land
+    // a tick or two further down, but small enough to catch a "snap to
+    // top" regression.
+    const scrollAfterContinue = afterContinue.scrollTop ?? 0;
+    expect(
+      Math.abs(scrollAfterContinue - scrollBeforeContinue),
+      `scrollTop drifted on Continue. before=${scrollBeforeContinue} after=${scrollAfterContinue}`,
+    ).toBeLessThan(250);
   });
 
   test("Tempo ♩+ / ♩− doesn't jump the active bar (PR #145 rescaling)", async ({ page }) => {
