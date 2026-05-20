@@ -27,6 +27,11 @@ import {
   entryContentScore,
   findDuplicateGroups,
 } from "@/lib/song-bank";
+import {
+  chordChartLines,
+  diffClassifyRows,
+  planCompareRows,
+} from "@/lib/chord-chart-diff";
 
 interface Props {
   songs: ReadonlyArray<SongBankEntry>;
@@ -255,6 +260,8 @@ function CompareOverlay({
   onResolve,
   working,
 }: CompareOverlayProps) {
+  const [showOnlyDiffs, setShowOnlyDiffs] = useState(false);
+
   // Esc closes the overlay.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -267,6 +274,21 @@ function CompareOverlay({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  // Flatten each entry to its array of text rows, then classify each
+  // row position as same / diff across all entries. Memoize so toggling
+  // showOnlyDiffs doesn't redo the work.
+  const { entryRows, classifications, diffCount } = useMemo(() => {
+    const rows = group.entries.map(chordChartLines);
+    const cls = diffClassifyRows(rows);
+    const diffs = cls.filter((k) => k === "diff").length;
+    return { entryRows: rows, classifications: cls, diffCount: diffs };
+  }, [group]);
+
+  const plan = useMemo(
+    () => planCompareRows(classifications, showOnlyDiffs, 1),
+    [classifications, showOnlyDiffs],
+  );
+
   return (
     <div className="fixed inset-0 z-[200] bg-white flex flex-col text-gray-900">
       <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 bg-gray-50">
@@ -275,11 +297,22 @@ function CompareOverlay({
             Compare “{group.entries[0].title}”
           </h2>
           <p className="text-[12px] text-gray-600 mt-0.5">
-            {group.entries.length} copies side-by-side. Pick a winner to
-            keep; the others get deleted.
+            {group.entries.length} copies · {diffCount}{" "}
+            {diffCount === 1 ? "row differs" : "rows differ"}. Pick a
+            winner; the others get deleted.
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <label className="flex items-center gap-1.5 text-[12px] text-gray-700 px-2 py-1 rounded hover:bg-gray-200 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={showOnlyDiffs}
+              onChange={(e) => setShowOnlyDiffs(e.target.checked)}
+              className="accent-blue-600"
+              disabled={diffCount === 0}
+            />
+            Only diffs
+          </label>
           <button
             type="button"
             onClick={onResolve}
@@ -307,8 +340,9 @@ function CompareOverlay({
             gridTemplateColumns: `repeat(${Math.min(group.entries.length, 3)}, minmax(0, 1fr))`,
           }}
         >
-          {group.entries.map((entry) => {
+          {group.entries.map((entry, entryIdx) => {
             const selected = keepId === entry.id;
+            const rows = entryRows[entryIdx];
             return (
               <div
                 key={entry.id}
@@ -342,9 +376,42 @@ function CompareOverlay({
                     </div>
                   </div>
                 </label>
-                <pre className="flex-1 overflow-auto p-3 m-0 text-[13px] leading-relaxed font-mono text-gray-900 bg-white whitespace-pre">
-                  {chartPreviewText(entry)}
-                </pre>
+                <div className="flex-1 overflow-auto text-[13px] leading-relaxed font-mono bg-white">
+                  {plan.map((slot, slotIdx) => {
+                    if (slot.kind === "gap") {
+                      return (
+                        <div
+                          key={`gap-${slotIdx}`}
+                          className="px-3 py-1 text-[11px] italic text-gray-500 bg-gray-50 border-y border-gray-100 select-none"
+                        >
+                          ··· {slot.count} unchanged{" "}
+                          {slot.count === 1 ? "row" : "rows"} ···
+                        </div>
+                      );
+                    }
+                    const text = rows[slot.index];
+                    const isDiff = classifications[slot.index] === "diff";
+                    // `missing` styles the slot where THIS entry has no
+                    // row at this index but the longer entries do —
+                    // shown as an empty dashed row so the diff column
+                    // count stays aligned across the grid.
+                    const missing = text === undefined;
+                    return (
+                      <div
+                        key={slot.index}
+                        className={`px-3 whitespace-pre min-h-[1.4em] ${
+                          missing
+                            ? "bg-amber-50 text-gray-400 italic border-l-2 border-amber-300"
+                            : isDiff
+                            ? "bg-amber-100 text-amber-900 border-l-2 border-amber-400"
+                            : "text-gray-900"
+                        }`}
+                      >
+                        {missing ? "— (no row in this copy)" : text === "" ? " " : text}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             );
           })}
@@ -369,22 +436,3 @@ function formatSavedAt(ms: number): string {
   }
 }
 
-/** Render an entry's chord chart as text for the compare view —
- *  section labels + chord row + lyric row per line. Falls back to a
- *  "(no chord chart content)" placeholder for staff-notation-only
- *  scores where there's nothing chord-charty to diff. */
-function chartPreviewText(entry: SongBankEntry): string {
-  const sections = entry.score.sections ?? [];
-  if (sections.length === 0) return "(no chord chart content)";
-  const lines: string[] = [];
-  for (const section of sections) {
-    lines.push(`[${section.label || section.id}]`);
-    for (const line of section.lines ?? []) {
-      if (line.chords) lines.push(line.chords);
-      if (line.lyrics) lines.push(line.lyrics);
-      if (!line.chords && !line.lyrics) lines.push("");
-    }
-    lines.push("");
-  }
-  return lines.join("\n").trimEnd();
-}
