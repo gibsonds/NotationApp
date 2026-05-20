@@ -131,6 +131,7 @@ Chord-chart (songbook) patches — prefer these over \`replace_score\` when the 
 - { "op": "remove_section_line", "sectionId": string, "lineIdx": number }
 - { "op": "set_form", "form": [section ids in order] }
 - { "op": "split_section", "sectionId": string, "atLineIdx": number, "newSection": { "id": string, "label": string } }  (split a section into two — lines from atLineIdx onward move to the new section)
+- { "op": "reflow_section", "sectionId": string, "barsPerLine": number }  (split each line in a section into chunks of N bars per line — for "shorten these lines" / "rewrap to 4 bars per line" requests)
 
 - { "op": "replace_score", "score": { full score intent object } }  (only if you're rewriting most of the song)
 

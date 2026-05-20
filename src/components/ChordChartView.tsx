@@ -1136,6 +1136,32 @@ export default function ChordChartView({ score, performMode = false, performColu
         onClick: () => setSectionField("navMark", section?.navMark === "d.c. al fine" ? null : "d.c. al fine") },
       { label: section?.navMark === "d.s. al coda" ? "Remove D.S. al Coda" : "Set D.S. al Coda",
         onClick: () => setSectionField("navMark", section?.navMark === "d.s. al coda" ? null : "d.s. al coda") },
+      // Reflow: split each line in this section into chunks of N bars
+      // per line. Useful when a long line is overflowing the column
+      // (2-col perform mode clips it, 1-col makes the user scroll
+      // horizontally). Idempotent — running again on an already-
+      // reflowed section is a no-op for conforming lines.
+      {
+        divider: true,
+        label: "Reflow to N bars per line…",
+        onClick: () => {
+          const raw = window.prompt(
+            "Bars per line (1-32):",
+            "4",
+          );
+          if (!raw) return;
+          const n = parseInt(raw.trim(), 10);
+          if (!Number.isFinite(n) || n < 1 || n > 32) {
+            window.alert("Please enter a number between 1 and 32.");
+            return;
+          }
+          applyPatches([{
+            op: "reflow_section",
+            sectionId: ctx.sectionId,
+            barsPerLine: n,
+          }]);
+        },
+      },
       {
         divider: true,
         label: "Delete section",

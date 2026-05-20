@@ -2,6 +2,7 @@ import { Score, ScorePatch } from "./schema";
 import { expandIntentToScore } from "./validation";
 import { debugLog } from "./debug-log";
 import { expandTabs } from "./chord-line";
+import { reflowChordLine } from "./chord-line-wrap";
 
 const DURATION_BEATS: Record<string, number> = {
   whole: 4, half: 2, quarter: 1, eighth: 0.5, sixteenth: 0.25,
@@ -371,6 +372,39 @@ export function applyPatch(score: Score, patch: ScorePatch): Score {
 
     case "set_form": {
       return { ...score, form: patch.form };
+    }
+
+    case "reflow_section": {
+      // Persistent reflow: walk the section's lines and split any line
+      // with more than `barsPerLine` bars into multiple lines, slicing
+      // chords and lyrics at the same column positions so alignment
+      // stays intact. Lines without `|` markers pass through untouched.
+      //
+      // Highlight / underline ranges are dropped on reflow — they're
+      // column-indexed and would need careful per-sub-row reshifting.
+      // The user can re-apply via the existing annotation flow.
+      return {
+        ...score,
+        sections: score.sections.map((s) => {
+          if (s.id !== patch.sectionId) return s;
+          const newLines: typeof s.lines = [];
+          for (const line of s.lines) {
+            const chords = line.chords ?? "";
+            const lyrics = line.lyrics ?? "";
+            const reflowed = reflowChordLine(chords, lyrics, patch.barsPerLine);
+            for (const r of reflowed) {
+              newLines.push({
+                ...line,
+                chords: r.chords,
+                lyrics: r.lyrics,
+                highlightRanges: undefined,
+                underlineRanges: undefined,
+              });
+            }
+          }
+          return { ...s, lines: newLines };
+        }),
+      };
     }
 
     case "split_section": {
