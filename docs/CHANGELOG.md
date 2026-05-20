@@ -3,6 +3,17 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-20 — 8c9f6ad
+
+**Compare overlay: per-line diff highlighting + 'only diffs' toggle (#156)**
+
+- Commit: [`8c9f6ad`](../../commit/8c9f6ad1e59ab4a56dad2d01cbc71176f3aeadcb)
+- Author: gibsonds
+- Files changed:
+  - `src/components/DuplicateResolver.tsx`
+  - `src/lib/__tests__/chord-chart-diff.test.ts`
+  - `src/lib/chord-chart-diff.ts`
+
 ## 2026-05-20 — 550c204
 
 **Duplicate-song resolver: banner + per-group keep/compare (#154)**
