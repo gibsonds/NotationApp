@@ -138,3 +138,121 @@ describe("wrapChordLineAtBars — defensive inputs", () => {
     expect(out).toEqual([{ chords: "abc", lyrics: "def", offset: 0 }]);
   });
 });
+
+import { reflowChordLine, computeBarBoundaries } from "@/lib/chord-line-wrap";
+
+describe("computeBarBoundaries", () => {
+  it("returns [] for lines without `|`", () => {
+    expect(computeBarBoundaries("Em Bm C")).toEqual([]);
+    expect(computeBarBoundaries("")).toEqual([]);
+  });
+
+  it("returns pipe positions for fully-bar-delimited lines", () => {
+    expect(computeBarBoundaries("| Em | Bm | C |")).toEqual([0, 5, 10, 14]);
+  });
+
+  it("prepends firstNonSpace when line has leading content before the first `|`", () => {
+    expect(computeBarBoundaries("Em | Bm | C |")).toEqual([0, 3, 8, 12]);
+  });
+
+  it("appends end-of-content when line has trailing content after the last `|`", () => {
+    expect(computeBarBoundaries("| C | G")).toEqual([0, 4, 7]);
+  });
+});
+
+describe("reflowChordLine — basics", () => {
+  it("returns input unchanged when bar count <= barsPerLine (idempotent)", () => {
+    const out = reflowChordLine("| Em | Bm |", "ok", 4);
+    expect(out).toEqual([{ chords: "| Em | Bm |", lyrics: "ok" }]);
+  });
+
+  it("returns input unchanged when there are no `|` markers", () => {
+    const out = reflowChordLine("Em Bm C", "lyric", 4);
+    expect(out).toEqual([{ chords: "Em Bm C", lyrics: "lyric" }]);
+  });
+
+  it("splits 8 bars into two lines of 4 bars each", () => {
+    const out = reflowChordLine(
+      "| Em | Bm | C | D | Em | Bm | C | D |",
+      "",
+      4,
+    );
+    expect(out).toHaveLength(2);
+    expect(out[0].chords).toBe("| Em | Bm | C | D |");
+    expect(out[1].chords).toBe("| Em | Bm | C | D |");
+  });
+
+  it("splits 6 bars into three lines of 2 bars each", () => {
+    const out = reflowChordLine(
+      "| Em | Bm | C | D | E | F |",
+      "",
+      2,
+    );
+    expect(out).toHaveLength(3);
+    for (const line of out) {
+      // Each sub-line should start AND end with `|` (clean barlines).
+      expect(line.chords.startsWith("|")).toBe(true);
+      expect(line.chords.endsWith("|")).toBe(true);
+    }
+  });
+
+  it("preserves lyrics aligned to chord columns across the split", () => {
+    // 4 bars, lyric chars under specific chord cols.
+    const chords = "| Em | Bm | C | D |";
+    const lyrics = "ABCDEFGHIJKLMNOPQRS"; // unique chars per col
+    const out = reflowChordLine(chords, lyrics, 2);
+    expect(out).toHaveLength(2);
+    // Rejoining lyric slices must reproduce the original lyrics (the
+    // SAME col stays under the SAME chord char on whichever sub-line).
+    const rejoined = out.map((r) => r.lyrics).join("");
+    expect(rejoined).toBe(lyrics);
+  });
+
+  it("handles leading content (no opening `|` on the first bar)", () => {
+    // 3 bars: "Em" (leading), "Bm", "C". Reflow to 1 bar/line.
+    const out = reflowChordLine("Em | Bm | C |", "", 1);
+    expect(out).toHaveLength(3);
+    expect(out[0].chords).toBe("Em |"); // leading bar keeps its style
+    expect(out[1].chords).toBe("| Bm |");
+    expect(out[2].chords).toBe("| C |");
+  });
+
+  it("handles trailing content (no closing `|` on the last bar)", () => {
+    // 2 bars: "| C ", "| G" (trailing, no closing `|`).
+    const out = reflowChordLine("| C | G", "", 1);
+    expect(out).toHaveLength(2);
+    expect(out[0].chords).toBe("| C |");
+    expect(out[1].chords).toBe("| G"); // no closing `|` because there wasn't one
+  });
+});
+
+describe("reflowChordLine — invariants", () => {
+  it("idempotent: running reflow twice with the same N yields the same per-line result", () => {
+    const chords = "| Em | Bm | C | D | E | F |";
+    const once = reflowChordLine(chords, "", 2);
+    const twice = once.flatMap((r) => reflowChordLine(r.chords, r.lyrics, 2));
+    expect(twice).toEqual(once);
+  });
+
+  it("preserves total bar count: sum of bars across sub-lines equals original", () => {
+    const cases: [string, number][] = [
+      ["| Em | Bm | C | D | E | F |", 2],
+      ["| C | F | G | Am | F | G | C | F |", 3],
+      ["Em | Bm | C |", 1],
+    ];
+    for (const [chords, barsPerLine] of cases) {
+      const origBars = Math.max(0, computeBarBoundaries(chords).length - 1);
+      const out = reflowChordLine(chords, "", barsPerLine);
+      const newBars = out.reduce(
+        (sum, r) => sum + Math.max(0, computeBarBoundaries(r.chords).length - 1),
+        0,
+      );
+      expect(newBars).toBe(origBars);
+    }
+  });
+
+  it("returns barsPerLine <= 0 input as a single-line pass-through (defensive)", () => {
+    expect(reflowChordLine("| C |", "", 0)).toEqual([{ chords: "| C |", lyrics: "" }]);
+    expect(reflowChordLine("| C |", "", -3)).toEqual([{ chords: "| C |", lyrics: "" }]);
+  });
+});

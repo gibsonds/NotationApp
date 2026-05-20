@@ -495,6 +495,22 @@ export const ScorePatchSchema = z.discriminatedUnion("op", [
    * section keeps the lines before that. Used when the user realizes some
    * lines they've been editing are conceptually a separate section.
    */
+  /**
+   * Persistent auto-reflow: takes every line in `sectionId` and
+   * splits any line with > `barsPerLine` bars into multiple new
+   * lines of `barsPerLine` bars each. Chords + lyrics slice at the
+   * same column positions so alignment is preserved. Lines without
+   * `|` markers (lyric-only) are passed through unchanged. Highlight
+   * / underline ranges are dropped (would need column reshifting).
+   *
+   * Idempotent — running with the section's current bars-per-line
+   * is a no-op for already-conforming lines.
+   */
+  z.object({
+    op: z.literal("reflow_section"),
+    sectionId: z.string(),
+    barsPerLine: z.number().int().min(1).max(32),
+  }),
   z.object({
     op: z.literal("split_section"),
     sectionId: z.string(),
