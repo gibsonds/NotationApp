@@ -9,6 +9,7 @@ import { PickSetBody, PickSongsBody } from "@/components/AddToSetSheet";
 import { getSets, SetsUpdatedEvent, songSetMembership, type SongSet } from "@/lib/song-sets";
 import {
   canonicalSongTitle,
+  findDuplicateGroups,
   getSongs,
   isAliasTitle,
   saveSong,
@@ -19,6 +20,7 @@ import {
   updateSong,
   SongBankEntry,
 } from "@/lib/song-bank";
+import DuplicateResolver from "@/components/DuplicateResolver";
 import {
   CLOUD_ENABLED,
   cloudDeleteSong,
@@ -109,6 +111,7 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
     | { kind: "addToSet"; songIds: string[] }
     | { kind: "pickSongs"; targetSetId: string }
     | { kind: "moveFolder"; songIds: string[] }
+    | { kind: "resolveDuplicates" }
     | { kind: null };
   const [rightPane, setRightPane] = useState<RightPaneState>({ kind: null });
   const closeRightPane = () => setRightPane({ kind: null });
@@ -914,6 +917,34 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
           </div>
         ))}
 
+        {/* Duplicate-titled songs detector. When the user has same-
+            titled entries (typically from Save-as instead of Save-over,
+            or from cloud-sync recoveries), surface a banner that opens
+            the per-group resolver in the right pane. This sits above
+            the search box so it's the first thing the user sees when
+            they have a mess to clean up. */}
+        {activeTab === "songs" && !selectMode && rightPane.kind === null && (() => {
+          const dupGroups = findDuplicateGroups(songs);
+          if (dupGroups.length === 0) return null;
+          return (
+            <div className="px-5 py-2 border-b border-amber-500/30 bg-amber-50 text-amber-900 flex items-center gap-3">
+              <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span className="text-[12px] flex-1">
+                {dupGroups.length} duplicate {dupGroups.length === 1 ? "title" : "titles"} —{" "}
+                <button
+                  type="button"
+                  onClick={() => setRightPane({ kind: "resolveDuplicates" })}
+                  className="underline underline-offset-2 hover:text-amber-700"
+                >
+                  Resolve
+                </button>
+              </span>
+            </div>
+          );
+        })()}
+
         {/* Search box — pinned above the list. Hidden in Sets tab and
             in select mode (the bulk-action bar already overloads the
             chrome there). */}
@@ -1331,6 +1362,24 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
                   onPick={(folder) => {
                     void handleBulkMoveToFolderIds(rightPane.songIds, folder);
                     closeRightPane();
+                  }}
+                />
+              )}
+              {rightPane.kind === "resolveDuplicates" && (
+                <DuplicateResolver
+                  songs={songs}
+                  onClose={closeRightPane}
+                  onResolve={async (_keep, drop) => {
+                    // Mirror handleCleanupDuplicates' delete pattern:
+                    // local + cloud delete, then refresh + sync. We
+                    // never touch the kept entry — it stays as-is.
+                    for (const entry of drop) {
+                      deleteSong(entry.id);
+                      if (CLOUD_ENABLED) {
+                        try { await cloudDeleteSong(entry.id); } catch { /* best-effort */ }
+                      }
+                    }
+                    refreshLocal();
                   }}
                 />
               )}

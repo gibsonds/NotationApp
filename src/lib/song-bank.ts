@@ -204,3 +204,72 @@ export function setSongFolder(id: string, folder: string | null): SongBankEntry 
   setSongs(songs);
   return next;
 }
+
+/**
+ * Group songs by canonical title and return only the groups with > 1
+ * entry — i.e., duplicates that the user might want to resolve.
+ *
+ * Used by the duplicate-resolver UI in MySongsModal. The canonicalizer
+ * folds smart quotes, case, and whitespace so iPad-typed and Mac-typed
+ * variants of the same song collide.
+ *
+ * Returns groups sorted by their first entry's title (alphabetical) so
+ * the UI shows them in a stable, predictable order. Within each group,
+ * entries are sorted by content richness (most chord+lyric chars
+ * first) so the "kept" radio defaults to the most complete copy.
+ */
+export interface DuplicateGroup {
+  /** Canonical key all entries in this group share. */
+  canonicalKey: string;
+  /** The entries, sorted by content richness desc (winner-candidate first). */
+  entries: SongBankEntry[];
+}
+
+export function findDuplicateGroups(
+  songs: ReadonlyArray<SongBankEntry>,
+): DuplicateGroup[] {
+  const byKey = new Map<string, SongBankEntry[]>();
+  for (const s of songs) {
+    const k = canonicalSongTitle(s.title);
+    const bucket = byKey.get(k);
+    if (bucket) bucket.push(s);
+    else byKey.set(k, [s]);
+  }
+  const groups: DuplicateGroup[] = [];
+  for (const [canonicalKey, entries] of byKey) {
+    if (entries.length <= 1) continue;
+    entries.sort((a, b) => {
+      const sa = entryContentScore(a);
+      const sb = entryContentScore(b);
+      if (sa !== sb) return sb - sa;
+      return b.savedAt - a.savedAt;
+    });
+    groups.push({ canonicalKey, entries });
+  }
+  // Stable order across renders — alphabetical by canonical key.
+  groups.sort((a, b) => a.canonicalKey.localeCompare(b.canonicalKey));
+  return groups;
+}
+
+/**
+ * Heuristic "how much real content does this entry have" score. Counts
+ * chord + lyric characters in a chord chart, and (for staff-notation
+ * scores) note count × 4 as a rough proxy. Higher = more complete.
+ *
+ * Exported because the resolver UI shows this number to the user so
+ * they can see why a particular copy was picked as the default winner.
+ */
+export function entryContentScore(s: SongBankEntry): number {
+  const sections = s.score.sections ?? [];
+  let chars = 0;
+  for (const sec of sections) {
+    for (const line of sec.lines ?? []) {
+      chars += (line.chords ?? "").length;
+      chars += (line.lyrics ?? "").length;
+    }
+  }
+  for (const staff of s.score.staves ?? []) {
+    for (const v of staff.voices ?? []) chars += (v.notes ?? []).length * 4;
+  }
+  return chars;
+}
