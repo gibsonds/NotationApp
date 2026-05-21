@@ -755,7 +755,13 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div
-      className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
+      // z-[60] sits ABOVE PerformView's z-50. They used to share z-50,
+      // so opening this modal from inside perform mode let DOM order
+      // win — and PerformView (rendered after) covered the modal. The
+      // user saw "Songs button doesn't open anything", then "Edit
+      // opened Songs" when PerformView unmounted on Edit and revealed
+      // the modal that had been mounted behind it the whole time.
+      className="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4"
       onClick={onClose}
     >
       <div
