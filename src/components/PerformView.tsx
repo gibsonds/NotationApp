@@ -954,16 +954,21 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
           </div>
         )}
         {onOpenMySongs && (
+          // Standalone pill with icon + text. Used to be an icon-only
+          // hamburger inside the style cluster, which the user couldn't
+          // find. Music-note icon + "Songs" label makes it the obvious
+          // way to jump to the library mid-performance.
           <button
             type="button"
             onClick={onOpenMySongs}
-            className={btn}
+            className="h-11 px-3 flex items-center gap-1.5 text-sm font-semibold rounded-xl bg-gray-900/80 text-gray-100 hover:bg-gray-800 active:bg-gray-700 backdrop-blur-sm shadow border border-white/10"
             aria-label="Open My Songs"
             title="My Songs"
           >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h7" />
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z" />
             </svg>
+            <span>Songs</span>
           </button>
         )}
       </div>
