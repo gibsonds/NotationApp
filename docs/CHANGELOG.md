@@ -3,6 +3,16 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-21 — 5752a78
+
+**Fix: MySongsModal stacks above PerformView (was z-50 tie) (#158)**
+
+- Commit: [`5752a78`](../../commit/5752a78d4986c1044eaf518b818d1384aa2dcdf9)
+- Author: gibsonds
+- Files changed:
+  - `e2e/perform-toolbar-clicks.spec.ts`
+  - `src/components/MySongsModal.tsx`
+
 ## 2026-05-21 — 38dfe23
 
 **PerformView: visible "Songs" button in the toolbar (#157)**
