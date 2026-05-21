@@ -3,6 +3,15 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-21 — 38dfe23
+
+**PerformView: visible "Songs" button in the toolbar (#157)**
+
+- Commit: [`38dfe23`](../../commit/38dfe239a696d8c659d2199fc033aa8d8c8bfb29)
+- Author: gibsonds
+- Files changed:
+  - `src/components/PerformView.tsx`
+
 ## 2026-05-20 — 8c9f6ad
 
 **Compare overlay: per-line diff highlighting + 'only diffs' toggle (#156)**
