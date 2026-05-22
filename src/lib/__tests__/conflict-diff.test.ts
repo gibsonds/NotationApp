@@ -28,7 +28,9 @@ describe("computeConflictDiff", () => {
     ]);
     const theirs = score([{ label: "Verse 1", lines: [] }]);
     const out = computeConflictDiff(mine, theirs);
-    expect(out.deltas).toEqual([{ kind: "only-mine", label: "Bridge" }]);
+    expect(out.deltas).toEqual([
+      { kind: "only-mine", label: "Bridge", lines: [{ chords: "Am", lyrics: "" }] },
+    ]);
   });
 
   it("flags a section that only exists in theirs", () => {
@@ -38,7 +40,9 @@ describe("computeConflictDiff", () => {
       { label: "Outro", lines: [{ chords: "G", lyrics: "fin" }] },
     ]);
     const out = computeConflictDiff(mine, theirs);
-    expect(out.deltas).toEqual([{ kind: "only-theirs", label: "Outro" }]);
+    expect(out.deltas).toEqual([
+      { kind: "only-theirs", label: "Outro", lines: [{ chords: "G", lyrics: "fin" }] },
+    ]);
   });
 
   it("identifies per-line differences inside a matched section", () => {
@@ -64,7 +68,22 @@ describe("computeConflictDiff", () => {
     ]);
     const out = computeConflictDiff(mine, theirs);
     expect(out.deltas).toEqual([
-      { kind: "lines-differ", label: "Verse 1", changedLines: [1, 2] },
+      {
+        kind: "lines-differ",
+        label: "Verse 1",
+        changes: [
+          {
+            idx: 1,
+            mine: { chords: "D", lyrics: "line B" },
+            theirs: { chords: "D7", lyrics: "line B" },
+          },
+          {
+            idx: 2,
+            mine: { chords: "Em", lyrics: "line C" },
+            theirs: { chords: "Em", lyrics: "line C changed" },
+          },
+        ],
+      },
     ]);
   });
 
@@ -83,7 +102,13 @@ describe("computeConflictDiff", () => {
     ]);
     const out = computeConflictDiff(mine, theirs);
     expect(out.deltas).toEqual([
-      { kind: "lines-differ", label: "Chorus", changedLines: [1] },
+      {
+        kind: "lines-differ",
+        label: "Chorus",
+        changes: [
+          { idx: 1, mine: undefined, theirs: { chords: "G", lyrics: "" } },
+        ],
+      },
     ]);
   });
 
@@ -100,9 +125,19 @@ describe("computeConflictDiff", () => {
     ]);
     const out = computeConflictDiff(mine, theirs);
     expect(out.deltas).toEqual([
-      { kind: "lines-differ", label: "Chorus", changedLines: [0] },
-      { kind: "only-mine", label: "Bridge" },
-      { kind: "only-theirs", label: "Outro" },
+      {
+        kind: "lines-differ",
+        label: "Chorus",
+        changes: [
+          {
+            idx: 0,
+            mine: { chords: "C", lyrics: "b" },
+            theirs: { chords: "F", lyrics: "b" },
+          },
+        ],
+      },
+      { kind: "only-mine", label: "Bridge", lines: [] },
+      { kind: "only-theirs", label: "Outro", lines: [] },
     ]);
   });
 
@@ -111,28 +146,40 @@ describe("computeConflictDiff", () => {
     const populated = score([{ label: "Verse 1", lines: [] }]);
     expect(computeConflictDiff(empty, empty).identical).toBe(true);
     expect(computeConflictDiff(empty, populated).deltas).toEqual([
-      { kind: "only-theirs", label: "Verse 1" },
+      { kind: "only-theirs", label: "Verse 1", lines: [] },
     ]);
   });
 });
 
 describe("describeDelta", () => {
   it("renders only-mine", () => {
-    expect(describeDelta({ kind: "only-mine", label: "Bridge" })).toBe(
-      "Bridge — only in your version",
-    );
+    expect(
+      describeDelta({ kind: "only-mine", label: "Bridge", lines: [] }),
+    ).toBe("Bridge — only in your version");
   });
   it("renders only-theirs", () => {
-    expect(describeDelta({ kind: "only-theirs", label: "Outro" })).toBe(
-      "Outro — only in their version",
-    );
+    expect(
+      describeDelta({ kind: "only-theirs", label: "Outro", lines: [] }),
+    ).toBe("Outro — only in their version");
   });
   it("renders lines-differ with singular/plural", () => {
     expect(
-      describeDelta({ kind: "lines-differ", label: "V1", changedLines: [0] }),
+      describeDelta({
+        kind: "lines-differ",
+        label: "V1",
+        changes: [{ idx: 0, mine: undefined, theirs: undefined }],
+      }),
     ).toBe("V1 — 1 line changed");
     expect(
-      describeDelta({ kind: "lines-differ", label: "V1", changedLines: [0, 2, 3] }),
+      describeDelta({
+        kind: "lines-differ",
+        label: "V1",
+        changes: [
+          { idx: 0, mine: undefined, theirs: undefined },
+          { idx: 2, mine: undefined, theirs: undefined },
+          { idx: 3, mine: undefined, theirs: undefined },
+        ],
+      }),
     ).toBe("V1 — 3 lines changed");
   });
 });

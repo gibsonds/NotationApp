@@ -30,6 +30,7 @@ import ImportSongbookDialog, { type ImportSongbookPayload } from "@/components/I
 import { autosaveToCloud, CloudSaveEvents } from "@/lib/cloud-autosave";
 import { getSongs, updateSong } from "@/lib/song-bank";
 import type { SongDTO } from "@/lib/song-cloud-types";
+import type { Score } from "@/lib/schema";
 import ConflictModal from "@/components/ConflictModal";
 import AnnotationLayer from "@/components/AnnotationLayer";
 import AnnotateToggle from "@/components/AnnotateToggle";
@@ -102,6 +103,62 @@ export default function Home() {
     | { current: SongDTO; local: typeof score; songId: string }
     | null
   >(null);
+  // Dev-only preview hook: visit `?previewConflict=1` to see the conflict
+  // modal with sample data without coordinating a real 409 across two
+  // devices. Branch in `process.env.NODE_ENV` is tree-shaken in the
+  // production / static-export build, so this never ships to Pages.
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "development") return;
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("previewConflict") !== "1") return;
+    const sampleLocal: Score = {
+      id: "preview",
+      title: "Foggy Night",
+      composer: "",
+      tempo: 96,
+      timeSignature: "4/4",
+      keySignature: "C",
+      measures: 8,
+      anacrusis: false,
+      staves: [],
+      chordSymbols: [],
+      rehearsalMarks: [],
+      repeats: [],
+      measureChanges: [],
+      sections: [
+        { id: "intro", label: "Intro", lines: [{ chords: "| Am | F | C | G |", lyrics: "" }] },
+        { id: "v1", label: "Verse 1", lines: [
+          { chords: "| Am | F |", lyrics: "way back then when we were young" },
+          { chords: "| C | G |", lyrics: "I HEARD the foggy night" },
+        ] },
+        { id: "bridge", label: "Bridge", lines: [{ chords: "| Dm | E7 |", lyrics: "this section only exists in YOUR version" }] },
+      ],
+      form: [],
+      metadata: {},
+      annotations: [],
+    };
+    const sampleCurrent: SongDTO = {
+      id: "preview",
+      title: "Foggy Night",
+      savedAt: Date.now() - 60_000,
+      updatedAt: Date.now() - 60_000,
+      version: "their-version",
+      folder: undefined,
+      score: {
+        ...sampleLocal,
+        sections: [
+          { id: "intro", label: "Intro", lines: [{ chords: "| Am | F | C | G |", lyrics: "" }] },
+          { id: "v1", label: "Verse 1", lines: [
+            { chords: "| Am | F |", lyrics: "way back then when we were young" },
+            { chords: "| C | G |", lyrics: "i felt the foggy night" }, // line 1 differs
+          ] },
+          { id: "outro", label: "Outro", lines: [{ chords: "| C |", lyrics: "this section only exists in THEIR version" }] },
+        ],
+      },
+    };
+    setConflict({ current: sampleCurrent, local: sampleLocal, songId: "preview" });
+  }, []);
   const [inlineAI, setInlineAI] = useState<{ note: { measure: number; beat: number; pitch: string; staffIndex: number }; position: { x: number; y: number } } | null>(null);
   const printFnRef = useRef<(() => Promise<void>) | null>(null);
   // Force-pushes every local song to cloud without expectedVersion.
