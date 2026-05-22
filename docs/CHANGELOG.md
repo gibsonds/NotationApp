@@ -3,6 +3,18 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-22 — b4499cf
+
+**ConflictModal: per-section diff replaces 'just counts' (#116)**
+
+- Commit: [`b4499cf`](../../commit/b4499cf0a7ab2ec1b737cec228a41833eaf788d8)
+- Author: gibsonds
+- Files changed:
+  - `src/app/page.tsx`
+  - `src/components/ConflictModal.tsx`
+  - `src/lib/__tests__/conflict-diff.test.ts`
+  - `src/lib/conflict-diff.ts`
+
 ## 2026-05-21 — 5752a78
 
 **Fix: MySongsModal stacks above PerformView (was z-50 tie) (#158)**
