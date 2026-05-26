@@ -421,14 +421,21 @@ test.describe("Auto-scroll: 2-col line wrap", () => {
 
     // Count the visible chord-row sub-rows for the one seeded chord
     // line. The yellow-300 class identifies chord rows; we filter to
-    // those that aren't in the hidden measure column.
+    // those that aren't in the hidden measure column AND scope to
+    // PerformView (z-50 overlay) — the editor's ChordChartView stays
+    // mounted underneath the fixed-inset perform overlay and renders
+    // its OWN chord row at the editor's main-area width, which on
+    // narrow viewports overflows visually-clipped by overlap (caught
+    // by webkit-ipad but invisible to the user).
     const result = await page.evaluate(() => {
+      const performRoot = document.querySelector<HTMLElement>(".fixed.inset-0.z-50");
+      if (!performRoot) return [];
       const all = Array.from(
-        document.querySelectorAll<HTMLElement>(".text-yellow-300.whitespace-pre"),
+        performRoot.querySelectorAll<HTMLElement>(".text-yellow-300.whitespace-pre"),
       );
       const visible = all.filter((el) => {
         let cur: HTMLElement | null = el;
-        while (cur && cur !== document.body) {
+        while (cur && cur !== performRoot) {
           if (cur.getAttribute("aria-hidden") === "true") return false;
           cur = cur.parentElement;
         }
