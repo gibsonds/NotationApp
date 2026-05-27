@@ -13,6 +13,7 @@ import {
   activeBarFromElapsed,
   beatsPerBarOf,
   computeBarInventory,
+  hasUsableBarTracking,
 } from "@/lib/chord-bar-inventory";
 import {
   computeLineScrollTarget,
@@ -214,8 +215,16 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
   // null = use song's tempo; otherwise this value drives both the
   // scroll rate AND the bar-highlight advance rate.
   const [performTempoOverride, setPerformTempoOverride] = useState<number | null>(null);
+  // Scroll-mode override for the toolbar toggle. null = use the
+  // auto-detected default (hasUsableBarTracking on score). "bars" =
+  // force bar-driven scroll even if coverage is sparse. "constant" =
+  // force constant-rate scroll even if every line has a barline.
+  // Resets when the score changes (same lifecycle as the tempo
+  // override) so a rehearsal choice doesn't leak into the next song.
+  const [scrollModeOverride, setScrollModeOverride] = useState<"bars" | "constant" | null>(null);
   useEffect(() => {
     setPerformTempoOverride(null);
+    setScrollModeOverride(null);
     // New song = fresh playback state. Without this, switching songs
     // mid-rehearsal would resume the new song from the old song's
     // elapsed time, landing the highlight on a bogus bar.
@@ -223,7 +232,23 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
     setActiveBarIdx(null);
   }, [score?.id]);
   const effectiveTempo = performTempoOverride ?? songTempo;
-  const tempoFactor = effectiveTempo > 0 ? effectiveTempo / 120 : 1;
+  // Auto-detect: if ≥ 80% of chord lines carry a `|`, default to bar-
+  // driven scroll. Bar-less songs (Anywhere had this issue — user got
+  // tired of adding barlines) fall to constant-rate so we don't try
+  // to bar-track sparse coverage and end-of-bar-inventory the user
+  // out of the second half of the song.
+  const autoScrollMode: "bars" | "constant" =
+    score && hasUsableBarTracking(score) ? "bars" : "constant";
+  const effectiveScrollMode: "bars" | "constant" = scrollModeOverride ?? autoScrollMode;
+  // Tempo factor: when bar-tracking, scroll IS bar-driven so the
+  // factor only affects the rare fallback frames. When constant, we
+  // want the user's saved px/sec speed regardless of the song's
+  // tempo — otherwise a 240 BPM song scrolls 2× the saved rate,
+  // which is the "warp speed on a bar-less song" the user hit.
+  const tempoFactor =
+    effectiveScrollMode === "bars" && effectiveTempo > 0
+      ? effectiveTempo / 120
+      : 1;
   const effectiveScrollSpeed = prefs.scrollSpeed * tempoFactor;
 
   // Tempo change without rescaling elapsed would jump the bar index —
@@ -286,7 +311,14 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
       // End-of-song detection: when bars run out, stop the loop and
       // reset elapsed so a fresh tap on Continue starts the song over
       // from bar 0 rather than instantly re-finishing.
-      const tracking = barInventory.length > 0 && effectiveTempo > 0;
+      // Gate bar-driven scroll on three conditions:
+      //  - The user (or the auto-detect) wants "bars" mode.
+      //  - The song has a tempo so we know how fast each bar plays.
+      //  - The bar inventory is non-empty (there's something to track).
+      const tracking =
+        effectiveScrollMode === "bars" &&
+        effectiveTempo > 0 &&
+        barInventory.length > 0;
       if (tracking && nextBarIdx === null && autoScrollElapsedRef.current > 0) {
         setAutoScroll(false);
         autoScrollElapsedRef.current = 0;
@@ -337,7 +369,7 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
       }
       scrollAccumRef.current = 0;
     };
-  }, [autoScroll, effectiveScrollSpeed, prefs.columns, barInventory, effectiveTempo, beatsPerBar]);
+  }, [autoScroll, effectiveScrollSpeed, prefs.columns, barInventory, effectiveTempo, beatsPerBar, effectiveScrollMode]);
 
   // Scroll-on-line-transition. When the active bar moves to a DIFFERENT
   // line, animate the chord chart scroll to position that line 1/3 from
@@ -908,6 +940,34 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
             title={`Faster (${Math.min(200, prefs.scrollSpeed + 5)} px/sec)`}
           >
             ⊕
+          </button>
+          {/* Scroll-mode toggle: flip between bar-driven (highlights
+              each bar in tempo) and constant-rate (uses px/sec from
+              prefs, tempo factor clamped). Default is auto-detected
+              from `hasUsableBarTracking(score)`; this button lets the
+              user override when the heuristic guesses wrong — e.g.
+              a song where bars are inconsistent but the user wants
+              to lock in bar-tracking anyway, or vice versa. */}
+          <button
+            type="button"
+            onClick={() =>
+              setScrollModeOverride(
+                effectiveScrollMode === "bars" ? "constant" : "bars",
+              )
+            }
+            className={btn}
+            aria-label={
+              effectiveScrollMode === "bars"
+                ? "Switch to constant-rate scroll"
+                : "Switch to bar-driven scroll"
+            }
+            title={
+              effectiveScrollMode === "bars"
+                ? `Bar-driven (tap to switch to constant rate). Auto-detected from bar coverage.`
+                : `Constant rate at ${prefs.scrollSpeed} px/sec (tap to switch to bar-driven).${songTempo > 0 ? "" : " Song has no tempo set."}`
+            }
+          >
+            {effectiveScrollMode === "bars" ? "🎵" : "🐢"}
           </button>
         </div>
         {/* Perform-tempo override cluster — adjust tempo just for
