@@ -3,6 +3,17 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-05-27 — 8d85988
+
+**Perform: scroll-mode toggle (bars vs constant) + no-warp on bar-less songs (#162)**
+
+- Commit: [`8d85988`](../../commit/8d85988bcd58516b4592b22496c3ffe70ae0c496)
+- Author: gibsonds
+- Files changed:
+  - `src/components/PerformView.tsx`
+  - `src/lib/__tests__/chord-bar-inventory.test.ts`
+  - `src/lib/chord-bar-inventory.ts`
+
 ## 2026-05-22 — b4499cf
 
 **ConflictModal: per-section diff replaces 'just counts' (#116)**
