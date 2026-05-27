@@ -91,6 +91,47 @@ export function computeBarInventory(score: Score): BarPos[] {
 }
 
 /**
+ * Bar-coverage heuristic for the perform-mode scroll-mode toggle.
+ *
+ * Returns the fraction of CHORD-CONTAINING lines that have at least
+ * one `|` marker. Lines without chord content (blank, lyric-only,
+ * section headers) don't enter the denominator — they couldn't have
+ * bars anyway. Zero chord lines → 0 (defensive; caller treats as
+ * "no usable bar coverage").
+ *
+ * Used by PerformView to decide whether to default to bar-driven
+ * scroll (good coverage) or constant-rate scroll (sparse / no bars).
+ * The user can override the auto-decision with the toolbar toggle.
+ */
+export function barCoverageFraction(score: { sections?: { lines?: { chords?: string; lyrics?: string }[] }[] }): number {
+  const sections = score.sections ?? [];
+  let chordLines = 0;
+  let barredLines = 0;
+  for (const section of sections) {
+    for (const line of section.lines ?? []) {
+      const chords = line.chords ?? "";
+      if (chords.length === 0) continue;
+      chordLines++;
+      if (chords.includes("|")) barredLines++;
+    }
+  }
+  if (chordLines === 0) return 0;
+  return barredLines / chordLines;
+}
+
+/**
+ * Convenience predicate: is bar coverage good enough to use the
+ * bar-tracked scroll model by default? Threshold defaults to 0.8
+ * (80% of chord-containing lines have at least one `|`).
+ */
+export function hasUsableBarTracking(
+  score: { sections?: { lines?: { chords?: string; lyrics?: string }[] }[] },
+  threshold = 0.8,
+): boolean {
+  return barCoverageFraction(score) >= threshold;
+}
+
+/**
  * Parse a time-signature string like "4/4" / "6/8" / "12/8". Returns
  * the numerator (beats per bar). Defaults to 4 on parse failure so
  * autoscroll never explodes on weird input.

@@ -207,3 +207,143 @@ describe("activeBarFromElapsed", () => {
     expect(activeBarFromElapsed(inv, 4.0, 60, 4)).toBe(1);
   });
 });
+
+import { barCoverageFraction, hasUsableBarTracking } from "@/lib/chord-bar-inventory";
+
+describe("barCoverageFraction", () => {
+  it("returns 0 for a score with no chord-containing lines", () => {
+    expect(barCoverageFraction({})).toBe(0);
+    expect(
+      barCoverageFraction({
+        sections: [{ lines: [{ lyrics: "just lyrics" }] }],
+      }),
+    ).toBe(0);
+  });
+
+  it("returns 1 when every chord line has a `|`", () => {
+    expect(
+      barCoverageFraction({
+        sections: [
+          {
+            lines: [
+              { chords: "| Em | Bm |" },
+              { chords: "| C | D |" },
+            ],
+          },
+        ],
+      }),
+    ).toBe(1);
+  });
+
+  it("returns the right fraction when half the chord lines are bar-less", () => {
+    // 4 chord lines, 2 have `|`.
+    expect(
+      barCoverageFraction({
+        sections: [
+          {
+            lines: [
+              { chords: "| Em |" },
+              { chords: "Em Bm" }, // no pipe
+              { chords: "| C |" },
+              { chords: "G F" },   // no pipe
+            ],
+          },
+        ],
+      }),
+    ).toBe(0.5);
+  });
+
+  it("ignores blank / lyric-only / section-header lines in the denominator", () => {
+    // 2 chord lines (one barred, one not). 0.5 — the blank/lyric lines
+    // don't drag the fraction down.
+    expect(
+      barCoverageFraction({
+        sections: [
+          {
+            lines: [
+              { chords: "| Em |" },           // counts (barred)
+              { lyrics: "lyric only line" },  // ignored
+              { chords: "" },                 // ignored
+              { chords: "G F" },              // counts (not barred)
+            ],
+          },
+        ],
+      }),
+    ).toBe(0.5);
+  });
+
+  it("aggregates across multiple sections", () => {
+    // 3 chord lines total, 2 with bars.
+    expect(
+      barCoverageFraction({
+        sections: [
+          { lines: [{ chords: "| Em |" }] },
+          { lines: [{ chords: "| Bm |" }, { chords: "C" }] },
+        ],
+      }),
+    ).toBeCloseTo(2 / 3, 3);
+  });
+});
+
+describe("hasUsableBarTracking", () => {
+  it("is true when coverage clears the default threshold (0.8)", () => {
+    // 5 chord lines, 4 barred = 0.8 — just meets the bar.
+    expect(
+      hasUsableBarTracking({
+        sections: [
+          {
+            lines: [
+              { chords: "| Em |" }, { chords: "| Bm |" }, { chords: "| C |" }, { chords: "| D |" },
+              { chords: "G" }, // 1 of 5 is unbarred
+            ],
+          },
+        ],
+      }),
+    ).toBe(true);
+  });
+
+  it("is false when coverage drops below 0.8 (user got tired half way)", () => {
+    // 5 chord lines, 3 barred = 0.6 — below threshold.
+    expect(
+      hasUsableBarTracking({
+        sections: [
+          {
+            lines: [
+              { chords: "| Em |" }, { chords: "| Bm |" }, { chords: "| C |" },
+              { chords: "G" }, { chords: "F" }, // 2 of 5 are unbarred
+            ],
+          },
+        ],
+      }),
+    ).toBe(false);
+  });
+
+  it("is false for a song with zero bars (the warp-speed case)", () => {
+    expect(
+      hasUsableBarTracking({
+        sections: [
+          { lines: [{ chords: "Em Bm" }, { chords: "C G" }] },
+        ],
+      }),
+    ).toBe(false);
+  });
+
+  it("respects a custom threshold", () => {
+    // 5 chord lines, 3 barred = 0.6. Threshold 0.5 → true.
+    expect(
+      hasUsableBarTracking(
+        {
+          sections: [
+            {
+              lines: [
+                { chords: "| Em |" }, { chords: "| Bm |" }, { chords: "| C |" },
+                { chords: "G" }, { chords: "F" },
+              ],
+            },
+          ],
+        },
+        0.5,
+      ),
+    ).toBe(true);
+  });
+});
