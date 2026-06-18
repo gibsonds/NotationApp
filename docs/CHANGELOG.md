@@ -3,6 +3,15 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-06-18 — d029210
+
+**AI: force JSON via tool_choice so revise/create can't return prose (#164)**
+
+- Commit: [`d029210`](../../commit/d0292108291d9bfc430339f357777542a0b1c010)
+- Author: gibsonds
+- Files changed:
+  - `src/lib/ai-provider.ts`
+
 ## 2026-06-18 — f97703e
 
 **Update AI model to claude-sonnet-4-6 (Sonnet 4.0 retired June 15 2026) (#163)**
