@@ -171,7 +171,7 @@ export class ClaudeProvider implements ScoreIntentProvider {
   private apiKey: string;
   private model: string;
 
-  constructor(apiKey: string, model = "claude-sonnet-4-20250514") {
+  constructor(apiKey: string, model = "claude-sonnet-4-6") {
     this.apiKey = apiKey;
     this.model = model;
   }
@@ -479,7 +479,7 @@ export function createProvider(byok?: ByokOverrides): ScoreIntentProvider {
   if (anthropicKey) {
     return new ClaudeProvider(
       anthropicKey,
-      process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514"
+      process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6"
     );
   }
 
