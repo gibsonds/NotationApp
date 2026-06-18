@@ -3,6 +3,16 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-06-18 — f97703e
+
+**Update AI model to claude-sonnet-4-6 (Sonnet 4.0 retired June 15 2026) (#163)**
+
+- Commit: [`f97703e`](../../commit/f97703ecf07d2dfc4fa228f718013cce72c4abf1)
+- Author: gibsonds
+- Files changed:
+  - `.env.local.example`
+  - `src/lib/ai-provider.ts`
+
 ## 2026-05-27 — 8d85988
 
 **Perform: scroll-mode toggle (bars vs constant) + no-warp on bar-less songs (#162)**
