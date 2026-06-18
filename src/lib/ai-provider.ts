@@ -165,6 +165,82 @@ Rules:
 - If the user asks a question about the score (not requesting a change), respond with empty patches [] and answer in "message".
 - Output raw JSON only, no markdown fences, no explanation.`;
 
+// ── Forced-output tools ────────────────────────────────────────────────────
+// Sonnet 4.6 is conversational and won't reliably honor "output raw JSON
+// only" from the system prompt — it sometimes replies with prose (e.g. a
+// clarifying question or a sign-off), which then fails JSON.parse. Forcing a
+// tool call guarantees the response is the structured object: the model MUST
+// emit tool input, never free text. Tool input_schema allows loose objects,
+// so the full patch language still round-trips. Clarifying questions still
+// work — they go in `message` with `patches: []`.
+
+const CREATE_TOOL = {
+  name: "emit_score",
+  description:
+    "Return the generated score intent as a structured object following the schema in the system prompt. Always call this tool.",
+  input_schema: {
+    type: "object",
+    properties: {
+      title: { type: "string" },
+      composer: { type: "string" },
+      tempo: { type: "number" },
+      timeSignature: { type: "string" },
+      keySignature: { type: "string" },
+      measures: { type: "number" },
+      staves: { type: "array", items: { type: "object" } },
+      chordSymbols: { type: "array", items: { type: "object" } },
+      rehearsalMarks: { type: "array", items: { type: "object" } },
+      sections: { type: "array", items: { type: "object" } },
+      form: { type: "array", items: { type: "string" } },
+    },
+  },
+} as const;
+
+const REVISE_TOOL = {
+  name: "emit_revision",
+  description:
+    "Return patch operations to modify the score, or an empty patches array with a clarifying question/explanation in message. ALWAYS call this tool — never reply with plain text.",
+  input_schema: {
+    type: "object",
+    properties: {
+      patches: {
+        type: "array",
+        items: { type: "object" },
+        description:
+          "Patch operations to apply. Empty array [] when asking a question or making no change.",
+      },
+      message: {
+        type: "string",
+        description:
+          "Brief description of what changed, or your question/clarification.",
+      },
+    },
+    required: ["patches", "message"],
+  },
+} as const;
+
+/** Pull the forced tool-call input out of a Claude Messages response. Falls
+ *  back to parsing a text block as JSON for resilience (e.g. if a future
+ *  model returns text despite tool_choice). Throws if neither is present. */
+function extractToolInput(data: any, toolName: string, context: string): any {
+  const blocks = data?.content;
+  if (Array.isArray(blocks)) {
+    const toolUse = blocks.find(
+      (b: any) => b?.type === "tool_use" && b?.name === toolName
+    );
+    if (toolUse && toolUse.input && typeof toolUse.input === "object") {
+      return toolUse.input;
+    }
+    const text = blocks.find((b: any) => b?.type === "text")?.text;
+    if (text) return safeParseJSON(text, context);
+  }
+  throw new Error(
+    `AI response had no '${toolName}' tool call (${context}). ` +
+      `stop_reason=${data?.stop_reason}. This can happen if the response was ` +
+      `truncated (hit max_tokens) before the tool call completed.`
+  );
+}
+
 // ── Anthropic Claude Provider ──────────────────────────────────────────────
 
 export class ClaudeProvider implements ScoreIntentProvider {
@@ -209,6 +285,8 @@ export class ClaudeProvider implements ScoreIntentProvider {
           max_tokens: 16384,
           system: SYSTEM_PROMPT_CREATE,
           messages: [{ role: "user", content: prompt }],
+          tools: [CREATE_TOOL],
+          tool_choice: { type: "tool", name: CREATE_TOOL.name },
         }),
       });
 
@@ -218,12 +296,8 @@ export class ClaudeProvider implements ScoreIntentProvider {
       }
 
       const data = await response.json();
-      const text = data.content[0]?.text;
-      logEntry.rawResponse = text;
-
-      if (!text) throw new Error("Empty response from Claude");
-
-      const intent = safeParseJSON(text, "create");
+      const intent = extractToolInput(data, CREATE_TOOL.name, "create");
+      logEntry.rawResponse = JSON.stringify(intent);
       logEntry.parsedResponse = intent;
       logEntry.durationMs = Date.now() - startTime;
       logAIRequest(logEntry as AILogEntry);
@@ -281,6 +355,8 @@ export class ClaudeProvider implements ScoreIntentProvider {
               content: buildRevisionPrompt(currentScore, prompt, selection),
             },
           ],
+          tools: [REVISE_TOOL],
+          tool_choice: { type: "tool", name: REVISE_TOOL.name },
         }),
       });
 
@@ -290,17 +366,14 @@ export class ClaudeProvider implements ScoreIntentProvider {
       }
 
       const data = await response.json();
-      const text = data.content[0]?.text;
       const stopReason = data.stop_reason;
-      logEntry.rawResponse = text;
-
-      if (!text) throw new Error("Empty response from Claude");
 
       if (stopReason === "max_tokens") {
         console.warn("[AI] Response was truncated (hit max_tokens). Score may be too large for revision context.");
       }
 
-      const parsed = safeParseJSON(text, "revise");
+      const parsed = extractToolInput(data, REVISE_TOOL.name, "revise");
+      logEntry.rawResponse = JSON.stringify(parsed);
       logEntry.parsedResponse = parsed;
       logEntry.durationMs = Date.now() - startTime;
       logAIRequest(logEntry as AILogEntry);
