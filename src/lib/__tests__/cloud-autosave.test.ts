@@ -289,6 +289,33 @@ describe("syncSongbook — tombstone deletion", () => {
     expect(getSongs()).toHaveLength(0);
   });
 
+  it("does NOT tombstone an entry with unpushed local edits — re-pushes it instead", async () => {
+    // Regression: a song edited on this device (pendingSync) whose id is
+    // missing from the cloud list must be re-pushed, not dropped. Otherwise
+    // an edit-then-vanish happens when a prior push didn't land.
+    const { syncSongbook } = await import("../song-cloud");
+    const { saveSong, getSongs, updateSong } = await import("../song-bank");
+
+    saveSong("Dirty", buildScore({ title: "Dirty" }));
+    const id = getSongs()[0].id;
+    updateSong(id, { cloudVersion: "v9", pendingSync: true });
+
+    let pushed = false;
+    mockFetch({
+      "GET /songs": () => ({ songs: [] }),
+      [`PUT /songs/${id}`]: () => {
+        pushed = true;
+        return dto(buildScore({ id, title: "Dirty" }), "rescued");
+      },
+    });
+
+    const merged = await syncSongbook();
+    expect(pushed).toBe(true);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].cloudVersion).toBe("rescued");
+    expect(merged[0].pendingSync).toBe(false);
+  });
+
   it("pushes a never-synced local entry up (legacy migration)", async () => {
     const { syncSongbook } = await import("../song-cloud");
     const { saveSong, getSongs } = await import("../song-bank");

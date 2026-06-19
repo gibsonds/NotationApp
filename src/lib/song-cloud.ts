@@ -284,7 +284,7 @@ export async function syncSongbook(opts?: {
         }
         merged.push({
           ...localEntry,
-          ...(pushedDto?.version !== undefined && { cloudVersion: pushedDto.version }),
+          ...(pushedDto?.version !== undefined && { cloudVersion: pushedDto.version, pendingSync: false }),
         });
       } else {
         try {
@@ -342,11 +342,16 @@ export async function syncSongbook(opts?: {
     // intentional." Without it we'd assume migration and push back up.
     for (const entry of local) {
       if (cloudIds.has(entry.id)) continue;
-      if (entry.cloudVersion) {
-        // Tombstone respect — cloud deleted it, propagate the deletion
-        // locally. Don't add to merged.
+      if (entry.cloudVersion && !entry.pendingSync) {
+        // Tombstone respect — entry was synced before and cloud no longer
+        // lists it, with NO pending local edits → an intentional deletion
+        // from another device. Propagate by dropping it (#101).
         continue;
       }
+      // Either never-synced (legacy/migration) OR has unpushed local edits
+      // (pendingSync). In both cases (re)push instead of dropping — this is
+      // what stops "edited a song, then it vanished from this device" when a
+      // prior push didn't land (e.g. a flaky-network conflict resolution).
       try {
         const dto = await cloudPutSong({
           id: entry.id,
@@ -355,7 +360,7 @@ export async function syncSongbook(opts?: {
           savedAt: entry.savedAt,
           folder: entry.folder ?? null,
         });
-        merged.push({ ...entry, cloudVersion: dto.version });
+        merged.push({ ...entry, cloudVersion: dto.version, pendingSync: false });
       } catch (err) {
         merged.push(entry);
         if (isTransient(err)) {

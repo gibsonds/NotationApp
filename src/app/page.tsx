@@ -24,7 +24,7 @@ import JoinSongbookModal from "@/components/JoinSongbookModal";
 import PerformView from "@/components/PerformView";
 import PersistFailureBanner from "@/components/PersistFailureBanner";
 import FeedbackModal from "@/components/FeedbackModal";
-import { CLOUD_ENABLED, getDeviceId, setDeviceId, cloudPutSong, syncSongbook } from "@/lib/song-cloud";
+import { CLOUD_ENABLED, getDeviceId, setDeviceId, cloudPutSong, syncSongbook, enqueueOffline } from "@/lib/song-cloud";
 import { setSongs as writeLocalSongs, type SongBankEntry } from "@/lib/song-bank";
 import ImportSongbookDialog, { type ImportSongbookPayload } from "@/components/ImportSongbookDialog";
 import { autosaveToCloud, CloudSaveEvents } from "@/lib/cloud-autosave";
@@ -1619,9 +1619,21 @@ export default function Home() {
                 score: conflict.local!,
                 cloudVersion: dto.version,
                 savedAt: dto.savedAt,
+                pendingSync: false,
               });
             } catch (err) {
+              // Don't swallow: the song still has unpushed edits. Keep it
+              // marked dirty (so sync won't tombstone it) and queue a retry
+              // so the work reaches cloud — and the other device — later.
               console.warn("[conflict] keep-mine save failed", err);
+              updateSong(conflict.songId, { pendingSync: true });
+              enqueueOffline({
+                type: "put",
+                id: conflict.songId,
+                title: conflict.current.title,
+                score: conflict.local!,
+                savedAt: Date.now(),
+              });
             }
             setConflict(null);
           }}
@@ -1633,6 +1645,7 @@ export default function Home() {
               score: conflict.current.score,
               cloudVersion: conflict.current.version,
               savedAt: conflict.current.savedAt,
+              pendingSync: false,
             });
             setConflict(null);
           }}
