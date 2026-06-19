@@ -46,6 +46,11 @@ export async function autosaveToCloud(
   const folder = localEntry?.folder ?? null;
   const expectedVersion = localEntry?.cloudVersion;
 
+  // Mark dirty up front so the entry is protected from the tombstone path in
+  // syncSongbook if this push never lands (flaky network, tab closed mid-push,
+  // conflict left unresolved). Cleared below once the push is confirmed.
+  if (localEntry) updateSong(songId, { pendingSync: true });
+
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent(SAVING_EVENT));
   }
@@ -62,7 +67,7 @@ export async function autosaveToCloud(
     // Mirror to local entry so list views show the latest savedAt and
     // the cloudVersion advances in lockstep with cloud.
     if (localEntry) {
-      updateSong(songId, { score, savedAt: now, cloudVersion: dto.version });
+      updateSong(songId, { score, savedAt: now, cloudVersion: dto.version, pendingSync: false });
     }
     lastPushedScore = score;
     lastPushedSongId = songId;
@@ -99,6 +104,7 @@ export async function autosaveToCloud(
               score: merge.score,
               savedAt: now2,
               cloudVersion: dto.version,
+              pendingSync: false,
             });
             lastPushedScore = merge.score;
             lastPushedSongId = songId;

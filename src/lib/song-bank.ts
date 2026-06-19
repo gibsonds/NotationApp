@@ -12,6 +12,12 @@ export interface SongBankEntry {
    *  expectedVersion on cloudPutSong so concurrent writes from another
    *  device get caught with a 409 instead of silently overwriting (#87). */
   cloudVersion?: string;
+  /** True when the entry has local edits that haven't been confirmed pushed
+   *  to cloud. Set on autosave, cleared on a successful push/pull. Guards the
+   *  tombstone path in syncSongbook: an entry that is dirty is RE-PUSHED
+   *  rather than dropped, so a song the user just edited can't vanish when a
+   *  push hasn't landed yet (e.g. flaky network mid-conflict). */
+  pendingSync?: boolean;
 }
 
 const STORAGE_KEY = "notation-app-songs";
@@ -172,7 +178,7 @@ export function renameSong(id: string, title: string): SongBankEntry | null {
  *  current song) instead of saveSong (which always creates a new entry). */
 export function updateSong(
   id: string,
-  patch: Partial<Pick<SongBankEntry, "title" | "score" | "savedAt" | "folder" | "cloudVersion">>,
+  patch: Partial<Pick<SongBankEntry, "title" | "score" | "savedAt" | "folder" | "cloudVersion" | "pendingSync">>,
 ): SongBankEntry | null {
   const songs = getSongs();
   const idx = songs.findIndex(s => s.id === id);
@@ -184,6 +190,7 @@ export function updateSong(
     ...(patch.savedAt !== undefined ? { savedAt: patch.savedAt } : {}),
     ...(patch.folder !== undefined ? { folder: patch.folder } : {}),
     ...(patch.cloudVersion !== undefined ? { cloudVersion: patch.cloudVersion } : {}),
+    ...(patch.pendingSync !== undefined ? { pendingSync: patch.pendingSync } : {}),
   };
   songs[idx] = next;
   setSongs(songs);
