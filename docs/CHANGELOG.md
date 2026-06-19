@@ -3,6 +3,19 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-06-19 — d034042
+
+**Sync: never tombstone a song with unpushed local edits (#165)**
+
+- Commit: [`d034042`](../../commit/d034042bbdb3ff1f772269c9d0453ea7c6d9ec0d)
+- Author: gibsonds
+- Files changed:
+  - `src/app/page.tsx`
+  - `src/lib/__tests__/cloud-autosave.test.ts`
+  - `src/lib/cloud-autosave.ts`
+  - `src/lib/song-bank.ts`
+  - `src/lib/song-cloud.ts`
+
 ## 2026-06-18 — d029210
 
 **AI: force JSON via tool_choice so revise/create can't return prose (#164)**
