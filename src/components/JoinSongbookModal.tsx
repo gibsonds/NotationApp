@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { setDeviceId, syncSongbook } from "@/lib/song-cloud";
+import { switchToSongbook, syncSongbook } from "@/lib/song-cloud";
 
 interface JoinSongbookModalProps {
   code: string;
@@ -25,10 +25,11 @@ export default function JoinSongbookModal({
   const handleJoin = async () => {
     if (busy) return;
     setBusy(true);
-    // Switch identity first; syncSongbook() then pulls the linked device's
-    // songs AND auto-pushes any local-only songs (this browser's existing
-    // songs) up under the new id, so neither side loses content.
-    setDeviceId(code);
+    // Switch identity AND re-home this browser's songs (clear their old-
+    // songbook cloudVersion) so syncSongbook() migrates them up under the new
+    // id instead of tombstoning them — that's what makes "neither side loses
+    // anything" actually hold once cross-device deletes are tombstoned.
+    switchToSongbook(code);
     try {
       await syncSongbook();
     } catch {

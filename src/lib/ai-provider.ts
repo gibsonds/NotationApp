@@ -126,6 +126,7 @@ Chord-chart (songbook) patches — prefer these over \`replace_score\` when the 
 - { "op": "set_section_label", "sectionId": string, "label": string }  (rename a section)
 - { "op": "add_section", "section": { id, label, lines: [...] }, "index"?: number }
 - { "op": "remove_section", "sectionId": string }
+- { "op": "move_section", "sectionId": string, "toIndex": number }  (reorder a section in the printed list; toIndex is its 0-based position in the resulting order. Use for "move the chorus before verse 3" — prefer this over set_form, which only changes playback order.)
 - { "op": "update_section_line", "sectionId": string, "lineIdx": number, "chords"?: string, "lyrics"?: string }  (edit chord overlay or lyrics in place)
 - { "op": "add_section_line", "sectionId": string, "index"?: number, "line": { "chords": string, "lyrics": string } }
 - { "op": "remove_section_line", "sectionId": string, "lineIdx": number }

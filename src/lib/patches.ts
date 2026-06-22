@@ -295,6 +295,17 @@ export function applyPatch(score: Score, patch: ScorePatch): Score {
       };
     }
 
+    case "move_section": {
+      const sections = [...score.sections];
+      const from = sections.findIndex((s) => s.id === patch.sectionId);
+      if (from === -1) return score; // unknown section → no-op
+      const [moved] = sections.splice(from, 1);
+      // toIndex is the desired final position; clamp into the post-removal range.
+      const target = Math.max(0, Math.min(patch.toIndex, sections.length));
+      sections.splice(target, 0, moved);
+      return { ...score, sections };
+    }
+
     case "update_section_line": {
       return {
         ...score,

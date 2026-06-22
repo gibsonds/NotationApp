@@ -1113,6 +1113,20 @@ export default function ChordChartView({ score, performMode = false, performColu
         label: "Add section below",
         onClick: () => handleAddSection(idx >= 0 ? idx + 1 : undefined),
       },
+      // Reorder this section in the printed/edited order.
+      {
+        divider: true,
+        label: "Move section up",
+        disabled: idx <= 0,
+        onClick: () =>
+          applyPatches([{ op: "move_section", sectionId: ctx.sectionId, toIndex: idx - 1 }]),
+      },
+      {
+        label: "Move section down",
+        disabled: idx < 0 || idx >= score.sections.length - 1,
+        onClick: () =>
+          applyPatches([{ op: "move_section", sectionId: ctx.sectionId, toIndex: idx + 1 }]),
+      },
       // Repeats — clicking a flag toggles it.
       { divider: true, label: section?.repeatStart ? "Remove start repeat 𝄆" : "Start repeat 𝄆",
         onClick: () => setSectionField("repeatStart", section?.repeatStart ? null : true) },

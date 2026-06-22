@@ -141,3 +141,26 @@ describe("applyPatch: reflow_section", () => {
     }
   });
 });
+
+describe("applyPatch: move_section", () => {
+  const sec = (id: string) => ({ id, label: id, lines: [{ chords: "", lyrics: "" }] });
+
+  it("moves a section to the target index (move chorus before verse 3)", () => {
+    // Order: intro V V2 V3 C B  → move C (idx 4) before V3 (idx 3)
+    const score = fixtureScore([sec("intro"), sec("V"), sec("V2"), sec("V3"), sec("C"), sec("B")]);
+    const out = applyPatch(score, { op: "move_section", sectionId: "C", toIndex: 3 });
+    expect(out.sections.map((s) => s.id)).toEqual(["intro", "V", "V2", "C", "V3", "B"]);
+  });
+
+  it("clamps an out-of-range toIndex to the end", () => {
+    const score = fixtureScore([sec("a"), sec("b"), sec("c")]);
+    const out = applyPatch(score, { op: "move_section", sectionId: "a", toIndex: 99 });
+    expect(out.sections.map((s) => s.id)).toEqual(["b", "c", "a"]);
+  });
+
+  it("is a no-op for an unknown section id", () => {
+    const score = fixtureScore([sec("a"), sec("b")]);
+    const out = applyPatch(score, { op: "move_section", sectionId: "zzz", toIndex: 0 });
+    expect(out.sections.map((s) => s.id)).toEqual(["a", "b"]);
+  });
+});
