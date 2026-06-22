@@ -3,6 +3,23 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-06-22 — f5ecb5b
+
+**Add move_section patch op; merge (not wipe) on songbook join (#166)**
+
+- Commit: [`f5ecb5b`](../../commit/f5ecb5bdb06d041aedc7a44fb0060794580b653e)
+- Author: gibsonds
+- Files changed:
+  - `src/components/ChordChartView.tsx`
+  - `src/components/JoinSongbookModal.tsx`
+  - `src/components/MySongsModal.tsx`
+  - `src/lib/__tests__/cloud-autosave.test.ts`
+  - `src/lib/__tests__/patches-reflow.test.ts`
+  - `src/lib/ai-provider.ts`
+  - `src/lib/patches.ts`
+  - `src/lib/schema.ts`
+  - `src/lib/song-cloud.ts`
+
 ## 2026-06-19 — d034042
 
 **Sync: never tombstone a song with unpushed local edits (#165)**
