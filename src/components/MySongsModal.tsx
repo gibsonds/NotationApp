@@ -16,7 +16,6 @@ import {
   deleteSong,
   renameSong,
   setSongFolder,
-  setSongs as writeLocalSongs,
   updateSong,
   SongBankEntry,
 } from "@/lib/song-bank";
@@ -29,7 +28,7 @@ import {
   extractJoinCode,
   getDeviceId,
   isTransient,
-  setDeviceId,
+  switchToSongbook,
   syncSongbook,
   type SyncStatus as CloudSyncStatus,
 } from "@/lib/song-cloud";
@@ -292,13 +291,12 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
   const handleApplyPastedCode = async () => {
     const next = extractJoinCode(pasteCode);
     if (!next || next === deviceId) return;
-    setDeviceId(next);
+    // Re-home onto the new songbook AND keep this browser's songs: they're
+    // migrated up into the joined songbook by the sync below (matching the
+    // share-link join). Previously this wiped local songs — silent data loss.
+    switchToSongbook(next);
     setDeviceIdState(next);
     setPasteCode("");
-    // After switching identity, the local list is from the OLD device — wipe
-    // it so we don't push old songs into the new songbook.
-    writeLocalSongs([]);
-    setSongsState([]);
     await runSync();
   };
 

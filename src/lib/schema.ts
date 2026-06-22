@@ -462,6 +462,18 @@ export const ScorePatchSchema = z.discriminatedUnion("op", [
     op: z.literal("remove_section"),
     sectionId: z.string(),
   }),
+  /**
+   * Reorder: move a section to a new position in `sections[]`. `toIndex` is
+   * the 0-based position the section should occupy in the FINAL array
+   * (clamped to the valid range). Use this for "move the chorus before verse
+   * 3" style requests — it reorders the printed/edited section order, unlike
+   * `set_form` which only reorders playback. No-op if `sectionId` is unknown.
+   */
+  z.object({
+    op: z.literal("move_section"),
+    sectionId: z.string(),
+    toIndex: z.number().int().min(0),
+  }),
   z.object({
     op: z.literal("update_section_line"),
     sectionId: z.string(),

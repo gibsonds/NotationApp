@@ -399,6 +399,43 @@ describe("syncSongbook — tombstone deletion", () => {
   });
 });
 
+// ── switchToSongbook — re-home merge on device switch ──────────────────
+
+describe("switchToSongbook", () => {
+  it("migrates previously-synced local songs into the joined songbook instead of tombstoning them", async () => {
+    const { switchToSongbook, syncSongbook, getDeviceId } = await import("../song-cloud");
+    const { saveSong, getSongs, updateSong } = await import("../song-bank");
+
+    // A song synced under the OLD device id (has a cloudVersion).
+    saveSong("Mine", buildScore({ title: "Mine" }));
+    const id = getSongs()[0].id;
+    updateSong(id, { cloudVersion: "old-songbook-v3" });
+
+    // Switch to a different device's songbook.
+    switchToSongbook("friends-device-id");
+    expect(getDeviceId()).toBe("friends-device-id");
+    // Re-home cleared the stale cloudVersion and marked it pending.
+    expect(getSongs()[0].cloudVersion).toBeUndefined();
+    expect(getSongs()[0].pendingSync).toBe(true);
+
+    // The new songbook is empty in cloud; sync must PUSH our song up, not drop it.
+    let pushed = false;
+    mockFetch({
+      "GET /songs": () => ({ songs: [] }),
+      [`PUT /songs/${id}`]: () => {
+        pushed = true;
+        return dto(buildScore({ id, title: "Mine" }), "new-songbook-v1");
+      },
+    });
+
+    const merged = await syncSongbook();
+    expect(pushed).toBe(true);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].title).toBe("Mine");
+    expect(merged[0].cloudVersion).toBe("new-songbook-v1");
+  });
+});
+
 // ── enqueueOffline / hasPendingOps / flushQueue ────────────────────────
 
 describe("offline queue", () => {

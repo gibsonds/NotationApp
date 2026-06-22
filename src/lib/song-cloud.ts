@@ -32,6 +32,34 @@ export function setDeviceId(id: string): void {
   localStorage.setItem(DEVICE_ID_KEY, id);
 }
 
+/**
+ * Re-home this browser onto another device's songbook (pairing before auth).
+ * Switches the device id AND re-homes the current local songs so they MERGE
+ * into the joined songbook instead of being lost.
+ *
+ * The re-home is the important part: a previously-synced local entry carries
+ * a `cloudVersion` from the OLD songbook, which is meaningless under the new
+ * device id. Left as-is, syncSongbook's tombstone path would see "has
+ * cloudVersion, absent from the new cloud list" and drop it as a remote
+ * deletion. Clearing `cloudVersion` (and marking pending) makes the next sync
+ * treat each song as a migration and push it up into the joined songbook.
+ *
+ * Callers MUST follow with a sync (syncSongbook / runSync) to complete the
+ * merge. No-op on the songs if there are none locally.
+ */
+export function switchToSongbook(id: string): void {
+  setDeviceId(id);
+  const local = getSongs();
+  if (!local.length) return;
+  writeLocalSongs(
+    local.map((e) => {
+      const next: SongBankEntry = { ...e, pendingSync: true };
+      delete next.cloudVersion;
+      return next;
+    })
+  );
+}
+
 class TerminalCloudError extends Error {}
 class TransientCloudError extends Error {}
 
