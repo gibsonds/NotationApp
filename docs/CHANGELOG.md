@@ -3,6 +3,17 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-06-30 — 85faaa8
+
+**Force explicit Save into the cloud DB; stop swallowing 409s (#168)**
+
+- Commit: [`85faaa8`](../../commit/85faaa86db4aaf1e9a267a82f6d858641136fb1e)
+- Author: gibsonds
+- Files changed:
+  - `src/components/MySongsModal.tsx`
+  - `src/lib/__tests__/cloud-autosave.test.ts`
+  - `src/lib/song-cloud.ts`
+
 ## 2026-06-30 — f33c240
 
 **Fix disappearing saves: sync race, empty-cloud wipe, silent quota (#167)**
