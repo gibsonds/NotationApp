@@ -278,7 +278,25 @@ export function isTransient(err: unknown): boolean {
 
 export type SyncStatus = "syncing" | "ok" | "offline";
 
-export async function syncSongbook(opts?: {
+// Coalesce concurrent syncs. syncSongbook is a read-modify-write over
+// localStorage with seconds of network I/O in the middle; two overlapping
+// runs would each snapshot the bank, then race to writeLocalSongs and clobber
+// each other (and any save the user made in between). Keep one run in flight
+// at a time; concurrent callers share its result.
+let syncInFlight: Promise<SongBankEntry[]> | null = null;
+
+export function syncSongbook(opts?: {
+  onStatus?: (status: SyncStatus) => void;
+}): Promise<SongBankEntry[]> {
+  if (!CLOUD_ENABLED) return Promise.resolve(getSongs());
+  if (syncInFlight) return syncInFlight;
+  syncInFlight = runSyncSongbook(opts).finally(() => {
+    syncInFlight = null;
+  });
+  return syncInFlight;
+}
+
+async function runSyncSongbook(opts?: {
   onStatus?: (status: SyncStatus) => void;
 }): Promise<SongBankEntry[]> {
   const onStatus = opts?.onStatus ?? (() => {});
@@ -370,10 +388,20 @@ export async function syncSongbook(opts?: {
     // intentional." Without it we'd assume migration and push back up.
     for (const entry of local) {
       if (cloudIds.has(entry.id)) continue;
-      if (entry.cloudVersion && !entry.pendingSync) {
+      if (entry.cloudVersion && !entry.pendingSync && summaries.length > 0) {
         // Tombstone respect — entry was synced before and cloud no longer
         // lists it, with NO pending local edits → an intentional deletion
         // from another device. Propagate by dropping it (#101).
+        //
+        // CRUCIAL guard: only honor this when the cloud returned a NON-EMPTY
+        // list. A totally-empty list almost never means "the user deleted
+        // every song" — it's a device-id reset (iOS evicted localStorage and
+        // getDeviceId minted a fresh uuid → empty partition), a cold/eventually-
+        // consistent read, or a transient server blip. Honoring tombstones
+        // then would wipe the entire local bank. When the list is empty we
+        // fall through and RE-PUSH instead, so nothing is lost (worst case a
+        // genuine last-song deletion has to be repeated — a fair trade against
+        // catastrophic loss).
         continue;
       }
       // Either never-synced (legacy/migration) OR has unpushed local edits
@@ -403,10 +431,40 @@ export async function syncSongbook(opts?: {
       }
     }
 
-    merged.sort((a, b) => a.savedAt - b.savedAt);
-    writeLocalSongs(merged);
+    // Reconcile against CURRENT storage before writing. We snapshotted `local`
+    // at the top, then awaited seconds of network I/O; any save or autosave the
+    // user made during those awaits is in localStorage now but NOT in `merged`.
+    // Blind-writing `merged` would destroy it — the "I saved it and it
+    // disappeared" bug. Re-read and preserve anything created or edited since
+    // the snapshot, while still honoring genuine tombstone drops (entries that
+    // are UNCHANGED since the snapshot and were intentionally omitted).
+    const mergedById = new Map(merged.map((e) => [e.id, e]));
+    for (const cur of getSongs()) {
+      const m = mergedById.get(cur.id);
+      const snap = localById.get(cur.id);
+      // "Written during the sync" = absent from the snapshot, or its savedAt
+      // moved (saveSong/updateSong always stamp a fresh Date.now()). We must
+      // NOT key off pendingSync here — it's often already set in the snapshot,
+      // and the merged entry is this sync's own (pushed, pending cleared)
+      // result, which we'd wrongly revert.
+      const changedSinceSnapshot = !snap || cur.savedAt !== snap.savedAt;
+      if (m) {
+        // Already represented — keep the live copy only if it's a fresh edit
+        // made during the sync, so we don't revert the user's in-flight save.
+        if (changedSinceSnapshot && cur.savedAt >= m.savedAt) {
+          mergedById.set(cur.id, cur);
+        }
+      } else if (changedSinceSnapshot) {
+        // Absent from merged AND written during the sync → a brand-new or
+        // freshly-edited song the snapshot never saw. Preserve it. (A genuine
+        // tombstone is unchanged since the snapshot, so it stays dropped.)
+        mergedById.set(cur.id, cur);
+      }
+    }
+    const finalSongs = [...mergedById.values()].sort((a, b) => a.savedAt - b.savedAt);
+    writeLocalSongs(finalSongs);
     onStatus("ok");
-    return merged;
+    return finalSongs;
   } catch (err) {
     console.warn("[song-cloud] sync failed", err);
     onStatus("offline");
