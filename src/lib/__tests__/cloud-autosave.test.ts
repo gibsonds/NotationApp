@@ -272,21 +272,76 @@ describe("autosaveToCloud — 409 auto-merge", () => {
 // ── syncSongbook — tombstone respect ───────────────────────────────────
 
 describe("syncSongbook — tombstone deletion", () => {
-  it("drops a local entry when cloud lists nothing AND cloudVersion is set", async () => {
+  it("tombstones a synced song when cloud returns a NON-EMPTY list that omits it", async () => {
+    // Genuine remote deletion: cloud still has other songs, just not this one.
     const { syncSongbook } = await import("../song-cloud");
     const { saveSong, getSongs, updateSong } = await import("../song-bank");
 
+    saveSong("Keeper", buildScore({ title: "Keeper" }));
     saveSong("Tombstoned", buildScore({ title: "Tombstoned" }));
-    const id = getSongs()[0].id;
-    updateSong(id, { cloudVersion: "v9" });
+    const [keeper, tomb] = getSongs();
+    updateSong(keeper.id, { cloudVersion: "kv1" });
+    updateSong(tomb.id, { cloudVersion: "v9" });
 
     mockFetch({
-      "GET /songs": () => ({ songs: [] }),
+      // Non-empty list that proves the partition is alive but omits `tomb`.
+      "GET /songs": () => ({
+        songs: [{ id: keeper.id, title: "Keeper", savedAt: 1, updatedAt: 9e15, version: "kv1" }],
+      }),
+      [`GET /songs/${keeper.id}`]: () => dto(buildScore({ id: keeper.id, title: "Keeper" }), "kv1"),
     });
 
     const merged = await syncSongbook();
-    expect(merged).toHaveLength(0);
-    expect(getSongs()).toHaveLength(0);
+    expect(merged.map((e) => e.id)).toContain(keeper.id);
+    expect(merged.map((e) => e.id)).not.toContain(tomb.id);
+    expect(getSongs().map((e) => e.id)).not.toContain(tomb.id);
+  });
+
+  it("does NOT mass-tombstone on an EMPTY cloud list — re-pushes instead (device-id reset / transient empty read)", async () => {
+    const { syncSongbook } = await import("../song-cloud");
+    const { saveSong, getSongs, updateSong } = await import("../song-bank");
+
+    saveSong("Survivor", buildScore({ title: "Survivor" }));
+    const id = getSongs()[0].id;
+    updateSong(id, { cloudVersion: "v9" });
+
+    let pushed = false;
+    mockFetch({
+      "GET /songs": () => ({ songs: [] }), // empty → suspect (NOT "user deleted everything")
+      [`PUT /songs/${id}`]: () => {
+        pushed = true;
+        return dto(buildScore({ id, title: "Survivor" }), "re-pushed");
+      },
+    });
+
+    const merged = await syncSongbook();
+    expect(pushed).toBe(true);
+    expect(merged.map((e) => e.id)).toContain(id);
+    expect(getSongs().map((e) => e.id)).toContain(id);
+  });
+
+  it("preserves a brand-new song saved DURING an in-flight sync (no blind overwrite)", async () => {
+    // The headline race: syncSongbook snapshots getSongs() up front, awaits
+    // network I/O, then writes back. A save that lands during the awaits must
+    // survive. Simulate by saving mid-sync from inside the cloud-list handler.
+    const { syncSongbook } = await import("../song-cloud");
+    const { saveSong, getSongs } = await import("../song-bank");
+
+    let injected = false;
+    mockFetch({
+      "GET /songs": () => {
+        if (!injected) {
+          injected = true;
+          saveSong("Made on iPad", buildScore({ title: "Made on iPad" }));
+        }
+        return { songs: [{ id: "remote", title: "Remote", savedAt: 1, updatedAt: 1, version: "rv1" }] };
+      },
+      "GET /songs/remote": () => dto(buildScore({ id: "remote", title: "Remote" }), "rv1"),
+    });
+
+    const merged = await syncSongbook();
+    expect(merged.map((e) => e.title)).toContain("Made on iPad");
+    expect(getSongs().map((e) => e.title)).toContain("Made on iPad");
   });
 
   it("does NOT tombstone an entry with unpushed local edits — re-pushes it instead", async () => {

@@ -310,17 +310,25 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
     if (!score) return;
     const title = saveTitle.trim() || score.title || "Untitled Song";
 
-    let entry: SongBankEntry | undefined;
+    let entry: SongBankEntry;
     const localList = getSongs();
     const existing = !asNew && currentSongId ? localList.find(s => s.id === currentSongId) : null;
     if (existing) {
-      // Update in place — no new id, no duplicate.
+      // Update in place — no new id, no duplicate. If the local write failed
+      // (quota), fall back to an in-memory entry so the cloud push below still
+      // runs; the song then re-hydrates from cloud on the next sync.
       const updated = updateSong(existing.id, { title, score, savedAt: Date.now() });
-      entry = updated || undefined;
+      entry = updated ?? { ...existing, title, score, savedAt: Date.now() };
     } else {
-      saveSong(title, score);
-      const fresh = getSongs();
-      entry = fresh[fresh.length - 1];
+      // saveSong returns the created entry directly (don't read getSongs()[last]
+      // — a colliding id could make "last" the wrong song). null = local write
+      // failed; keep an in-memory entry so the cloud still gets it.
+      entry = saveSong(title, score) ?? {
+        id: `song-${Date.now()}`,
+        title,
+        savedAt: Date.now(),
+        score,
+      };
     }
     refreshLocal();
     setJustSaved(true);

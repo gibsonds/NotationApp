@@ -126,20 +126,30 @@ export function getSongs(): SongBankEntry[] {
   }
 }
 
-export function saveSong(title: string, score: Score): void {
+/** Collision-proof song id. `song-${Date.now()}` collides when two songs are
+ *  created in the same millisecond (rapid double-tap on iPad, AI-generate then
+ *  immediate save) — and a colliding id makes one save silently overwrite the
+ *  other. Prefer a uuid. */
+function newSongId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `song-${crypto.randomUUID()}`;
+  }
+  return `song-${Date.now()}-${Math.floor(Math.random() * 1e9).toString(36)}`;
+}
+
+/** Create a new song entry. Returns the created entry, or null if the local
+ *  write failed (e.g. iOS Safari quota) — callers should still push to cloud
+ *  so the work isn't lost. */
+export function saveSong(title: string, score: Score): SongBankEntry | null {
   const songs = getSongs();
-  songs.push({
-    id: `song-${Date.now()}`,
+  const entry: SongBankEntry = {
+    id: newSongId(),
     title,
     savedAt: Date.now(),
     score: JSON.parse(JSON.stringify(score)),
-  });
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(songs));
-    fireSongsUpdated();
-  } catch {
-    console.warn("[song-bank] localStorage quota exceeded");
-  }
+  };
+  songs.push(entry);
+  return setSongs(songs) ? entry : null;
 }
 
 export function deleteSong(id: string): void {
@@ -152,12 +162,31 @@ export function deleteSong(id: string): void {
   }
 }
 
-export function setSongs(songs: SongBankEntry[]): void {
+/** Write the whole song bank. Returns true on success, false if the write
+ *  failed (almost always iOS Safari QuotaExceededError). On failure it fires
+ *  `notation-persist-failed` so PersistFailureBanner surfaces it — previously
+ *  this was a silent console.warn and the user lost work without any warning.
+ *  On success it fires `notation-persist-ok` to clear the banner. */
+export function setSongs(songs: SongBankEntry[]): boolean {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(songs));
     fireSongsUpdated();
-  } catch {
-    console.warn("[song-bank] localStorage quota exceeded");
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("notation-persist-ok"));
+    }
+    return true;
+  } catch (err) {
+    console.warn("[song-bank] localStorage write failed", err);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("notation-persist-failed", {
+          detail: {
+            error: err instanceof Error ? err.message : "Local save failed",
+          },
+        })
+      );
+    }
+    return false;
   }
 }
 
@@ -193,8 +222,9 @@ export function updateSong(
     ...(patch.pendingSync !== undefined ? { pendingSync: patch.pendingSync } : {}),
   };
   songs[idx] = next;
-  setSongs(songs);
-  return next;
+  // Return null if the local write failed (quota) so save callers can fall
+  // back to the cloud instead of reporting a phantom success.
+  return setSongs(songs) ? next : null;
 }
 
 /** Set or clear a song's folder. Pass null/"" to remove it (back to
