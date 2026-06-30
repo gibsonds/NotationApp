@@ -3,6 +3,18 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-06-30 — f33c240
+
+**Fix disappearing saves: sync race, empty-cloud wipe, silent quota (#167)**
+
+- Commit: [`f33c240`](../../commit/f33c24090dfc3ab52c6851fb24ccb23cad005c72)
+- Author: gibsonds
+- Files changed:
+  - `src/components/MySongsModal.tsx`
+  - `src/lib/__tests__/cloud-autosave.test.ts`
+  - `src/lib/song-bank.ts`
+  - `src/lib/song-cloud.ts`
+
 ## 2026-06-22 — f5ecb5b
 
 **Add move_section patch op; merge (not wipe) on songbook join (#166)**
