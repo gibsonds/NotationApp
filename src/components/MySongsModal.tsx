@@ -310,60 +310,72 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
     if (!score) return;
     const title = saveTitle.trim() || score.title || "Untitled Song";
 
+    const now = Date.now();
     let entry: SongBankEntry;
     const localList = getSongs();
     const existing = !asNew && currentSongId ? localList.find(s => s.id === currentSongId) : null;
     if (existing) {
-      // Update in place — no new id, no duplicate. If the local write failed
-      // (quota), fall back to an in-memory entry so the cloud push below still
-      // runs; the song then re-hydrates from cloud on the next sync.
-      const updated = updateSong(existing.id, { title, score, savedAt: Date.now() });
-      entry = updated ?? { ...existing, title, score, savedAt: Date.now() };
+      // Update in place — no new id, no duplicate. Mark pendingSync so syncing
+      // can't drop it before the cloud push lands. If the local write failed
+      // (quota), fall back to an in-memory entry so the cloud push still runs.
+      const updated = updateSong(existing.id, { title, score, savedAt: now, pendingSync: true });
+      entry = updated ?? { ...existing, title, score, savedAt: now, pendingSync: true };
     } else {
-      // saveSong returns the created entry directly (don't read getSongs()[last]
-      // — a colliding id could make "last" the wrong song). null = local write
-      // failed; keep an in-memory entry so the cloud still gets it.
-      entry = saveSong(title, score) ?? {
-        id: `song-${Date.now()}`,
-        title,
-        savedAt: Date.now(),
-        score,
-      };
+      // saveSong returns the created entry directly (a colliding id could make
+      // getSongs()[last] the wrong song). null = local write failed; keep an
+      // in-memory entry so the cloud still gets it.
+      const created = saveSong(title, score);
+      if (created) updateSong(created.id, { pendingSync: true });
+      entry = created
+        ? { ...created, pendingSync: true }
+        : { id: `song-${now}`, title, savedAt: now, score, pendingSync: true };
     }
     refreshLocal();
-    setJustSaved(true);
-    setTimeout(() => setJustSaved(false), 2000);
+    setUIState({ currentSongId: entry.id });
 
-    if (entry) setUIState({ currentSongId: entry.id });
-
-    if (!CLOUD_ENABLED || !entry) return;
+    if (!CLOUD_ENABLED) {
+      setJustSaved(true);
+      setTimeout(() => setJustSaved(false), 2000);
+      return;
+    }
     setSyncStatus("syncing");
     try {
+      // Explicit user Save is AUTHORITATIVE — force last-write-wins by omitting
+      // expectedVersion. Sending it (as before) meant a stale cloudVersion got
+      // a 409, which the old catch swallowed as "ok" while the write was
+      // actually rejected — so the save silently never reached the DB and the
+      // next sync pulled the old version back. The user clicked Save; this
+      // version wins. (Background autosave still uses expectedVersion + the
+      // conflict modal for concurrent-edit detection.)
       const dto = await cloudPutSong({
         id: entry.id,
         title: entry.title,
         score: entry.score,
         savedAt: entry.savedAt,
         folder: entry.folder ?? null,
-        ...(entry.cloudVersion !== undefined && { expectedVersion: entry.cloudVersion }),
       });
-      // Advance the local entry's cloudVersion so the autosave can keep
-      // sending matching expectedVersion on subsequent edits.
-      updateSong(entry.id, { cloudVersion: dto.version });
+      updateSong(entry.id, { cloudVersion: dto.version, pendingSync: false });
       setSyncStatus("ok");
+      setJustSaved(true);
+      setTimeout(() => setJustSaved(false), 2000);
     } catch (err) {
-      if (isTransient(err)) {
-        enqueueOffline({
-          type: "put",
-          id: entry.id,
-          title: entry.title,
-          score: entry.score,
-          savedAt: entry.savedAt,
-        });
-        setSyncStatus("offline");
-      } else {
-        setSyncStatus("ok");
-        console.warn("[my-songs] cloud save failed", err);
+      // Do NOT fake success. Keep the entry pendingSync (so syncSongbook
+      // re-pushes it) and queue a retry. Surface terminal failures loudly via
+      // the PersistFailureBanner — e.g. a song too large for the cloud cap.
+      enqueueOffline({
+        type: "put",
+        id: entry.id,
+        title: entry.title,
+        score: entry.score,
+        savedAt: entry.savedAt,
+      });
+      setSyncStatus("offline");
+      if (!isTransient(err)) {
+        const msg = err instanceof Error ? err.message : "Cloud save failed";
+        window.dispatchEvent(
+          new CustomEvent("notation-persist-failed", { detail: { error: `Cloud save failed: ${msg}` } })
+        );
+        console.warn("[my-songs] cloud save failed (terminal)", err);
       }
     }
   };

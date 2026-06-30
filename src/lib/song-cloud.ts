@@ -323,7 +323,12 @@ async function runSyncSongbook(opts?: {
             score: localEntry.score,
             savedAt: localEntry.savedAt,
             folder: localEntry.folder ?? null,
-            ...(localEntry.cloudVersion !== undefined && { expectedVersion: localEntry.cloudVersion }),
+            // pendingSync entries hold an explicit/forced save that must land —
+            // omit expectedVersion so a stale version can't 409 it into a stuck
+            // loop. Clean entries keep optimistic-concurrency for conflict detect.
+            ...(localEntry.cloudVersion !== undefined && !localEntry.pendingSync && {
+              expectedVersion: localEntry.cloudVersion,
+            }),
           });
         } catch {
           /* keep local; retry next time */
