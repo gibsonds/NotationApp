@@ -320,6 +320,32 @@ describe("syncSongbook — tombstone deletion", () => {
     expect(getSongs().map((e) => e.id)).toContain(id);
   });
 
+  it("force-pushes a pendingSync entry WITHOUT expectedVersion (explicit save must land)", async () => {
+    // A forced/explicit save marks the entry pendingSync with a possibly-stale
+    // cloudVersion. The sync push must omit expectedVersion so it can't 409 into
+    // a stuck loop — the user's save wins.
+    const { syncSongbook } = await import("../song-cloud");
+    const { saveSong, getSongs, updateSong } = await import("../song-bank");
+
+    saveSong("Forced", buildScore({ title: "Forced" }));
+    const id = getSongs()[0].id;
+    updateSong(id, { cloudVersion: "stale-v1", savedAt: 9e15, pendingSync: true });
+
+    let sentExpected: string | undefined = "UNSET";
+    mockFetch({
+      "GET /songs": () => ({ songs: [{ id, title: "Forced", savedAt: 1, updatedAt: 1, version: "cloud-v5" }] }),
+      [`PUT /songs/${id}`]: ({ body }) => {
+        sentExpected = (body as { expectedVersion?: string }).expectedVersion;
+        return dto(buildScore({ id, title: "Forced" }), "forced-v6");
+      },
+    });
+
+    const merged = await syncSongbook();
+    expect(sentExpected).toBeUndefined(); // forced LWW — no optimistic-concurrency check
+    expect(merged[0].cloudVersion).toBe("forced-v6");
+    expect(merged[0].pendingSync).toBe(false);
+  });
+
   it("preserves a brand-new song saved DURING an in-flight sync (no blind overwrite)", async () => {
     // The headline race: syncSongbook snapshots getSongs() up front, awaits
     // network I/O, then writes back. A save that lands during the awaits must
