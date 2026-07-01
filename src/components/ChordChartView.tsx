@@ -36,12 +36,14 @@ const CHART_FONT_LABELS: Record<ChartFont, string> = {
 };
 
 type LabelPosition = "above" | "left" | "right";
+type EditMode = "lyrics" | "chords" | "bars";
 import {
   findTokenAtColumn,
   setChordAtColumn,
   findNextWordStartCol,
   findPrevWordStartCol,
   findWordAt,
+  nearestWordStartCol,
   rangeCovers,
   toggleRange,
   toggleBarAtColumn,
@@ -104,10 +106,8 @@ function SectionBlock({
   onLineContextMenu,
   editing,
   textEditing,
-  onEditingChange,
   onTextCommit,
   onTextCancel,
-  onMove,
   onAddLine,
   onLabelCommit,
   onHeaderContextMenu,
@@ -123,10 +123,8 @@ function SectionBlock({
   onLineContextMenu: (sectionId: string, lineIdx: number, col: number, clientX: number, clientY: number) => void;
   editing: EditState | null;
   textEditing: TextEditState | null;
-  onEditingChange: (newChord: string | null, mode: SubmitMode) => void;
   onTextCommit: (text: string) => void;
   onTextCancel: () => void;
-  onMove: (delta: number) => void;
   onAddLine: (sectionId: string) => void;
   onLabelCommit: (sectionId: string, label: string) => void;
   onHeaderContextMenu: (sectionId: string, clientX: number, clientY: number) => void;
@@ -249,17 +247,7 @@ function SectionBlock({
                 highlightCol={highlightCol}
                 onColumnClick={(col) => onLineClick(section.id, i, col)}
                 onContextMenu={(col, x, y) => onLineContextMenu(section.id, i, col, x, y)}
-              >
-                {isEditingThisLine && (
-                  <ChordInput
-                    col={editing!.col}
-                    initialValue={editing!.initialValue}
-                    onSubmit={(val, mode) => onEditingChange(val, mode)}
-                    onCancel={() => onEditingChange(null, "close")}
-                    onMove={onMove}
-                  />
-                )}
-              </ClickableChordLine>
+              />
               {isTextEditingThisLine ? (
                 <EditableLyricLine
                   initialText={line.lyrics}
@@ -724,52 +712,75 @@ function ClickableEmptyLine({
   );
 }
 
-/**
- * Floating input over the chord line at the clicked column. Auto-focuses on
- * mount. Keyboard contract:
- *   - Enter            → commit and close
- *   - Tab              → commit and jump to the NEXT word in the lyric line
- *   - Shift+Tab        → commit and jump to the PREVIOUS word
- *   - Esc              → cancel
- *   - Shift+←/→        → nudge the chord's column position
- *   - plain ←/→        → move text caret inside the input (preserved default)
- *   - blur (click out) → commit and close
- *
- * Empty submit deletes the chord at that column.
- */
+// Submit intent from the chord entry bar. step-left/right are legacy no-ops
+// kept so handleEditingChange's switch stays exhaustive.
 type SubmitMode = "close" | "next-word" | "prev-word" | "step-left" | "step-right";
 
-function ChordInput({
-  col,
+/**
+ * Tracks how many vertical pixels the on-screen keyboard occupies, so a
+ * fixed-bottom bar can sit just ABOVE the iOS keyboard instead of behind it.
+ * Uses the VisualViewport API; returns 0 on desktop / when unsupported.
+ */
+function useKeyboardInset(): number {
+  const [inset, setInset] = useState(0);
+  useEffect(() => {
+    const vv = typeof window !== "undefined" ? window.visualViewport : null;
+    if (!vv) return;
+    const update = () =>
+      setInset(Math.max(0, window.innerHeight - vv.height - vv.offsetTop));
+    update();
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+    };
+  }, []);
+  return inset;
+}
+
+/**
+ * Docked chord-entry bar. In Chords mode, tapping a word opens this bar pinned
+ * just above the on-screen keyboard — never clipped off the right edge like the
+ * old floating popover on a narrow iPad. Keyboard contract mirrors the old
+ * inline input:
+ *   - Enter / Done   → commit and close
+ *   - Tab / ›        → commit and jump to the NEXT word
+ *   - Shift+Tab / ‹  → commit and jump to the PREVIOUS word
+ *   - Esc            → cancel
+ *   - blur           → commit and close
+ * Empty submit deletes the chord at that column. The parent keys this component
+ * by the editing position, so advancing words remounts it (fresh focus/value).
+ */
+function ChordEntryBar({
   initialValue,
+  wordLabel,
   onSubmit,
   onCancel,
-  onMove,
 }: {
-  col: number;
   initialValue: string;
+  wordLabel: string;
   onSubmit: (newChord: string, mode: SubmitMode) => void;
   onCancel: () => void;
-  onMove: (delta: number) => void;
 }) {
   const [value, setValue] = useState(initialValue);
   const inputRef = useRef<HTMLInputElement>(null);
   const submittedRef = useRef(false);
+  const keyboardInset = useKeyboardInset();
 
   useEffect(() => {
     const el = inputRef.current;
     if (!el) return;
     el.focus();
     el.select();
-    // Scroll into view so an input way out at column 80 doesn't sit hidden
-    // off the right edge of the scrollable chord-chart container.
-    el.scrollIntoView({ behavior: "instant", block: "nearest", inline: "nearest" });
   }, []);
 
-  const submit = (val: string, mode: SubmitMode) => {
+  // Guard against double-fire (Done's click + the input's blur). Each word
+  // advance remounts a fresh instance, so this ref is per-position.
+  const submit = (mode: SubmitMode) => {
     if (submittedRef.current) return;
     submittedRef.current = true;
-    onSubmit(val, mode);
+    onSubmit(value.trim(), mode);
   };
   const cancel = () => {
     if (submittedRef.current) return;
@@ -777,62 +788,68 @@ function ChordInput({
     onCancel();
   };
 
-  // Auto-grow the input so longer chord names like "Cmaj7sus4" or "F#m7b5/A"
-  // always fit visibly. Width tracks the value's character count, with a
-  // minimum so empty/short values still have a usable target.
-  const widthCh = Math.max(value.length + 2, 6);
-
   const handleKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       e.preventDefault();
       e.stopPropagation();
-      submit(value.trim(), "close");
+      submit("close");
     } else if (e.key === "Tab") {
       e.preventDefault();
       e.stopPropagation();
-      submit(value.trim(), e.shiftKey ? "prev-word" : "next-word");
+      submit(e.shiftKey ? "prev-word" : "next-word");
     } else if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
       cancel();
-    } else if (e.key === "ArrowLeft" && e.altKey) {
-      // Alt+←: commit current chord and re-open input one column to the LEFT.
-      // Letter-grain analogue of Shift+Tab. Lets the user step the editing
-      // position one character at a time without leaving the keyboard.
-      e.preventDefault();
-      e.stopPropagation();
-      submit(value.trim(), "step-left");
-    } else if (e.key === "ArrowRight" && e.altKey) {
-      e.preventDefault();
-      e.stopPropagation();
-      submit(value.trim(), "step-right");
-    } else if (e.key === "ArrowLeft" && e.shiftKey) {
-      e.preventDefault();
-      onMove(-1);
-    } else if (e.key === "ArrowRight" && e.shiftKey) {
-      e.preventDefault();
-      onMove(1);
     }
   };
 
+  // Keep focus on the input when a bar button is tapped — pointerdown would
+  // otherwise blur it and fire the blur-commit before the button's onClick.
+  const keepFocus = (e: React.PointerEvent) => e.preventDefault();
+  const stepBtn =
+    "px-4 py-2 rounded bg-[#0f0f1f] border border-gray-700 text-gray-200 text-xl leading-none shrink-0 hover:bg-[#22223a] active:bg-[#2a2a44]";
+
   return (
-    <input
-      ref={inputRef}
-      type="text"
-      value={value}
-      onChange={(e) => setValue(e.target.value)}
-      onKeyDown={handleKey}
-      onBlur={() => submit(value.trim(), "close")}
-      onClick={(e) => e.stopPropagation()}
-      className="absolute top-0 z-30 bg-pink-900 text-yellow-200 outline-none ring-2 ring-pink-400 rounded px-1 py-0 text-sm"
-      // fontFamily: inherit — picks up the chart font from the section's
-      // wrapping div so 1ch in the input matches 1ch in the chord/lyric lines
-      // (column alignment depends on this).
-      style={{ left: `${col}ch`, width: `${widthCh}ch`, minWidth: "5rem", fontFamily: "inherit" }}
-      placeholder="chord"
-      autoComplete="off"
-      spellCheck={false}
-    />
+    <div
+      className="fixed left-0 right-0 z-[80] print-hide flex items-center gap-2 px-3 py-2 bg-[#1a1a2e] border-t border-pink-500/50 shadow-[0_-6px_16px_rgba(0,0,0,0.5)]"
+      style={{ bottom: keyboardInset, paddingBottom: "calc(0.5rem + env(safe-area-inset-bottom))" }}
+    >
+      <span className="text-xs text-gray-400 shrink-0 max-w-[28%] truncate">
+        {wordLabel ? `Chord over “${wordLabel}”` : "Add chord"}
+      </span>
+      <input
+        ref={inputRef}
+        type="text"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={handleKey}
+        onBlur={() => submit("close")}
+        // text-base (16px) stops iOS Safari from auto-zooming the page on focus.
+        className="flex-1 min-w-0 bg-[#0f0f1f] text-yellow-200 outline-none ring-2 ring-pink-400 rounded px-3 py-2 text-base"
+        style={{ fontFamily: "inherit" }}
+        placeholder="e.g. G, Am7, D/F#"
+        autoComplete="off"
+        autoCapitalize="off"
+        autoCorrect="off"
+        spellCheck={false}
+        aria-label="Chord"
+      />
+      <button type="button" onPointerDown={keepFocus} onClick={() => submit("prev-word")} className={stepBtn} aria-label="Previous word">
+        &#8249;
+      </button>
+      <button type="button" onPointerDown={keepFocus} onClick={() => submit("next-word")} className={stepBtn} aria-label="Next word">
+        &#8250;
+      </button>
+      <button
+        type="button"
+        onPointerDown={keepFocus}
+        onClick={() => submit("close")}
+        className="px-4 py-2 rounded bg-pink-600 hover:bg-pink-500 active:bg-pink-700 text-white text-sm font-medium shrink-0"
+      >
+        Done
+      </button>
+    </div>
   );
 }
 
@@ -856,10 +873,28 @@ export default function ChordChartView({ score, performMode = false, performColu
   const [textEditing, setTextEditing] = useState<TextEditState | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [headerContextMenu, setHeaderContextMenu] = useState<HeaderContextMenuState | null>(null);
-  // Bars mode: when on, clicks place/remove a "|" at the target column
-  // without opening the chord input. Faster than typing "|" + Enter for
-  // every bar in songs with many bars.
-  const [barMode, setBarMode] = useState(false);
+  // Edit mode drives what a single tap does — the iPad-friendly replacement
+  // for the old single-tap-chord / double-tap-text guessing (double-tap is
+  // unreliable on touch). "lyrics": tap a line to edit its words. "chords":
+  // tap a word to put a chord on it. "bars": tap to place/remove a "|".
+  const [editMode, setEditMode] = useState<EditMode>("chords");
+  // Switching mode cancels any in-progress edit so a stale input doesn't
+  // commit into the wrong line/mode.
+  const changeEditMode = (m: EditMode) => {
+    setEditing(null);
+    setTextEditing(null);
+    setEditMode(m);
+  };
+
+  // While entering a chord, keep the active line visible above the docked
+  // entry bar (which covers the bottom of the chart / sits above the keyboard).
+  useEffect(() => {
+    if (!editing || typeof document === "undefined") return;
+    const el = document.querySelector(
+      `[data-bar-line="${editing.sectionId}-${editing.lineIdx}"]`
+    );
+    el?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [editing]);
   // Print density toggles. Each adds a CSS class that's only consulted by
   // @media print rules — no on-screen effect. Persisted in component state
   // (not the score) so toggling them doesn't show as a revision.
@@ -920,10 +955,8 @@ export default function ChordChartView({ score, performMode = false, performColu
     const line = section.lines[lineIdx];
     if (!line) return;
 
-    // Bar mode: click → toggle bar at this column. Never opens the chord
-    // input. The placeBarAtColumn helper guarantees no surrounding tokens
-    // are shifted.
-    if (barMode) {
+    // Bars mode: tap → toggle bar at this column. Never opens chord entry.
+    if (editMode === "bars") {
       const result = toggleBarAtColumn(line.chords, col);
       if (result.changed) {
         applyPatches([{
@@ -936,18 +969,28 @@ export default function ChordChartView({ score, performMode = false, performColu
       return;
     }
 
-    const existing = findTokenAtColumn(line.chords, col);
+    // Lyrics mode: a single tap edits the line's words — no double-tap
+    // (which iPad mangles as a zoom gesture).
+    if (editMode === "lyrics") {
+      setEditing(null);
+      setTextEditing({ sectionId, lineIdx });
+      return;
+    }
+
+    // Chords mode: snap the tap to the nearest lyric word and open chord entry
+    // at that word's start column (falls back to the raw column on lines with
+    // no lyrics, e.g. an intro vamp). Tapping a word that already has a chord
+    // edits it.
+    const snapped = nearestWordStartCol(line.lyrics, col);
+    const targetCol = snapped ?? col;
+    const existing = findTokenAtColumn(line.chords, targetCol);
     setEditing({
       sectionId,
       lineIdx,
-      col: existing ? existing.start : col,
+      col: existing ? existing.start : targetCol,
       initialValue: existing?.text ?? "",
       originalToken: existing,
     });
-  };
-
-  const handleMove = (delta: number) => {
-    setEditing(prev => prev ? { ...prev, col: Math.max(0, prev.col + delta) } : prev);
   };
 
   const handleLineDoubleClick = (sectionId: string, lineIdx: number) => {
@@ -1438,19 +1481,34 @@ export default function ChordChartView({ score, performMode = false, performColu
       {/* Style + print controls — on-screen only (hidden via .print-hide). */}
       {!performMode && (
       <div className="print-hide flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-400 mb-3 select-none">
-        <button
-          type="button"
-          onClick={() => setBarMode(b => !b)}
-          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border transition-colors ${
-            barMode
-              ? "bg-pink-500/30 border-pink-400 text-pink-100"
-              : "bg-[#1a1a2e] border-gray-700 text-gray-300 hover:bg-[#22223a]"
-          }`}
-          title="When on, clicking a column places or removes a bar (|) without opening the chord input"
+        {/* Edit-mode toggle: what a single tap does. Replaces the fragile
+            single-tap-chord / double-tap-text guess (double-tap ≈ zoom on iPad). */}
+        <div
+          className="inline-flex items-stretch rounded-lg border border-gray-700 overflow-hidden"
+          role="group"
+          aria-label="Edit mode"
         >
-          <span className="font-mono font-bold">|</span>
-          <span>Bars{barMode ? " on" : ""}</span>
-        </button>
+          {([
+            ["lyrics", "Lyrics", "Tap a line to edit its words"],
+            ["chords", "Chords", "Tap a word to put a chord on it"],
+            ["bars", "| Bars", "Tap to place or remove a bar (|)"],
+          ] as const).map(([mode, label, tip]) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => changeEditMode(mode)}
+              aria-pressed={editMode === mode}
+              title={tip}
+              className={`px-4 py-2 text-sm transition-colors ${
+                editMode === mode
+                  ? "bg-pink-500/30 text-pink-100 font-medium"
+                  : "bg-[#1a1a2e] text-gray-300 hover:bg-[#22223a]"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
 
         {/* Transpose: shift every chord token in every section by ±1
          * semitone. Sharp/flat preference follows the input's own
@@ -1639,10 +1697,8 @@ export default function ChordChartView({ score, performMode = false, performColu
               onLineContextMenu={handleLineContextMenu}
               editing={editing}
               textEditing={textEditing}
-              onEditingChange={handleEditingChange}
               onTextCommit={handleTextCommit}
               onTextCancel={handleTextCancel}
-              onMove={handleMove}
               onAddLine={handleAddLine}
               onLabelCommit={handleLabelCommit}
               onHeaderContextMenu={handleHeaderContextMenu}
@@ -1686,6 +1742,23 @@ export default function ChordChartView({ score, performMode = false, performColu
           onClose={() => setHeaderContextMenu(null)}
         />
       )}
+      {/* Docked chord-entry bar (Chords mode). Anchored above the keyboard so
+          it's never clipped like a floating popover on a narrow iPad. */}
+      {!performMode && editing && (() => {
+        const sec = sectionMap.get(editing.sectionId);
+        const ln = sec?.lines[editing.lineIdx];
+        const word = ln ? findWordAt(ln.lyrics, editing.col) : null;
+        const wordLabel = word && ln ? ln.lyrics.slice(word[0], word[1]) : "";
+        return (
+          <ChordEntryBar
+            key={`${editing.sectionId}-${editing.lineIdx}-${editing.col}`}
+            initialValue={editing.initialValue}
+            wordLabel={wordLabel}
+            onSubmit={(val, mode) => handleEditingChange(val, mode)}
+            onCancel={() => handleEditingChange(null, "close")}
+          />
+        );
+      })()}
     </div>
   );
 }

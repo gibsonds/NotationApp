@@ -118,6 +118,27 @@ export function findPrevWordStartCol(lyrics: string, fromCol: number): number | 
   return i;
 }
 
+/**
+ * Snap a raw click/tap column to the start column of the nearest lyric word.
+ * This is what makes touch chord-placement forgiving: the user taps roughly
+ * at a word and the chord lands on that word's first letter, no pixel-precise
+ * column aiming.
+ *
+ *  - Tap lands inside a word  → that word's start column.
+ *  - Tap on whitespace        → the nearer of the previous/next word starts.
+ *  - No words on the line      → null (caller falls back to the raw column).
+ */
+export function nearestWordStartCol(text: string, col: number): number | null {
+  const within = findWordAt(text, col);
+  if (within) return within[0];
+  const prev = findPrevWordStartCol(text, col);
+  const next = findNextWordStartCol(text, col);
+  if (prev === null) return next;
+  if (next === null) return prev;
+  // Pick whichever word start is closer to the tapped column (ties → previous).
+  return col - prev <= next - col ? prev : next;
+}
+
 export interface ChordToken {
   start: number; // 0-based column where this token begins
   len: number;   // length in characters
