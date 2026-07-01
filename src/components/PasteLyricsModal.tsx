@@ -64,6 +64,15 @@ export default function PasteLyricsModal({ onClose }: { onClose: () => void }) {
 
   const isChordChartMode = !!score && score.sections.length > 0 && score.staves.length === 0;
 
+  // Does the current chart already hold real content? If so, default to
+  // Append so composing new lyrics can't silently wipe existing work.
+  const chartHasContent =
+    isChordChartMode &&
+    !!score?.sections.some(s => s.lines.some(l => l.lyrics.trim() || l.chords.trim()));
+  const [applyMode, setApplyMode] = useState<"replace" | "append">(
+    chartHasContent ? "append" : "replace"
+  );
+
   // Keep a ref to the apply handler so the keyboard effect never goes stale
   const applyRef = useRef<() => void>(() => {});
 
@@ -71,6 +80,25 @@ export default function PasteLyricsModal({ onClose }: { onClose: () => void }) {
     if (!score || !isChordChartMode) return;
     const parsedSections = parseToSections(text);
     if (parsedSections.length === 0) { onClose(); return; }
+
+    // Append mode: add the parsed content as NEW sections at the end; never
+    // touch existing sections. This is the safe default when the chart already
+    // has content, and the natural flow after composing more verses.
+    if (applyMode === "append") {
+      const ts = Date.now();
+      const patches: ScorePatch[] = parsedSections.map((parsed, i) => ({
+        op: "add_section" as const,
+        section: {
+          id: `section-${ts}-${i}`,
+          label: parsed.label || `Section ${score.sections.length + i + 1}`,
+          lines: parsed.lines.length > 0 ? parsed.lines : [{ chords: "", lyrics: "" }],
+        },
+      }));
+      applyPatches(patches);
+      submittedRef.current = true;
+      onClose();
+      return;
+    }
 
     const hasHeaders = parsedSections.length > 1 || parsedSections[0].label !== "";
 
@@ -179,10 +207,10 @@ export default function PasteLyricsModal({ onClose }: { onClose: () => void }) {
         {/* Header */}
         <div className="px-5 py-4 border-b border-gray-200 flex items-start justify-between gap-4">
           <div>
-            <h2 className="font-semibold text-gray-900 text-base">Paste Lyrics / Chords</h2>
+            <h2 className="font-semibold text-gray-900 text-base">Write or paste lyrics</h2>
             <p className="text-xs text-gray-500 mt-0.5">
               {isChordChartMode
-                ? <>Replaces section content. Section headers (<code className="bg-gray-100 px-1 rounded font-mono">Verse 1:</code>, <code className="bg-gray-100 px-1 rounded font-mono">Chorus:</code>, etc.) create multiple sections. Supports <code className="bg-gray-100 px-1 rounded font-mono">[G]chord</code> and chord-above-lyric formats.</>
+                ? <>Type your lyrics — a blank line starts a new section, and <code className="bg-gray-100 px-1 rounded font-mono">Chorus:</code> / <code className="bg-gray-100 px-1 rounded font-mono">Verse 1:</code> headers name them. Then switch to <strong>Chords</strong> mode and tap a word to add chords. Pasting <code className="bg-gray-100 px-1 rounded font-mono">[G]chord</code> or chord-above-lyric text works too.</>
                 : <>Words assigned to notes from the cursor. Supports <code className="bg-gray-100 px-1 rounded font-mono">[G]chord</code> and chord-above-lyric formats.</>
               }
             </p>
@@ -224,10 +252,35 @@ export default function PasteLyricsModal({ onClose }: { onClose: () => void }) {
             </p>
           )}
           {isChordChartMode && score && score.sections.length > 0 && (
-            <p className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
-              Chord chart mode. Without headers: replaces &ldquo;{score.sections[0].label}&rdquo; lines.
-              With headers (Verse:, Chorus:, Bridge:, …): replaces all {score.sections.length} section{score.sections.length !== 1 ? "s" : ""}.
-            </p>
+            <div className="space-y-2">
+              <div
+                className="inline-flex items-stretch rounded-lg border border-gray-300 overflow-hidden text-sm"
+                role="group"
+                aria-label="Apply mode"
+              >
+                {(["append", "replace"] as const).map(m => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setApplyMode(m)}
+                    aria-pressed={applyMode === m}
+                    className={`px-4 py-2 transition-colors ${
+                      applyMode === m
+                        ? "bg-blue-600 text-white font-medium"
+                        : "bg-white text-gray-700 hover:bg-gray-100"
+                    }`}
+                  >
+                    {m === "append" ? "Add as new sections" : "Replace chart"}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-gray-500">
+                {applyMode === "append"
+                  ? <>Appends what you type as new sections — your existing {score.sections.length} section{score.sections.length !== 1 ? "s" : ""} stay untouched.</>
+                  : <>Replaces the chart. Without headers, only &ldquo;{score.sections[0].label}&rdquo; is replaced; with headers, all {score.sections.length} section{score.sections.length !== 1 ? "s" : ""} are replaced.</>
+                }
+              </p>
+            </div>
           )}
         </div>
 
