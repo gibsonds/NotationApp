@@ -3,6 +3,18 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-07-01 — a0d37f4
+
+**Chord charts: touch-first editing (mode toggle + tap-word chord entry) (#169)**
+
+- Commit: [`a0d37f4`](../../commit/a0d37f41bbcde7b9f16a17cb3cd96d76b7ccdc4a)
+- Author: gibsonds
+- Files changed:
+  - `src/components/ChordChartView.tsx`
+  - `src/components/PasteLyricsModal.tsx`
+  - `src/lib/__tests__/chord-line.test.ts`
+  - `src/lib/chord-line.ts`
+
 ## 2026-06-30 — 85faaa8
 
 **Force explicit Save into the cloud DB; stop swallowing 409s (#168)**
