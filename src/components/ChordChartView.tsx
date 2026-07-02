@@ -81,11 +81,14 @@ interface EditState {
   originalToken?: ChordToken;
 }
 
-/** Text-editing state — separate from chord-editing because they're different
- *  gestures (double-click vs. single-click) and edit different fields. */
+/** Text-editing state — editing a whole line's raw text as a textarea. `field`
+ *  selects which of the two monospace strings is being edited: "lyrics" (the
+ *  default gesture) or "chords" (edit the whole chord line, e.g. to fix a long
+ *  solo line that overflows into the second print column). */
 interface TextEditState {
   sectionId: string;
   lineIdx: number;
+  field: "lyrics" | "chords";
 }
 
 /**
@@ -242,13 +245,21 @@ function SectionBlock({
                   style={{ left: `${editing!.col}ch` }}
                 />
               )}
-              <ClickableChordLine
-                text={line.chords}
-                highlightCol={highlightCol}
-                onColumnClick={(col) => onLineClick(section.id, i, col)}
-                onContextMenu={(col, x, y) => onLineContextMenu(section.id, i, col, x, y)}
-              />
-              {isTextEditingThisLine ? (
+              {isTextEditingThisLine && textEditing!.field === "chords" ? (
+                <EditableLyricLine
+                  initialText={line.chords}
+                  onCommit={onTextCommit}
+                  onCancel={onTextCancel}
+                />
+              ) : (
+                <ClickableChordLine
+                  text={line.chords}
+                  highlightCol={highlightCol}
+                  onColumnClick={(col) => onLineClick(section.id, i, col)}
+                  onContextMenu={(col, x, y) => onLineContextMenu(section.id, i, col, x, y)}
+                />
+              )}
+              {isTextEditingThisLine && textEditing!.field === "lyrics" ? (
                 <EditableLyricLine
                   initialText={line.lyrics}
                   onCommit={onTextCommit}
@@ -318,6 +329,11 @@ function EditableSectionHeader({
   const [value, setValue] = useState(label);
   const inputRef = useRef<HTMLInputElement>(null);
   const settledRef = useRef(false);
+  // Long-press → section actions (Reflow, Split, …) on iPad. Declared before
+  // the early `if (editing)` return so hook order stays stable.
+  const { handlers, firedRef } = useLongPress((clientX, clientY) => {
+    onContextMenu?.(clientX, clientY);
+  });
 
   useEffect(() => {
     if (editing) {
@@ -394,15 +410,16 @@ function EditableSectionHeader({
 
   return (
     <h3
-      className={`${baseClass} cursor-text hover:text-pink-200 ${position === "above" ? "inline-block mb-2" : ""}`}
+      className={`${baseClass} cursor-text hover:text-pink-200 select-none [-webkit-touch-callout:none] ${position === "above" ? "inline-block mb-2" : ""}`}
       style={labelStyle}
-      onClick={() => setEditing(true)}
+      onClick={() => { if (!firedRef.current) setEditing(true); }}
       onContextMenu={(e) => {
         if (!onContextMenu) return;
         e.preventDefault();
         onContextMenu(e.clientX, e.clientY);
       }}
-      title="Click to rename. Right-click for section actions."
+      title="Click to rename. Right-click / long-press for section actions (Reflow, Split, …)."
+      {...handlers}
     >
       {label}
     </h3>
@@ -587,6 +604,48 @@ function columnFromClick(
   return Math.max(0, Math.floor((clientX - rect.left) / Math.max(charWidth, 1)));
 }
 
+/**
+ * Long-press → context menu, so iPad (no right-click) can reach the line and
+ * section menus (Reflow, Split, Edit chord line, …). Fires after `ms` of a
+ * stationary touch; ignores mouse (which uses right-click) and cancels if the
+ * finger moves (that's a scroll). The returned `firedRef` lets an element's
+ * onClick bail out of its tap action when a long-press just fired.
+ */
+function useLongPress(onLongPress: (clientX: number, clientY: number) => void, ms = 450) {
+  const timerRef = useRef<number | null>(null);
+  const startRef = useRef<{ x: number; y: number } | null>(null);
+  const firedRef = useRef(false);
+  const clear = () => {
+    if (timerRef.current !== null) {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    startRef.current = null;
+  };
+  const handlers = {
+    onPointerDown: (e: React.PointerEvent) => {
+      if (e.pointerType === "mouse") return;
+      firedRef.current = false;
+      const { clientX, clientY } = e;
+      if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+      startRef.current = { x: clientX, y: clientY };
+      timerRef.current = window.setTimeout(() => {
+        firedRef.current = true;
+        timerRef.current = null;
+        onLongPress(clientX, clientY);
+      }, ms);
+    },
+    onPointerMove: (e: React.PointerEvent) => {
+      const s = startRef.current;
+      if (!s) return;
+      if (Math.abs(e.clientX - s.x) > 10 || Math.abs(e.clientY - s.y) > 10) clear();
+    },
+    onPointerUp: clear,
+    onPointerCancel: clear,
+  };
+  return { handlers, firedRef };
+}
+
 function ClickableChordLine({
   text,
   highlightCol,
@@ -601,7 +660,12 @@ function ClickableChordLine({
   children?: React.ReactNode;
 }) {
   const spanRef = useRef<HTMLSpanElement>(null);
+  const { handlers, firedRef } = useLongPress((clientX, clientY) => {
+    const span = spanRef.current;
+    if (span) onContextMenu(columnFromClick(span, text, clientX), clientX, clientY);
+  });
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (firedRef.current) return;
     if ((e.target as HTMLElement).tagName === "INPUT") return;
     const span = spanRef.current;
     if (!span) return;
@@ -615,9 +679,10 @@ function ClickableChordLine({
   };
   return (
     <div
-      className="text-yellow-300 whitespace-pre min-h-[1em] relative cursor-text hover:bg-white/5"
+      className="text-yellow-300 whitespace-pre min-h-[1em] relative cursor-text hover:bg-white/5 select-none [-webkit-touch-callout:none]"
       onClick={handleClick}
       onContextMenu={handleContextMenu}
+      {...handlers}
     >
       <span ref={spanRef}>
         <HighlightedText text={text} highlightCol={highlightCol} baseClass="text-pink-200" />
@@ -645,8 +710,12 @@ function ClickableLyricLine({
   onContextMenu: (col: number, clientX: number, clientY: number) => void;
 }) {
   const spanRef = useRef<HTMLSpanElement>(null);
+  const { handlers, firedRef } = useLongPress((clientX, clientY) => {
+    const span = spanRef.current;
+    if (span) onContextMenu(columnFromClick(span, text, clientX), clientX, clientY);
+  });
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.detail >= 2) return;
+    if (firedRef.current || e.detail >= 2) return;
     const span = spanRef.current;
     if (!span) return;
     onColumnClick(columnFromClick(span, text, e.clientX));
@@ -659,11 +728,12 @@ function ClickableLyricLine({
   };
   return (
     <div
-      className="text-gray-100 whitespace-pre cursor-text hover:bg-white/5"
+      className="text-gray-100 whitespace-pre cursor-text hover:bg-white/5 select-none [-webkit-touch-callout:none]"
       onClick={handleClick}
       onDoubleClick={onDoubleClick}
       onContextMenu={handleContextMenu}
-      title="Click: chord. Double-click: edit text. Right-click: line menu."
+      title="Tap: chord. Double-click: edit text. Right-click / long-press: line menu."
+      {...handlers}
     >
       <span ref={spanRef}>
         <MarkedLyricText
@@ -687,8 +757,12 @@ function ClickableEmptyLine({
   onContextMenu: (col: number, clientX: number, clientY: number) => void;
 }) {
   const spanRef = useRef<HTMLSpanElement>(null);
+  const { handlers, firedRef } = useLongPress((clientX, clientY) => {
+    const span = spanRef.current;
+    if (span) onContextMenu(columnFromClick(span, "", clientX), clientX, clientY);
+  });
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.detail >= 2) return;
+    if (firedRef.current || e.detail >= 2) return;
     const span = spanRef.current;
     if (!span) return;
     onColumnClick(columnFromClick(span, "", e.clientX));
@@ -701,11 +775,12 @@ function ClickableEmptyLine({
   };
   return (
     <div
-      className="text-gray-500 whitespace-pre cursor-text hover:bg-white/5 italic min-h-[1em]"
+      className="text-gray-500 whitespace-pre cursor-text hover:bg-white/5 italic min-h-[1em] select-none [-webkit-touch-callout:none]"
       onClick={handleClick}
       onDoubleClick={onDoubleClick}
       onContextMenu={handleContextMenu}
-      title="Click: chord. Double-click: add lyric text. Right-click: line menu."
+      title="Tap: chord. Double-click: add lyric text. Right-click / long-press: line menu."
+      {...handlers}
     >
       <span ref={spanRef}>{" "}</span>
     </div>
@@ -969,11 +1044,14 @@ export default function ChordChartView({ score, performMode = false, performColu
       return;
     }
 
-    // Lyrics mode: a single tap edits the line's words — no double-tap
-    // (which iPad mangles as a zoom gesture).
+    // Lyrics mode: a single tap edits the line's text — no double-tap (which
+    // iPad mangles as a zoom gesture). On a chord-only line (no lyrics) there's
+    // nothing to type as words, so edit the chord line text instead — this is
+    // how you fix a long solo/chord line.
     if (editMode === "lyrics") {
       setEditing(null);
-      setTextEditing({ sectionId, lineIdx });
+      const field = !line.lyrics && line.chords ? "chords" : "lyrics";
+      setTextEditing({ sectionId, lineIdx, field });
       return;
     }
 
@@ -993,12 +1071,16 @@ export default function ChordChartView({ score, performMode = false, performColu
     });
   };
 
-  const handleLineDoubleClick = (sectionId: string, lineIdx: number) => {
+  const handleLineDoubleClick = (
+    sectionId: string,
+    lineIdx: number,
+    field: "lyrics" | "chords" = "lyrics",
+  ) => {
     if (performMode) return;
     // Cancel any chord-edit in progress before switching to text-edit so the
     // input doesn't write a stale chord on blur.
     setEditing(null);
-    setTextEditing({ sectionId, lineIdx });
+    setTextEditing({ sectionId, lineIdx, field });
   };
 
   const handleTextCommit = (newText: string) => {
@@ -1010,6 +1092,23 @@ export default function ChordChartView({ score, performMode = false, performColu
     }
     const oldLine = section.lines[textEditing.lineIdx];
     if (!oldLine) {
+      setTextEditing(null);
+      return;
+    }
+
+    // Chord-line text edit: replace the whole chord string in place. Newlines
+    // collapse to spaces (a chord overlay is a single line); the patch layer
+    // expands tabs. To split a long line, use Reflow / Split from the menu.
+    if (textEditing.field === "chords") {
+      const nextChords = newText.replace(/\n/g, " ");
+      if (nextChords !== oldLine.chords) {
+        applyPatches([{
+          op: "update_section_line",
+          sectionId: textEditing.sectionId,
+          lineIdx: textEditing.lineIdx,
+          chords: nextChords,
+        }]);
+      }
       setTextEditing(null);
       return;
     }
@@ -1068,7 +1167,7 @@ export default function ChordChartView({ score, performMode = false, performColu
       line: { chords: "", lyrics: "" },
     }]);
     // Open text editor for the new line so the user can immediately type.
-    setTextEditing({ sectionId, lineIdx: newIdx });
+    setTextEditing({ sectionId, lineIdx: newIdx, field: "lyrics" });
   };
 
   const handleLabelCommit = (sectionId: string, label: string) => {
@@ -1100,7 +1199,7 @@ export default function ChordChartView({ score, performMode = false, performColu
       index,
       line: { chords: "", lyrics: "" },
     }]);
-    if (openEditor) setTextEditing({ sectionId, lineIdx: index });
+    if (openEditor) setTextEditing({ sectionId, lineIdx: index, field: "lyrics" });
   };
 
   const newSectionId = () => {
@@ -1249,7 +1348,11 @@ export default function ChordChartView({ score, performMode = false, performColu
       },
       {
         label: "Edit lyric text",
-        onClick: () => handleLineDoubleClick(ctx.sectionId, ctx.lineIdx),
+        onClick: () => handleLineDoubleClick(ctx.sectionId, ctx.lineIdx, "lyrics"),
+      },
+      {
+        label: "Edit chord line (text)",
+        onClick: () => handleLineDoubleClick(ctx.sectionId, ctx.lineIdx, "chords"),
       },
     ];
 
