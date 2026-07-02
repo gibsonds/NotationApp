@@ -3,6 +3,15 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-07-02 — 8dad703
+
+**Chord charts: edit a whole chord line + long-press menu on iPad (#170)**
+
+- Commit: [`8dad703`](../../commit/8dad703f1875878050ea098adc3276e62db489a5)
+- Author: gibsonds
+- Files changed:
+  - `src/components/ChordChartView.tsx`
+
 ## 2026-07-01 — a0d37f4
 
 **Chord charts: touch-first editing (mode toggle + tap-word chord entry) (#169)**
