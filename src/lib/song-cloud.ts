@@ -3,6 +3,10 @@ import type { SongDTO, SongSummary, VersionEntry } from "@/lib/song-cloud-types"
 import { getSongs, setSongs as writeLocalSongs, type SongBankEntry } from "@/lib/song-bank";
 
 const DEVICE_ID_KEY = "notation-app-device-id";
+const DEVICE_ID_COOKIE = "notation_device_id";
+// 400 days is the browser cap for a persistent script-set cookie. Refreshed
+// on every getDeviceId call so an active user keeps extending the window.
+const DEVICE_ID_COOKIE_MAX_AGE = 60 * 60 * 24 * 400;
 const QUEUE_KEY = "notation-app-cloud-queue";
 const TIMEOUT_MS = 8000;
 const MAX_PAYLOAD = 380 * 1024; // DDB cap is 400 KB; keep headroom.
@@ -10,18 +14,51 @@ const MAX_PAYLOAD = 380 * 1024; // DDB cap is 400 KB; keep headroom.
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "";
 export const CLOUD_ENABLED = !!API_BASE;
 
+function readDeviceIdCookie(): string | null {
+  if (typeof document === "undefined") return null;
+  const m = document.cookie.match(
+    new RegExp("(?:^|; )" + DEVICE_ID_COOKIE + "=([^;]*)"),
+  );
+  // Treat an empty value (a deleted/cleared cookie often lingers as
+  // `name=`) as absent, so getDeviceId falls through to minting instead of
+  // adopting "" as the device id.
+  return m && m[1] ? decodeURIComponent(m[1]) : null;
+}
+
+// Mirror the device id into BOTH localStorage and a cookie. They are evicted
+// by iOS ITP independently and on their own timers, so keeping two copies
+// means an eviction has to wipe both before a new id gets minted. Best-effort
+// on each — a full/blocked store just leaves the other as the survivor.
+function persistDeviceId(id: string): void {
+  try {
+    localStorage.setItem(DEVICE_ID_KEY, id);
+  } catch {
+    // localStorage full / blocked — cookie may still carry it across reloads.
+  }
+  if (typeof document !== "undefined") {
+    try {
+      document.cookie =
+        `${DEVICE_ID_COOKIE}=${encodeURIComponent(id)}; path=/; ` +
+        `max-age=${DEVICE_ID_COOKIE_MAX_AGE}; samesite=lax`;
+    } catch {
+      // cookies disabled — localStorage is the only mirror.
+    }
+  }
+}
+
 export function getDeviceId(): string {
   if (typeof window === "undefined") return "";
   let id = localStorage.getItem(DEVICE_ID_KEY);
   if (!id) {
-    id = crypto.randomUUID();
-    try {
-      localStorage.setItem(DEVICE_ID_KEY, id);
-    } catch {
-      // localStorage full / blocked — return ephemeral id; sync won't persist
-      // across reloads but the session still works.
-    }
+    // localStorage was cleared/evicted (classic iOS ITP behaviour). Recover
+    // from the cookie mirror BEFORE minting a fresh uuid — a new id would
+    // orphan the user's entire cloud songbook, which lives under the old id
+    // in DynamoDB and would become permanently unreachable from this browser.
+    id = readDeviceIdCookie() ?? crypto.randomUUID();
   }
+  // Re-persist to both stores on every read: reseeds whichever store lost the
+  // value and refreshes the cookie's max-age so the window keeps sliding.
+  persistDeviceId(id);
   return id;
 }
 
@@ -29,7 +66,7 @@ export function getDeviceId(): string {
 // songbook before auth lands. Caller is responsible for re-syncing.
 export function setDeviceId(id: string): void {
   if (typeof window === "undefined") return;
-  localStorage.setItem(DEVICE_ID_KEY, id);
+  persistDeviceId(id);
 }
 
 /**

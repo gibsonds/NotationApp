@@ -517,6 +517,42 @@ describe("switchToSongbook", () => {
   });
 });
 
+// ── getDeviceId — cookie mirror survives localStorage eviction ─────────
+
+describe("getDeviceId cookie durability", () => {
+  const clearDeviceCookie = () => {
+    document.cookie = "notation_device_id=; path=/; max-age=0";
+  };
+
+  it("recovers the id from the cookie when localStorage was evicted (iOS ITP)", async () => {
+    const { getDeviceId } = await import("../song-cloud");
+    clearDeviceCookie();
+    // beforeEach seeded localStorage with 'test-device-id'. First read mirrors
+    // it into the cookie.
+    expect(getDeviceId()).toBe("test-device-id");
+    expect(document.cookie).toContain("notation_device_id=test-device-id");
+
+    // Simulate ITP wiping localStorage but leaving the cookie.
+    localStorage.removeItem("notation-app-device-id");
+
+    // Must recover the SAME id (not mint a fresh one that orphans the songbook).
+    expect(getDeviceId()).toBe("test-device-id");
+    // ...and reseed localStorage from the cookie.
+    expect(localStorage.getItem("notation-app-device-id")).toBe("test-device-id");
+  });
+
+  it("mints a new id only when BOTH stores are empty", async () => {
+    const { getDeviceId } = await import("../song-cloud");
+    clearDeviceCookie();
+    localStorage.removeItem("notation-app-device-id");
+    const id = getDeviceId();
+    expect(id).toMatch(/[0-9a-f-]{36}/);
+    // The freshly minted id is written to both mirrors.
+    expect(localStorage.getItem("notation-app-device-id")).toBe(id);
+    expect(document.cookie).toContain(`notation_device_id=${id}`);
+  });
+});
+
 // ── enqueueOffline / hasPendingOps / flushQueue ────────────────────────
 
 describe("offline queue", () => {
