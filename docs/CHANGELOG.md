@@ -3,6 +3,16 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-07-05 — 6310b7b
+
+**Chord-chart paste: sanitize pasted text before parsing (#172)**
+
+- Commit: [`6310b7b`](../../commit/6310b7b8222dfcc38bc40bbca1c2048925fa7b0d)
+- Author: gibsonds
+- Files changed:
+  - `src/lib/__tests__/lyric-parser.test.ts`
+  - `src/lib/lyric-parser.ts`
+
 ## 2026-07-05 — d219a9a
 
 **Fix two cloud data-loss bugs: import currentSongId clobber + device-id orphaning (#171)**
