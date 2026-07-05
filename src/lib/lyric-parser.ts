@@ -1,6 +1,29 @@
 // ── Inline chord / lyric parser ──────────────────────────────────────────────
 
 import type { ChordChartLine } from "@/lib/schema";
+import { expandTabs } from "@/lib/chord-line";
+
+/**
+ * Normalize pasted text BEFORE parsing. Paste sources (iOS, Word, Google Docs)
+ * inject characters that silently break the parser's column math and chord
+ * detection:
+ *  - Tabs render at variable widths but count as one char, so the column
+ *    offsets the above-the-line parser reads no longer match what the user
+ *    sees. Expand them to spaces (tab stops of 8) first. (expandTabs also runs
+ *    at patch-apply time, but that's too late for the parse-time column math.)
+ *  - Smart quotes / en–em dashes / non-breaking + narrow spaces → ASCII, so
+ *    word splitting and chord tokens behave and the text stays plain.
+ * Pure and idempotent — safe to run on any pasted blob, or twice.
+ */
+export function sanitizePastedText(text: string): string {
+  const normalized = text
+    .replace(/\r\n?/g, "\n")                        // CRLF / CR -> LF
+    .replace(/[‘’‛′]/g, "'")    // smart single quotes, prime -> '
+    .replace(/[“”‟″]/g, '"')    // smart double quotes, dbl prime -> "
+    .replace(/[–—−]/g, "-")          // en/em dash, minus -> -
+    .replace(/[   ]/g, " ");         // nbsp / figure / narrow-nbsp -> space
+  return expandTabs(normalized);
+}
 
 // ── Section header detection ──────────────────────────────────────────────────
 
@@ -49,7 +72,23 @@ export interface WordChordPair {
 
 // Matches chord names: G, Am, C#m, Bb, D7, Cmaj7, G/B, D/F#, sus4, etc.
 const CHORD_RE = /^[A-G][b#]?(m|M|maj|min|dim|aug|sus[24]?|add)?\d*(\/[A-G][b#]?)?$/;
-function isChordToken(s: string): boolean { return CHORD_RE.test(s); }
+
+// iOS/Word autocorrect can tack a trailing period or comma onto a chord token
+// ("C" + double-space -> "C.", or a comma from a list). Strip it before the
+// chord test so the token is still recognized. Only trailing punctuation is
+// removed — chords never contain '.' or ',' internally.
+function stripChordPunct(s: string): string {
+  return s.replace(/[.,]+$/, "");
+}
+function isChordToken(s: string): boolean { return CHORD_RE.test(stripChordPunct(s)); }
+
+// Clean a line already confirmed to be chord-only: overwrite each token's
+// trailing autocorrect punctuation with spaces (not delete it) so every
+// remaining chord keeps its original column and still aligns with the lyric
+// line beneath it. On a chord-only line the only '.'/',' are that debris.
+function cleanChordLine(line: string): string {
+  return line.replace(/[.,]+(?=\s|$)/g, (m) => " ".repeat(m.length)).replace(/\s+$/, "");
+}
 
 /** Parse [G]Amazing [C]grace bracketed-chord format. Newlines are treated as spaces. */
 function parseBracketed(text: string): WordChordPair[] {
@@ -59,7 +98,7 @@ function parseBracketed(text: string): WordChordPair[] {
   let m: RegExpExecArray | null;
   while ((m = re.exec(text.replace(/\n/g, " "))) !== null) {
     if (m[1] !== undefined) {
-      pendingChord = m[1].trim();
+      pendingChord = stripChordPunct(m[1].trim());
     } else {
       pairs.push({ word: m[2], chord: pendingChord });
       pendingChord = undefined;
@@ -88,7 +127,7 @@ function parseAboveLine(text: string): WordChordPair[] {
       let cm: RegExpExecArray | null;
       const cr = /\S+/g;
       while ((cm = cr.exec(line)) !== null) {
-        if (isChordToken(cm[0])) chordCols.push({ col: cm.index, chord: cm[0] });
+        if (isChordToken(cm[0])) chordCols.push({ col: cm.index, chord: stripChordPunct(cm[0]) });
       }
 
       const wordCols: { col: number; word: string }[] = [];
@@ -126,7 +165,7 @@ function parseAboveLine(text: string): WordChordPair[] {
  * Pure lyrics return pairs with no chord field set.
  */
 export function parseLyricsWithChords(text: string): WordChordPair[] {
-  const trimmed = text.trim();
+  const trimmed = sanitizePastedText(text).trim();
   if (!trimmed) return [];
   if (/\[[A-G][^\]]*\]/.test(trimmed)) return parseBracketed(trimmed);
   return parseAboveLine(trimmed);
@@ -170,7 +209,7 @@ function pairsToChordChartLine(pairs: WordChordPair[]): ChordChartLine {
  * Blank lines produce { chords: "", lyrics: "" } for visual spacing.
  */
 export function parseToChordChartLines(text: string): ChordChartLine[] {
-  const trimmed = text.trim();
+  const trimmed = sanitizePastedText(text).trim();
   if (!trimmed) return [];
 
   // Bracketed format: process line by line
@@ -202,10 +241,10 @@ export function parseToChordChartLines(text: string): ChordChartLine[] {
     const nextIsLyric = nextTokens.length > 0 && !nextTokens.every(isChordToken);
 
     if (isChordLine && nextIsLyric) {
-      result.push({ chords: line, lyrics: nextLine! });
+      result.push({ chords: cleanChordLine(line), lyrics: nextLine! });
       i += 2;
     } else if (isChordLine) {
-      result.push({ chords: line, lyrics: "" });
+      result.push({ chords: cleanChordLine(line), lyrics: "" });
       i++;
     } else {
       result.push({ chords: "", lyrics: line });
@@ -226,14 +265,14 @@ export function parseToChordChartLines(text: string): ChordChartLine[] {
  * (header immediately followed by another header) are dropped.
  */
 export function parseToSections(text: string): ParsedSection[] {
-  const trimmed = text.trim();
+  const trimmed = sanitizePastedText(text).trim();
   if (!trimmed) return [];
 
   const rawLines = trimmed.split("\n");
   const hasHeaders = rawLines.some(l => parseSectionHeader(l) !== null);
 
   if (!hasHeaders) {
-    return [{ label: "", lines: parseToChordChartLines(text) }];
+    return [{ label: "", lines: parseToChordChartLines(trimmed) }];
   }
 
   // Collect raw line blocks keyed by label
