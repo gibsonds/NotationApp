@@ -292,6 +292,11 @@ export default function MenuBar({
           addMessage({ id: uuidv4(), role: "assistant", content: `Import error: Invalid score JSON \u2014 ${result.error.issues.map(i => i.message).join(", ")}`, timestamp: Date.now() });
           return;
         }
+        // An imported file is a fresh, unsaved document — it must NOT
+        // inherit the previously-loaded song's cloud identity, or the 8s
+        // cloud autosave would push it onto that song's row and clobber it.
+        // reset() clears currentSongId (+ history/messages), like handleNew.
+        reset();
         setScore(result.data);
         addMessage({ id: uuidv4(), role: "assistant", content: `Loaded ${file.name}.`, timestamp: Date.now() });
       } catch (err: any) {
@@ -315,6 +320,9 @@ export default function MenuBar({
       const res = await fetch("/api/score/import", { method: "POST", body: formData });
       const data = await res.json();
       if (!res.ok) throw new Error((data.error || "Import failed") + (data.debug ? `\n\nDebug: ${JSON.stringify(data.debug, null, 2)}` : ""));
+      // Fresh document — drop any prior song's cloud identity before load
+      // so cloud autosave can't clobber it (see handleImport JSON path).
+      reset();
       setScore(data.score);
       if (data.warnings?.length) setWarnings(data.warnings);
       addMessage({ id: uuidv4(), role: "assistant", content: data.message || `Imported ${file.name}.`, timestamp: Date.now() });
