@@ -3,6 +3,17 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-07-05 — d219a9a
+
+**Fix two cloud data-loss bugs: import currentSongId clobber + device-id orphaning (#171)**
+
+- Commit: [`d219a9a`](../../commit/d219a9a16fd6e8fd2140331b96d63a9e2b6721d3)
+- Author: gibsonds
+- Files changed:
+  - `src/components/MenuBar.tsx`
+  - `src/lib/__tests__/cloud-autosave.test.ts`
+  - `src/lib/song-cloud.ts`
+
 ## 2026-07-02 — 8dad703
 
 **Chord charts: edit a whole chord line + long-press menu on iPad (#170)**
