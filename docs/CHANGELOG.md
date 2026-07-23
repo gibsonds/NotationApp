@@ -3,6 +3,20 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-07-23 — 35ae8b3
+
+**fix: paginate cloud song queries; add local song-bank mirror + auto-restore**
+
+- Commit: [`35ae8b3`](../../commit/35ae8b32ab1207e95cb2a590ff001f03687384aa)
+- Author: gibsonds
+- Files changed:
+  - `infra/lambda/repo.ts`
+  - `scripts/backup-songs.mjs`
+  - `src/app/page.tsx`
+  - `src/lib/__tests__/song-bank-corrupt.test.ts`
+  - `src/lib/song-bank-guard.ts`
+  - `src/lib/song-bank.ts`
+
 ## 2026-07-05 — 6310b7b
 
 **Chord-chart paste: sanitize pasted text before parsing (#172)**
