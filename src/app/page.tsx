@@ -28,7 +28,7 @@ import { CLOUD_ENABLED, getDeviceId, setDeviceId, cloudPutSong, syncSongbook, en
 import { setSongs as writeLocalSongs, type SongBankEntry } from "@/lib/song-bank";
 import ImportSongbookDialog, { type ImportSongbookPayload } from "@/components/ImportSongbookDialog";
 import { autosaveToCloud, CloudSaveEvents } from "@/lib/cloud-autosave";
-import { getSongs, updateSong } from "@/lib/song-bank";
+import { getSongs, restoreBankIfLost, updateSong } from "@/lib/song-bank";
 import type { SongDTO } from "@/lib/song-cloud-types";
 import type { Score } from "@/lib/schema";
 import ConflictModal from "@/components/ConflictModal";
@@ -736,6 +736,24 @@ export default function Home() {
       window.removeEventListener(CloudSaveEvents.Merged, onMerged);
     };
   }, [addMessage, setScore]);
+
+  // Startup safety net: if the localStorage song bank was wiped/evicted
+  // but the IndexedDB mirror still has songs, restore it and say so.
+  useEffect(() => {
+    restoreBankIfLost()
+      .then((n) => {
+        if (n > 0) {
+          addMessage({
+            id: uuidv4(),
+            role: "assistant",
+            content: `Your local song list was empty but a backup copy was found on this device — restored ${n} song${n === 1 ? "" : "s"} to My Songs.`,
+            timestamp: Date.now(),
+          });
+        }
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Songbook share-link: visiting `?join=<deviceId>` prompts to take over
   // that device's songbook. The param is stripped after the user decides

@@ -44,32 +44,53 @@ const dayKey = (ts: number): string => {
   return `${d.getUTCFullYear()}-${d.getUTCMonth() + 1}-${d.getUTCDate()}`;
 };
 
+// DynamoDB Query stops after reading ~1MB of items — BEFORE the
+// FilterExpression is applied, and Version rows share the SONG# prefix so
+// they count against that read. A single unpaginated page silently dropped
+// every song past the 1MB boundary (22 of 34 songs were invisible to sync,
+// which is how songs "disappeared" from My Songs). Always drain
+// LastEvaluatedKey.
+async function queryAll(
+  input: ConstructorParameters<typeof QueryCommand>[0]
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+): Promise<Record<string, any>[]> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const items: Record<string, any>[] = [];
+  let startKey: Record<string, unknown> | undefined;
+  do {
+    const out = await ddb.send(
+      new QueryCommand({ ...input, ExclusiveStartKey: startKey })
+    );
+    items.push(...(out.Items ?? []));
+    startKey = out.LastEvaluatedKey;
+  } while (startKey);
+  return items;
+}
+
 export async function listSongs(deviceId: string): Promise<SongSummary[]> {
-  const out = await ddb.send(
-    new QueryCommand({
-      TableName: TABLE,
-      KeyConditionExpression: "pk = :pk AND begins_with(sk, :sk)",
-      // FilterExpression excludes Version rows (sk = SONG#<id>#V#<ts>) which
-      // share the SONG# prefix but aren't songs in the user's bank.
-      FilterExpression: "entity = :entity",
-      ExpressionAttributeValues: {
-        ":pk": songPk(deviceId),
-        ":sk": "SONG#",
-        ":entity": "Song",
-      },
-      ExpressionAttributeNames: {
-        "#id": "id",
-        "#title": "title",
-        "#savedAt": "savedAt",
-        "#updatedAt": "updatedAt",
-        "#folder": "folder",
-        "#version": "version",
-      },
-      ProjectionExpression: "#id, #title, #savedAt, #updatedAt, #folder, #version",
-    })
-  );
+  const items = await queryAll({
+    TableName: TABLE,
+    KeyConditionExpression: "pk = :pk AND begins_with(sk, :sk)",
+    // FilterExpression excludes Version rows (sk = SONG#<id>#V#<ts>) which
+    // share the SONG# prefix but aren't songs in the user's bank.
+    FilterExpression: "entity = :entity",
+    ExpressionAttributeValues: {
+      ":pk": songPk(deviceId),
+      ":sk": "SONG#",
+      ":entity": "Song",
+    },
+    ExpressionAttributeNames: {
+      "#id": "id",
+      "#title": "title",
+      "#savedAt": "savedAt",
+      "#updatedAt": "updatedAt",
+      "#folder": "folder",
+      "#version": "version",
+    },
+    ProjectionExpression: "#id, #title, #savedAt, #updatedAt, #folder, #version",
+  });
   // Backfill empty version on legacy rows.
-  return (out.Items ?? []).map((it) => ({
+  return items.map((it) => ({
     ...(it as SongSummary),
     version: typeof it.version === "string" ? it.version : "",
   })) as SongSummary[];
@@ -152,18 +173,15 @@ export async function putSong(
       // Determine kind: "daily" if no daily version exists for today's
       // UTC date; otherwise "auto". Named revisions are created via a
       // separate endpoint and never hit this code path.
-      const allVersionsBefore = await ddb.send(
-        new QueryCommand({
-          TableName: TABLE,
-          KeyConditionExpression: "pk = :pk AND begins_with(sk, :sk)",
-          ExpressionAttributeValues: {
-            ":pk": songPk(deviceId),
-            ":sk": versionPrefix(id),
-          },
-          ScanIndexForward: false,
-        })
-      );
-      const existing = allVersionsBefore.Items ?? [];
+      const existing = await queryAll({
+        TableName: TABLE,
+        KeyConditionExpression: "pk = :pk AND begins_with(sk, :sk)",
+        ExpressionAttributeValues: {
+          ":pk": songPk(deviceId),
+          ":sk": versionPrefix(id),
+        },
+        ScanIndexForward: false,
+      });
       const today = dayKey(now);
       const hasDailyToday = existing.some(
         (v) => v.kind === "daily" && dayKey(v.updatedAt as number) === today
@@ -268,27 +286,25 @@ export async function putSong(
 
 /** List versions for a song with kind/name metadata, newest first. */
 export async function listVersions(deviceId: string, id: string): Promise<VersionEntry[]> {
-  const out = await ddb.send(
-    new QueryCommand({
-      TableName: TABLE,
-      KeyConditionExpression: "pk = :pk AND begins_with(sk, :sk)",
-      ExpressionAttributeValues: {
-        ":pk": songPk(deviceId),
-        ":sk": versionPrefix(id),
-      },
-      ExpressionAttributeNames: {
-        "#sk": "sk",
-        "#updatedAt": "updatedAt",
-        "#savedAt": "savedAt",
-        "#title": "title",
-        "#kind": "kind",
-        "#name": "name",
-      },
-      ProjectionExpression: "#sk, #updatedAt, #savedAt, #title, #kind, #name",
-      ScanIndexForward: false,
-    })
-  );
-  return (out.Items ?? []).map((it) => {
+  const items = await queryAll({
+    TableName: TABLE,
+    KeyConditionExpression: "pk = :pk AND begins_with(sk, :sk)",
+    ExpressionAttributeValues: {
+      ":pk": songPk(deviceId),
+      ":sk": versionPrefix(id),
+    },
+    ExpressionAttributeNames: {
+      "#sk": "sk",
+      "#updatedAt": "updatedAt",
+      "#savedAt": "savedAt",
+      "#title": "title",
+      "#kind": "kind",
+      "#name": "name",
+    },
+    ProjectionExpression: "#sk, #updatedAt, #savedAt, #title, #kind, #name",
+    ScanIndexForward: false,
+  });
+  return items.map((it) => {
     const ts = (it.updatedAt as number | undefined) ??
       parseInt(String(it.sk).split("#V#")[1] || "0", 10);
     return {

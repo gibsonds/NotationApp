@@ -1,4 +1,5 @@
 import type { Score } from "@/lib/schema";
+import { archiveBank, mirrorBank, readMirror } from "@/lib/song-bank-guard";
 
 export interface SongBankEntry {
   id: string;
@@ -21,6 +22,10 @@ export interface SongBankEntry {
 }
 
 const STORAGE_KEY = "notation-app-songs";
+/** Where a corrupt/unparseable bank payload is preserved (first corruption
+ *  wins, never overwritten) so it can be inspected and recovered instead of
+ *  being silently replaced by the next save. */
+const CORRUPT_KEY = "notation-app-songs-corrupt";
 const SONGS_UPDATED_EVENT = "notation-songs-updated";
 
 /** Event name dispatched on the window every time the song bank in
@@ -120,8 +125,33 @@ export function canonicalSongTitle(s: string): string {
 export function getSongs(): SongBankEntry[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as SongBankEntry[]) : [];
-  } catch {
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) throw new Error("song bank is not an array");
+    return parsed as SongBankEntry[];
+  } catch (err) {
+    // The bank exists but can't be read. Returning [] here makes the bank
+    // LOOK empty — and the next setSongs() would then permanently replace
+    // whatever is in the corrupt payload. Preserve the raw payload once
+    // (first corruption wins) and surface the failure before that happens.
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw && !localStorage.getItem(CORRUPT_KEY)) {
+        localStorage.setItem(CORRUPT_KEY, raw);
+      }
+    } catch {
+      /* best-effort */
+    }
+    console.warn("[song-bank] failed to read song bank:", err);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("notation-persist-failed", {
+          detail: {
+            error: err instanceof Error ? err.message : "Song list unreadable",
+          },
+        })
+      );
+    }
     return [];
   }
 }
@@ -153,13 +183,9 @@ export function saveSong(title: string, score: Score): SongBankEntry | null {
 }
 
 export function deleteSong(id: string): void {
-  try {
-    const songs = getSongs().filter(s => s.id !== id);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(songs));
-    fireSongsUpdated();
-  } catch {
-    console.warn("[song-bank] failed to delete song");
-  }
+  // Route through setSongs so the delete gets the same failure surfacing,
+  // IndexedDB mirroring, and pre-shrink backup as every other bank write.
+  setSongs(getSongs().filter(s => s.id !== id));
 }
 
 /** Write the whole song bank. Returns true on success, false if the write
@@ -168,12 +194,27 @@ export function deleteSong(id: string): void {
  *  this was a silent console.warn and the user lost work without any warning.
  *  On success it fires `notation-persist-ok` to clear the banner. */
 export function setSongs(songs: SongBankEntry[]): boolean {
+  // Pre-shrink safety net: if this write REMOVES any song (delete, dup
+  // cleanup, sync tombstone, join-wipe — or a bug), snapshot the previous
+  // bank to the IndexedDB rolling backups first so it's always recoverable.
+  try {
+    const prev = getSongs();
+    const nextIds = new Set(songs.map(s => s.id));
+    if (prev.some(s => !nextIds.has(s.id))) {
+      archiveBank(prev, `shrink: ${prev.length} -> ${songs.length}`).catch(() => {});
+    }
+  } catch {
+    /* best-effort */
+  }
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(songs));
     fireSongsUpdated();
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("notation-persist-ok"));
     }
+    // Keep the IndexedDB mirror in step — it's what restoreBankIfLost()
+    // rebuilds from if localStorage is ever wiped/evicted.
+    mirrorBank(songs).catch(() => {});
     return true;
   } catch (err) {
     console.warn("[song-bank] localStorage write failed", err);
@@ -296,6 +337,26 @@ export function findDuplicateGroups(
  * Exported because the resolver UI shows this number to the user so
  * they can see why a particular copy was picked as the default winner.
  */
+/** Startup safety net: if the localStorage song bank is empty (wiped,
+ *  evicted, or corrupt) but the IndexedDB mirror still has songs, restore
+ *  from the mirror. Returns the number of songs restored (0 = nothing to
+ *  do). An intentional empty bank (e.g. all songs deleted) mirrors as
+ *  empty too, so it won't be resurrected. */
+export async function restoreBankIfLost(): Promise<number> {
+  if (getSongs().length > 0) return 0;
+  let mirror: SongBankEntry[] | null = null;
+  try {
+    mirror = await readMirror();
+  } catch {
+    return 0;
+  }
+  if (!mirror || mirror.length === 0) return 0;
+  // Re-check right before writing — another flow (e.g. a sync) may have
+  // repopulated the bank while the mirror read was in flight.
+  if (getSongs().length > 0) return 0;
+  return setSongs(mirror) ? mirror.length : 0;
+}
+
 export function entryContentScore(s: SongBankEntry): number {
   const sections = s.score.sections ?? [];
   let chars = 0;
