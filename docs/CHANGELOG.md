@@ -3,6 +3,42 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-07-24 — c82c321
+
+**feat: OAuth42-authenticated parallel instance (NotationAuth) — songbook model**
+
+- Commit: [`c82c321`](../../commit/c82c321c2bcb1d80616dbaa484fc5fe69c824235)
+- Author: gibsonds
+- Files changed:
+  - `docker-compose.dev.yml`
+  - `infra/bin/app.ts`
+  - `infra/lambda/__tests__/auth-server.test.ts`
+  - `infra/lambda/auth.ts`
+  - `infra/lambda/ddb.ts`
+  - `infra/lambda/handler-auth.ts`
+  - `infra/lambda/import.ts`
+  - `infra/lambda/oauth-broker.ts`
+  - `infra/lambda/songbook-repo.ts`
+  - `infra/lambda/songbook-types.ts`
+  - `infra/lib/notation-auth-stack.ts`
+  - `infra/local/create-tables.ts`
+  - `infra/local/server.ts`
+  - `infra/package-lock.json`
+  - `infra/package.json`
+  - `infra/tsconfig.json`
+  - `next.config.ts`
+  - `scripts/deploy-auth-frontend.sh`
+  - `src/app/page.tsx`
+  - `src/components/MenuBar.tsx`
+  - `src/components/MySongsModal.tsx`
+  - `src/components/SongbookSwitcher.tsx`
+  - `src/lib/__tests__/auth-client.test.ts`
+  - `src/lib/__tests__/pkce.test.ts`
+  - `src/lib/auth.ts`
+  - `src/lib/pkce.ts`
+  - `src/lib/song-cloud.ts`
+  - `vitest.config.ts`
+
 ## 2026-07-23 — 35ae8b3
 
 **fix: paginate cloud song queries; add local song-bank mirror + auto-restore**
