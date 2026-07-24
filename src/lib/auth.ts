@@ -137,7 +137,10 @@ export async function beginSignIn(): Promise<void> {
     response_type: "code",
     client_id: OAUTH_CLIENT_ID,
     redirect_uri: redirectUri(),
-    scope: "openid profile email offline_access",
+    // No offline_access: OAuth42 rejects it as an unregistered scope
+    // ("Scope 'offline_access' is not allowed") — refresh tokens are
+    // governed by the app's Refresh Token grant type instead.
+    scope: "openid profile email",
     state,
     code_challenge: await challengeS256(verifier),
     code_challenge_method: "S256",
