@@ -33,6 +33,7 @@ import {
   type SyncStatus as CloudSyncStatus,
 } from "@/lib/song-cloud";
 import { logEvent, scoreTypeOf } from "@/lib/analytics";
+import { LegacyImportBanner, SongbookSwitcher } from "@/components/SongbookSwitcher";
 
 type SyncStatus = "idle" | CloudSyncStatus;
 
@@ -789,6 +790,7 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
         <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <h2 className="font-semibold text-gray-900 text-base">My Songs</h2>
+            <SongbookSwitcher onSwitched={() => void runSync()} />
             {badge}
           </div>
           <button
@@ -801,6 +803,8 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
             </svg>
           </button>
         </div>
+
+        <LegacyImportBanner onImported={() => void runSync()} />
 
         {/* Songs / Sets tab switcher (#73). Sets is a thin slice today —
          * per-device only, no cloud sync until #74 lands. The Songs tab

@@ -1,7 +1,14 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useSyncExternalStore } from "react";
 import { useScoreStore } from "@/store/score-store";
+import {
+  AUTH_ENABLED,
+  beginSignIn,
+  getSnapshot as authGetSnapshot,
+  signOut as authSignOut,
+  subscribe as authSubscribe,
+} from "@/lib/auth";
 import { scoreToMusicXML } from "@/lib/musicxml";
 import { ScoreSchema } from "@/lib/schema";
 import CloudSaveIndicator from "@/components/CloudSaveIndicator";
@@ -476,6 +483,8 @@ export default function MenuBar({
 
         <CloudSaveIndicator />
 
+        <AccountMenuItem />
+
         {/* Spacer — mode + annotate toggles live in the upper-right
             cluster rendered from page.tsx so they hold the same screen
             position across Edit and Perform. */}
@@ -530,6 +539,43 @@ export default function MenuBar({
         </div>
       </div>
     </>
+  );
+}
+
+/** Sign-in / account chip for the authenticated instance. Renders nothing
+ *  on the legacy build (AUTH_ENABLED=false there). */
+function AccountMenuItem() {
+  const auth = useSyncExternalStore(authSubscribe, authGetSnapshot, authGetSnapshot);
+  if (!AUTH_ENABLED) return null;
+  if (auth.status === "signed-in" && auth.claims) {
+    const label = auth.claims.email ?? auth.claims.name ?? auth.claims.sub;
+    return (
+      <span className="flex items-center gap-1.5 ml-2 text-xs text-gray-400">
+        <span className="max-w-[160px] truncate" title={`Signed in as ${label}`}>
+          {label}
+        </span>
+        <button
+          onClick={() => authSignOut()}
+          className="px-1.5 py-0.5 text-[11px] text-gray-500 hover:text-gray-200 hover:bg-white/10 rounded"
+          title="Sign out"
+        >
+          Sign out
+        </button>
+      </span>
+    );
+  }
+  return (
+    <button
+      onClick={() => beginSignIn()}
+      className="ml-2 px-2.5 py-1 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded"
+      title={
+        auth.status === "expired"
+          ? "Your session expired — sign in again"
+          : "Sign in with OAuth42"
+      }
+    >
+      {auth.status === "expired" ? "Session expired — sign in" : "Sign in"}
+    </button>
   );
 }
 

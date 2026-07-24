@@ -1,0 +1,39 @@
+# Local dev environment for the authenticated (instance B) API — no AWS,
+# no Lambda. `docker compose -f docker-compose.dev.yml up` gives you:
+#   - DynamoDB Local on :8000
+#   - the auth API (infra/local/server.ts adapter) on :4000, AUTH_STUB
+#     enabled: send `Authorization: Bearer stub:<sub>[:email]` to act as
+#     any user without the IdP.
+# The Next.js frontend runs on the host as usual (npm run dev) with
+# NEXT_PUBLIC_API_BASE=http://localhost:4000 in .env.local.
+services:
+  dynamodb:
+    image: amazon/dynamodb-local
+    command: ["-jar", "DynamoDBLocal.jar", "-inMemory", "-sharedDb"]
+    ports:
+      - "8000:8000"
+
+  api:
+    image: node:20-slim
+    working_dir: /app
+    volumes:
+      - ./infra:/app/infra:ro
+      - ./infra/node_modules:/app/infra/node_modules:ro
+    environment:
+      PORT: "4000"
+      NODE_ENV: development
+      AUTH_STUB: "1"
+      DDB_ENDPOINT: http://dynamodb:8000
+      TABLE_NAME: NotationAppAuth-local
+      LEGACY_TABLE_NAME: NotationApp-local
+      OAUTH_ISSUER: https://api.oauth42.com
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: local
+      AWS_SECRET_ACCESS_KEY: local
+    command: >
+      sh -c "npx -y tsx infra/local/create-tables.ts &&
+             npx -y tsx infra/local/server.ts"
+    ports:
+      - "4000:4000"
+    depends_on:
+      - dynamodb

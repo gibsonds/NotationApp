@@ -21,6 +21,7 @@
     "@aws-sdk/client-dynamodb": "^3.690.0",
     "@aws-sdk/lib-dynamodb": "^3.690.0",
     "aws-cdk-lib": "^2.170.0",
-    "constructs": "^10.4.2"
+    "constructs": "^10.4.2",
+    "jose": "^6.2.4"
   }
 }

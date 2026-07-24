@@ -8,11 +8,17 @@ export default defineConfig({
     },
   },
   test: {
-    include: ["src/**/__tests__/**/*.test.ts", "src/**/__tests__/**/*.test.tsx"],
+    include: [
+      "src/**/__tests__/**/*.test.ts",
+      "src/**/__tests__/**/*.test.tsx",
+      // Server-side pure-logic tests (auth gate, role checks, import
+      // planner) share this runner rather than standing up a second one.
+      "infra/lambda/__tests__/**/*.test.ts",
+    ],
     // Don't sweep up the Playwright e2e suite — it has a different test
     // runner and would otherwise complain about unsupported describe()
     // calls in the vitest context.
-    exclude: ["node_modules", "e2e", ".next", "infra"],
+    exclude: ["node_modules", "e2e", ".next", "infra/node_modules", "infra/cdk.out"],
     // Use happy-dom so window / document / localStorage / dispatchEvent
     // are available without booting a full browser. Faster than jsdom
     // for the bits the cloud-sync tests need.

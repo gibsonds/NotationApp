@@ -29,6 +29,7 @@ import { setSongs as writeLocalSongs, type SongBankEntry } from "@/lib/song-bank
 import ImportSongbookDialog, { type ImportSongbookPayload } from "@/components/ImportSongbookDialog";
 import { autosaveToCloud, CloudSaveEvents } from "@/lib/cloud-autosave";
 import { getSongs, restoreBankIfLost, updateSong } from "@/lib/song-bank";
+import { AUTH_ENABLED, completeSignIn, initAuth } from "@/lib/auth";
 import type { SongDTO } from "@/lib/song-cloud-types";
 import type { Score } from "@/lib/schema";
 import ConflictModal from "@/components/ConflictModal";
@@ -55,6 +56,18 @@ function stripJoinParam(): void {
   if (typeof window === "undefined") return;
   const url = new URL(window.location.href);
   url.searchParams.delete("join");
+  window.history.replaceState({}, "", url.toString());
+}
+
+// Same, for the OAuth callback params (?code=&state=&error=) so a reload
+// after sign-in doesn't re-fire the code exchange.
+function stripOAuthParams(): void {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  url.searchParams.delete("code");
+  url.searchParams.delete("state");
+  url.searchParams.delete("error");
+  url.searchParams.delete("error_description");
   window.history.replaceState({}, "", url.toString());
 }
 
@@ -752,6 +765,44 @@ export default function Home() {
         }
       })
       .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // OAuth42 sign-in callback (?code=&state=) and session rehydration.
+  // Inert on the legacy build (AUTH_ENABLED=false there).
+  useEffect(() => {
+    if (!AUTH_ENABLED) return;
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("code");
+    const state = params.get("state");
+    const authError = params.get("error");
+    if (authError) {
+      stripOAuthParams();
+      addMessage({
+        id: uuidv4(),
+        role: "assistant",
+        content: `Sign-in was not completed (${authError}).`,
+        timestamp: Date.now(),
+      });
+      return;
+    }
+    if (code && state) {
+      completeSignIn(code, state)
+        .then((ok) => {
+          stripOAuthParams();
+          if (ok) {
+            addMessage({
+              id: uuidv4(),
+              role: "assistant",
+              content: "Signed in. Your songbook is now synced to your account.",
+              timestamp: Date.now(),
+            });
+          }
+        })
+        .catch(() => stripOAuthParams());
+      return;
+    }
+    void initAuth();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

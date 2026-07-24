@@ -1,6 +1,12 @@
 import type { Score } from "@/lib/schema";
 import type { SongDTO, SongSummary, VersionEntry } from "@/lib/song-cloud-types";
 import { getSongs, setSongs as writeLocalSongs, type SongBankEntry } from "@/lib/song-bank";
+import {
+  AUTH_ENABLED,
+  getAccessToken,
+  getActiveSongbookId,
+  invalidateSession,
+} from "@/lib/auth";
 
 const DEVICE_ID_KEY = "notation-app-device-id";
 const DEVICE_ID_COOKIE = "notation_device_id";
@@ -116,18 +122,43 @@ export function isConflictError(err: unknown): err is ConflictCloudError {
 
 async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
   if (!CLOUD_ENABLED) throw new TerminalCloudError("cloud disabled");
+
+  // Authenticated instance (issue #74/#76): when the build carries OAuth
+  // config and the user has a session + active songbook, data routes are
+  // songbook-scoped and carry a Bearer token. The legacy build has
+  // AUTH_ENABLED=false, so this block is inert there.
+  let effectivePath = path;
+  const authHeaders: Record<string, string> = {};
+  if (AUTH_ENABLED) {
+    const token = await getAccessToken();
+    const songbookId = getActiveSongbookId();
+    if (token && songbookId) {
+      authHeaders.authorization = `Bearer ${token}`;
+      if (path === "/songs" || path.startsWith("/songs/")) {
+        effectivePath = `/songbooks/${encodeURIComponent(songbookId)}${path}`;
+      }
+    }
+  }
+
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
   try {
-    const res = await fetch(`${API_BASE}${path}`, {
+    const res = await fetch(`${API_BASE}${effectivePath}`, {
       ...init,
       signal: ctrl.signal,
       headers: {
         "content-type": "application/json",
         "x-device-id": getDeviceId(),
+        ...authHeaders,
         ...(init.headers ?? {}),
       },
     });
+    if (res.status === 401 && authHeaders.authorization) {
+      // Token rejected server-side (revoked / bad). Flip the session to
+      // expired so the UI prompts re-login; surface as terminal.
+      invalidateSession();
+      throw new TerminalCloudError("HTTP 401: session expired");
+    }
     if (res.status >= 500) throw new TransientCloudError(`HTTP ${res.status}`);
     if (res.status === 409) {
       // Optimistic-concurrency conflict (#87). Body carries the current

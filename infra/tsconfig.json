@@ -2,7 +2,9 @@
   "compilerOptions": {
     "target": "ES2022",
     "module": "commonjs",
-    "lib": ["ES2022"],
+    "lib": [
+      "ES2022"
+    ],
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -11,6 +13,15 @@
     "noImplicitAny": true,
     "outDir": "dist"
   },
-  "include": ["bin/**/*.ts", "lib/**/*.ts", "lambda/**/*.ts"],
-  "exclude": ["node_modules", "cdk.out", "dist"]
+  "include": [
+    "bin/**/*.ts",
+    "lib/**/*.ts",
+    "lambda/**/*.ts",
+    "local/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "cdk.out",
+    "dist"
+  ]
 }

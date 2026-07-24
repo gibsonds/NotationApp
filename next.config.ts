@@ -6,18 +6,24 @@ import type { NextConfig } from "next";
 // a banner pointing users at local-dev for AI generation.
 const isStaticExport = process.env.STATIC_EXPORT === "1";
 
+// GitHub Pages serves the legacy instance under /NotationApp; the
+// authenticated instance (CloudFront) is served at the root. BASE_PATH=""
+// (or any explicit value) overrides the Pages default at build time.
+const basePath = process.env.BASE_PATH ?? "/NotationApp";
+
 const nextConfig: NextConfig = {
   devIndicators: false,
   ...(isStaticExport
     ? {
         output: "export" as const,
-        basePath: "/NotationApp",
+        ...(basePath ? { basePath } : {}),
         images: { unoptimized: true },
         trailingSlash: true,
       }
     : {}),
   env: {
     NEXT_PUBLIC_STATIC_EXPORT: isStaticExport ? "1" : "",
+    NEXT_PUBLIC_BASE_PATH: isStaticExport ? basePath : "",
   },
 };
 
