@@ -3,6 +3,15 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-07-24 — 7f7f126
+
+**fix: drop offline_access from OAuth42 scope request**
+
+- Commit: [`7f7f126`](../../commit/7f7f12686185981ba53cd36da6595c934dc8b5b5)
+- Author: gibsonds
+- Files changed:
+  - `src/lib/auth.ts`
+
 ## 2026-07-24 — c82c321
 
 **feat: OAuth42-authenticated parallel instance (NotationAuth) — songbook model**
