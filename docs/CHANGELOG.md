@@ -3,6 +3,15 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-07-24 — b0c7a3d
+
+**fix: legacy import must take a pasted share code, not this origin's device id**
+
+- Commit: [`b0c7a3d`](../../commit/b0c7a3db62e01b8f1486537eac5f138665cce92b)
+- Author: gibsonds
+- Files changed:
+  - `src/components/SongbookSwitcher.tsx`
+
 ## 2026-07-24 — 7f7f126
 
 **fix: drop offline_access from OAuth42 scope request**
