@@ -6,16 +6,17 @@
  * (AUTH_ENABLED=false) so MySongsModal behaves exactly as before there.
  */
 
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import {
   AUTH_ENABLED,
   getSnapshot,
   importLegacyDevice,
   legacyImportDone,
+  loadMe,
   setActiveSongbook,
   subscribe,
 } from "@/lib/auth";
-import { getDeviceId } from "@/lib/song-cloud";
+import { extractJoinCode, getDeviceId } from "@/lib/song-cloud";
 
 /** Dropdown of the user's songbooks; switching re-syncs the song list. */
 export function SongbookSwitcher({ onSwitched }: { onSwitched: () => void }) {
@@ -57,55 +58,87 @@ export function LegacyImportBanner({ onImported }: { onImported: () => void }) {
   const auth = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   const [busy, setBusy] = useState(false);
   const [dismissed, setDismissed] = useState(false);
+  const [paste, setPaste] = useState("");
   const [result, setResult] = useState<string | null>(null);
 
-  if (
-    !AUTH_ENABLED ||
-    auth.status !== "signed-in" ||
-    !auth.activeSongbookId ||
-    dismissed ||
-    legacyImportDone()
-  ) {
+  // Self-heal: if /me failed at startup (network blip), memberships stay
+  // empty and imports would have nowhere to land — retry when the banner
+  // becomes visible.
+  const needsMe =
+    AUTH_ENABLED && auth.status === "signed-in" && auth.memberships.length === 0;
+  useEffect(() => {
+    if (needsMe) void loadMe();
+  }, [needsMe]);
+
+  if (!AUTH_ENABLED || auth.status !== "signed-in" || dismissed || legacyImportDone()) {
     return null;
   }
 
   const handleImport = async () => {
+    // The old songs live under the OLD site's device id, and this (new)
+    // origin mints its own — so the pasted share link/code from the old
+    // site is the real source. The current origin's device id is only a
+    // sensible default in local dev, where both instances share
+    // localhost:3000.
+    const code = paste.trim() ? extractJoinCode(paste) : getDeviceId();
+    if (!code) {
+      setResult("That doesn't look like a share link or device code — paste the whole link or the raw code.");
+      return;
+    }
+    if (!auth.activeSongbookId) {
+      setResult("Your songbook is still loading — try again in a few seconds.");
+      void loadMe();
+      return;
+    }
     setBusy(true);
-    const out = await importLegacyDevice(getDeviceId());
+    const out = await importLegacyDevice(code);
     setBusy(false);
     if (out) {
       setResult(
         `Imported ${out.songs} song${out.songs === 1 ? "" : "s"} (with ${out.versions} history versions).`
       );
       onImported();
-      setTimeout(() => setDismissed(true), 4000);
+      setTimeout(() => setDismissed(true), 6000);
     } else {
-      setResult("Import failed — try again from Sync settings, or ask for help.");
+      setResult(
+        "Import failed — check the code and try again (another account may have already claimed it)."
+      );
     }
   };
 
   return (
-    <div className="px-5 py-2.5 bg-blue-50 border-b border-blue-100 flex items-center gap-3 text-sm text-blue-900">
-      <span className="flex-1">
-        {result ??
-          "Bring your existing songs into this account? Your songs from the previous (device-based) sync can be copied in — nothing is deleted."}
-      </span>
-      {!result && (
-        <>
-          <button
-            onClick={handleImport}
-            disabled={busy}
-            className="px-3 py-1 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 rounded-lg"
-          >
-            {busy ? "Importing…" : "Import songs"}
-          </button>
+    <div className="px-5 py-2.5 bg-blue-50 border-b border-blue-100 text-sm text-blue-900">
+      <div className="flex items-center gap-3">
+        <span className="flex-1">
+          {result ??
+            "Bring in your songs from the old site: open its My Songs → Sync settings, copy the share link (or raw code), and paste it here. Nothing is deleted from the old site."}
+        </span>
+        {!result && (
           <button
             onClick={() => setDismissed(true)}
-            className="px-2 py-1 text-xs text-blue-700 hover:bg-blue-100 rounded-lg"
+            className="px-2 py-1 text-xs text-blue-700 hover:bg-blue-100 rounded-lg shrink-0"
           >
             Not now
           </button>
-        </>
+        )}
+      </div>
+      {!result && (
+        <div className="mt-2 flex items-center gap-2">
+          <input
+            type="text"
+            value={paste}
+            onChange={(e) => setPaste(e.target.value)}
+            placeholder="paste share link or device code from the old site"
+            className="flex-1 px-2 py-1.5 text-xs bg-white border border-blue-200 rounded text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <button
+            onClick={handleImport}
+            disabled={busy || !paste.trim()}
+            className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 rounded-lg shrink-0"
+          >
+            {busy ? "Importing…" : "Import songs"}
+          </button>
+        </div>
       )}
     </div>
   );
