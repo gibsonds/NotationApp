@@ -3,6 +3,17 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-08-16 — ea49c10
+
+**Fix red CI: resolve jose from the root test runner, correct fetch spy types**
+
+- Commit: [`ea49c10`](../../commit/ea49c1006a6de8eb90ad86011a9b128d0dfe38f6)
+- Author: gibsonds
+- Files changed:
+  - `package-lock.json`
+  - `package.json`
+  - `src/lib/__tests__/auth-client.test.ts`
+
 ## 2026-08-16 — 7eb8c6d
 
 **Stop a new song from overwriting the loaded song's entry**
