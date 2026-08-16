@@ -42,6 +42,28 @@ export async function autosaveToCloud(
   // Look up the local entry for its title, folder, and the cloudVersion
   // we'll send as expectedVersion. Fall back to score.title.
   const localEntry = getSongs().find(s => s.id === songId);
+
+  // Identity guard — never let one song's entry absorb another song's score.
+  // This push keeps the entry's EXISTING title (below) and replaces only its
+  // content, so a mismatched songId corrupts the entry in the worst possible
+  // way: it still looks like the right song in every list, but opens as a
+  // different one. That is exactly how the entry titled "Love Seeking Missile"
+  // came to hold the score for "Look What I Made".
+  //
+  // setScore now clears a stale currentSongId at the source, but this is the
+  // last check before an irreversible cloud write, so it stays as a backstop
+  // for any future caller that passes the wrong id. Both ids must be present
+  // to judge — legacy entries saved before Score.id was required fall through
+  // to the old behaviour rather than losing autosave entirely.
+  if (localEntry?.score?.id && score.id && localEntry.score.id !== score.id) {
+    console.warn(
+      `[cloud-autosave] refusing to overwrite song ${songId} ("${localEntry.title}", ` +
+        `score ${localEntry.score.id}) with a different score (${score.id}). ` +
+        `The open score is a different song; save it explicitly to create its own entry.`
+    );
+    return false;
+  }
+
   const title = localEntry?.title ?? score.title ?? "Untitled Song";
   const folder = localEntry?.folder ?? null;
   const expectedVersion = localEntry?.cloudVersion;

@@ -136,6 +136,97 @@ describe("autosaveToCloud", () => {
   });
 });
 
+// ── song identity guard ────────────────────────────────────────────────
+
+describe("autosaveToCloud — song identity guard", () => {
+  it("refuses to overwrite an entry that holds a DIFFERENT song's score", async () => {
+    // Regression: autosave keeps the ENTRY's title and replaces only its
+    // content, so pushing under a stale songId corrupts the entry invisibly —
+    // it still lists as the right song but opens as a different one. This is
+    // how "Love Seeking Missile" came to hold the score for "Look What I Made".
+    const { autosaveToCloud } = await import("../cloud-autosave");
+    const { saveSong, getSongs } = await import("../song-bank");
+
+    saveSong(
+      "Love Seeking Missile",
+      buildScore({ id: "score-lsm", title: "Love Seeking Missile" })
+    );
+    const songId = getSongs()[0].id;
+
+    // A different song is open while currentSongId still points at the above.
+    const other = buildScore({ id: "score-lwim", title: "Look What I Made" });
+
+    let putCalls = 0;
+    mockFetch({
+      [`PUT /songs/${songId}`]: () => {
+        putCalls++;
+        return dto(other, "v1");
+      },
+    });
+
+    const ok = await autosaveToCloud(songId, other);
+    expect(ok).toBe(false);
+    expect(putCalls).toBe(0);
+
+    // The entry still holds its own song — title and content agree.
+    const entry = getSongs()[0];
+    expect(entry.title).toBe("Love Seeking Missile");
+    expect(entry.score.id).toBe("score-lsm");
+    expect(entry.score.title).toBe("Love Seeking Missile");
+    // ...and it wasn't left flagged dirty by a push that never happened.
+    expect(entry.pendingSync).toBeUndefined();
+  });
+
+  it("still pushes an ordinary edit of the same song", async () => {
+    const { autosaveToCloud } = await import("../cloud-autosave");
+    const { saveSong, getSongs } = await import("../song-bank");
+
+    saveSong("Song", buildScore({ id: "score-x", title: "Song" }));
+    const songId = getSongs()[0].id;
+
+    // Same score id, edited content — this is the same song, not a new one.
+    const edited = buildScore({
+      id: "score-x",
+      title: "Song",
+      sections: [{ id: "v1", label: "Verse 1", lines: [{ chords: "Am", lyrics: "hello" }] }],
+    });
+
+    let putCalls = 0;
+    mockFetch({
+      [`PUT /songs/${songId}`]: () => {
+        putCalls++;
+        return dto({ ...edited, id: songId }, "v2");
+      },
+    });
+
+    expect(await autosaveToCloud(songId, edited)).toBe(true);
+    expect(putCalls).toBe(1);
+    expect(getSongs()[0].cloudVersion).toBe("v2");
+  });
+
+  it("still pushes when the stored score predates Score.id (legacy entry)", async () => {
+    const { autosaveToCloud } = await import("../cloud-autosave");
+    const { saveSong, getSongs } = await import("../song-bank");
+
+    const legacy = buildScore({ title: "Legacy" });
+    delete (legacy as { id?: string }).id;
+    saveSong("Legacy", legacy);
+    const songId = getSongs()[0].id;
+
+    let putCalls = 0;
+    mockFetch({
+      [`PUT /songs/${songId}`]: () => {
+        putCalls++;
+        return dto(buildScore({ id: songId, title: "Legacy" }), "v1");
+      },
+    });
+
+    // Undecidable, so fall through rather than disabling autosave for it.
+    expect(await autosaveToCloud(songId, buildScore({ id: "score-new", title: "Legacy" }))).toBe(true);
+    expect(putCalls).toBe(1);
+  });
+});
+
 // ── 409 → auto-merge path ──────────────────────────────────────────────
 
 describe("autosaveToCloud — 409 auto-merge", () => {
@@ -160,10 +251,10 @@ describe("autosaveToCloud — 409 auto-merge", () => {
     const songId = getSongs()[0].id;
     updateSong(songId, { cloudVersion: "v0" });
 
-    // Mine: edit line 0 chord.
+    // Mine: edit line 0 chord. Keeps baseScore's score id — a song's
+    // `score.id` is stable across edits and is NOT the song-bank entry id.
     const mine = buildScore({
       ...baseScore,
-      id: songId,
       sections: [
         {
           id: "v1",
@@ -176,10 +267,9 @@ describe("autosaveToCloud — 409 auto-merge", () => {
       ],
     });
 
-    // Theirs (cloud): edit line 1 chord.
+    // Theirs (cloud): edit line 1 chord — same song, so same score id.
     const theirs = buildScore({
       ...baseScore,
-      id: songId,
       sections: [
         {
           id: "v1",
@@ -238,14 +328,13 @@ describe("autosaveToCloud — 409 auto-merge", () => {
     const songId = getSongs()[0].id;
     updateSong(songId, { cloudVersion: "v0" });
 
+    // Both sides are the same song (same score id), disagreeing on one line.
     const mine = buildScore({
       ...base,
-      id: songId,
       sections: [{ id: "v1", label: "Verse 1", lines: [{ chords: "Am", lyrics: "hello" }] }],
     });
     const theirs = buildScore({
       ...base,
-      id: songId,
       sections: [{ id: "v1", label: "Verse 1", lines: [{ chords: "Em", lyrics: "hello" }] }],
     });
 

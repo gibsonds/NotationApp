@@ -428,11 +428,29 @@ export const useScoreStore = create<ProjectState>()(
       newHistory = newHistory.slice(newHistory.length - MAX_HISTORY);
       newStepHistory = newStepHistory.slice(newStepHistory.length - MAX_HISTORY);
     }
+    // A DIFFERENT song just replaced the open one → the old currentSongId is
+    // stale and must not follow it. Leaving it set is how a song entry ends up
+    // holding another song's content: cloud autosave pushes the open score to
+    // currentSongId while keeping that entry's ORIGINAL title, so "Love Seeking
+    // Missile" silently became "Look What I Made". Producers that mint a new
+    // score (New Score dialog, project/MusicXML import, AI create) don't all
+    // remember to clear it, so we clear it centrally — setScore is only called
+    // for full replacements, never by undo/redo or applyPatches.
+    //
+    // Same-song replacements keep the link: edits, `replace_score` patches, and
+    // conflict/version restores all preserve `score.id`. Loaders that DO know
+    // the song (My Songs, Sets, perform-mode picker) set currentSongId right
+    // after their setScore call, so this clear is immediately superseded.
+    const songChanged =
+      !!state.score?.id && !!score.id && state.score.id !== score.id;
     set({
       score,
       history: newHistory,
       stepEntryHistory: newStepHistory,
       historyIndex: newHistory.length - 1,
+      ...(songChanged && {
+        uiState: { ...state.uiState, currentSongId: null },
+      }),
     });
   },
 
