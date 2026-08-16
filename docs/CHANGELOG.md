@@ -3,6 +3,18 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-08-16 — 7eb8c6d
+
+**Stop a new song from overwriting the loaded song's entry**
+
+- Commit: [`7eb8c6d`](../../commit/7eb8c6d0ce86e3224fa4f444b0634d22737e449d)
+- Author: gibsonds
+- Files changed:
+  - `src/lib/__tests__/cloud-autosave.test.ts`
+  - `src/lib/cloud-autosave.ts`
+  - `src/store/__tests__/score-store-song-identity.test.ts`
+  - `src/store/score-store.ts`
+
 ## 2026-07-24 — b0c7a3d
 
 **fix: legacy import must take a pasted share code, not this origin's device id**
