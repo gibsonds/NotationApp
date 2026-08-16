@@ -53,7 +53,10 @@ describe("completeSignIn", () => {
 
   it("exchanges the code via the broker and persists tokens", async () => {
     const auth = await freshAuth();
-    const fetchSpy = vi.fn(async (url: string) => {
+    // Second param is declared so the assertion below can read the request
+    // init (the exchange body); fetch is called with it either way.
+    const fetchSpy = vi.fn(async (url: string, init?: RequestInit) => {
+      void init;
       if (String(url).endsWith("/oauth/exchange")) {
         return new Response(
           JSON.stringify({ access_token: "at-2", refresh_token: "rt-2", expires_in: 3600 }),
@@ -74,7 +77,7 @@ describe("completeSignIn", () => {
     expect(auth.getSnapshot().status).toBe("signed-in");
     expect(auth.getSnapshot().activeSongbookId).toBe("b1");
     // Exchange body carried the PKCE verifier and redirect_uri.
-    const body = JSON.parse(fetchSpy.mock.calls[0][1].body);
+    const body = JSON.parse(fetchSpy.mock.calls[0][1]!.body as string);
     expect(body.code_verifier).toBe("v");
     expect(body.code).toBe("code-1");
   });
