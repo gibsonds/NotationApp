@@ -64,6 +64,29 @@ export async function autosaveToCloud(
     return false;
   }
 
+  // Nothing actually changed → don't write.
+  //
+  // The autosave effect re-arms whenever `score` or `currentSongId` changes,
+  // and LOADING a song changes both — so simply opening a song used to push an
+  // identical copy 8s later. That burns a cloud write, moves `updatedAt`, and
+  // can mint a version row, so the version history filled up with entries that
+  // record no edit at all. `localEntry.score` mirrors what cloud holds (it's
+  // rewritten on every confirmed push), so if the open score matches it and
+  // there's nothing pending, there is nothing to say.
+  //
+  // The reference check above only catches re-runs with the SAME object; after
+  // a load the object is new, so this needs to be a value comparison.
+  if (
+    localEntry &&
+    !localEntry.pendingSync &&
+    localEntry.cloudVersion !== undefined &&
+    JSON.stringify(localEntry.score) === JSON.stringify(score)
+  ) {
+    lastPushedScore = score;
+    lastPushedSongId = songId;
+    return true;
+  }
+
   const title = localEntry?.title ?? score.title ?? "Untitled Song";
   const folder = localEntry?.folder ?? null;
   const expectedVersion = localEntry?.cloudVersion;

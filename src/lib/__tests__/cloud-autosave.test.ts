@@ -131,8 +131,113 @@ describe("autosaveToCloud", () => {
       },
     });
 
-    await autosaveToCloud(songId, score);
+    // Autosave only fires on an actual edit, so the pushed score must differ
+    // from the stored one — otherwise the no-op guard (rightly) skips it.
+    const edited = buildScore({
+      id: "v",
+      sections: [{ id: "v1", label: "Verse 1", lines: [{ chords: "Am", lyrics: "hello" }] }],
+    });
+    await autosaveToCloud(songId, edited);
     expect(receivedExpected).toBe("v0");
+  });
+});
+
+// Opening a song re-arms the autosave effect (both `score` and `currentSongId`
+// change), so an unchanged song used to push an identical copy 8s later —
+// burning a write, moving updatedAt, and minting version rows that record no
+// edit at all.
+describe("autosaveToCloud — unchanged score is not pushed", () => {
+  it("skips the push when the open score matches what cloud already has", async () => {
+    const { autosaveToCloud } = await import("../cloud-autosave");
+    const { saveSong, getSongs, updateSong } = await import("../song-bank");
+
+    const score = buildScore({ id: "same", title: "Same" });
+    saveSong("Same", score);
+    const songId = getSongs()[0].id;
+    updateSong(songId, { cloudVersion: "v1", pendingSync: false });
+
+    let putCalls = 0;
+    mockFetch({
+      [`PUT /songs/${songId}`]: () => {
+        putCalls++;
+        return dto({ ...score, id: songId }, "v2");
+      },
+    });
+
+    // A structurally identical but distinct object, exactly like a fresh load.
+    expect(await autosaveToCloud(songId, buildScore({ id: "same", title: "Same" }))).toBe(true);
+    expect(putCalls).toBe(0);
+    // cloudVersion untouched — nothing was written.
+    expect(getSongs()[0].cloudVersion).toBe("v1");
+  });
+
+  it("still pushes once the score actually changes", async () => {
+    const { autosaveToCloud } = await import("../cloud-autosave");
+    const { saveSong, getSongs, updateSong } = await import("../song-bank");
+
+    const score = buildScore({ id: "same", title: "Same" });
+    saveSong("Same", score);
+    const songId = getSongs()[0].id;
+    updateSong(songId, { cloudVersion: "v1", pendingSync: false });
+
+    let putCalls = 0;
+    mockFetch({
+      [`PUT /songs/${songId}`]: () => {
+        putCalls++;
+        return dto({ ...score, id: songId }, "v2");
+      },
+    });
+
+    const edited = buildScore({
+      id: "same",
+      title: "Same",
+      sections: [{ id: "v1", label: "Verse 1", lines: [{ chords: "F", lyrics: "hello" }] }],
+    });
+    expect(await autosaveToCloud(songId, edited)).toBe(true);
+    expect(putCalls).toBe(1);
+  });
+
+  it("still pushes an unchanged score that never reached cloud", async () => {
+    // No cloudVersion = never synced. "Unchanged" against a local-only entry
+    // is exactly the migration case that MUST be pushed.
+    const { autosaveToCloud } = await import("../cloud-autosave");
+    const { saveSong, getSongs } = await import("../song-bank");
+
+    const score = buildScore({ id: "fresh", title: "Fresh" });
+    saveSong("Fresh", score);
+    const songId = getSongs()[0].id;
+
+    let putCalls = 0;
+    mockFetch({
+      [`PUT /songs/${songId}`]: () => {
+        putCalls++;
+        return dto({ ...score, id: songId }, "v1");
+      },
+    });
+
+    await autosaveToCloud(songId, buildScore({ id: "fresh", title: "Fresh" }));
+    expect(putCalls).toBe(1);
+  });
+
+  it("still pushes when a prior push is pending", async () => {
+    const { autosaveToCloud } = await import("../cloud-autosave");
+    const { saveSong, getSongs, updateSong } = await import("../song-bank");
+
+    const score = buildScore({ id: "dirty", title: "Dirty" });
+    saveSong("Dirty", score);
+    const songId = getSongs()[0].id;
+    updateSong(songId, { cloudVersion: "v1", pendingSync: true });
+
+    let putCalls = 0;
+    mockFetch({
+      [`PUT /songs/${songId}`]: () => {
+        putCalls++;
+        return dto({ ...score, id: songId }, "v2");
+      },
+    });
+
+    await autosaveToCloud(songId, buildScore({ id: "dirty", title: "Dirty" }));
+    expect(putCalls).toBe(1);
   });
 });
 

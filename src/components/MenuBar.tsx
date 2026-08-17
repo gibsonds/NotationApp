@@ -14,6 +14,7 @@ import { ScoreSchema } from "@/lib/schema";
 import CloudSaveIndicator from "@/components/CloudSaveIndicator";
 import { CLOUD_ENABLED, cloudCreateNamedRevision } from "@/lib/song-cloud";
 import { getSongs } from "@/lib/song-bank";
+import { saveScoreToSongbook } from "@/lib/song-save";
 import { IS_STATIC_EXPORT, STATIC_FEATURE_DISABLED_MESSAGE } from "@/lib/api-availability";
 import { v4 as uuidv4 } from "uuid";
 import { logEvent, scoreTypeOf } from "@/lib/analytics";
@@ -138,7 +139,7 @@ export default function MenuBar({
     score, undo, redo, history, historyIndex, reset, setScore,
     setWarnings, addMessage, setIsGenerating, saveRevision,
     messages, savedRevisions, layout, setLayout,
-    copySelection, pasteAtSelection, selection, setSelection,
+    copySelection, pasteAtSelection, selection, setSelection, setUIState,
   } = useScoreStore();
   const currentSongId = useScoreStore((s) => s.uiState.currentSongId);
 
@@ -260,17 +261,65 @@ export default function MenuBar({
     }
   };
 
-  const handleSave = () => {
+  /**
+   * The durable save: writes the score into the songbook and pushes it to the
+   * cloud. This is what Cmd+S does now.
+   *
+   * A score that has never been saved here has no song id, and cloud autosave
+   * refuses to run without one \u2014 so before this existed, a brand-new chart
+   * (a fresh paste, say) lived only in this browser and was lost the moment
+   * something replaced it. "Save Revision" looked like it covered that and
+   * did not.
+   */
+  const handleSaveToSongbook = async (forceNew = false) => {
     if (!score) return;
-    const name = `${score.title || "Score"} \u2014 ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
-    saveRevision(name);
-    void pushNamedRevisionToCloud(name);
-    addMessage({ id: uuidv4(), role: "assistant", content: `Saved revision: "${name}".`, timestamp: Date.now() });
+    const isNew = forceNew || !currentSongId;
+    let title = currentSongId && !forceNew
+      ? (getSongs().find((s) => s.id === currentSongId)?.title ?? score.title)
+      : score.title;
+    if (isNew) {
+      const answer = prompt("Save to songbook as:", score.title || "Untitled Song");
+      if (answer === null) return; // cancelled
+      title = answer.trim() || score.title || "Untitled Song";
+    }
+
+    logEvent({ event: "menubar_save_songbook", scoreType: scoreTypeOf(score) });
+    const result = await saveScoreToSongbook({
+      score,
+      songId: forceNew ? null : currentSongId,
+      title,
+      asNew: forceNew,
+    });
+    setUIState({ currentSongId: result.entry.id });
+
+    const where =
+      result.cloud === "ok" ? "saved to your songbook and synced to the cloud"
+      : result.cloud === "offline" ? "saved on this device \u2014 the cloud push is queued and will retry"
+      : result.cloud === "disabled" ? "saved on this device (cloud sync is off in this build)"
+      : `saved on this device, but the cloud push FAILED: ${result.error}`;
+    addMessage({
+      id: uuidv4(),
+      role: "assistant",
+      content: `"${result.entry.title}" ${where}.`,
+      timestamp: Date.now(),
+    });
   };
 
-  const handleSaveAs = () => {
+  /**
+   * A named snapshot WITHIN a song's history. Only meaningful once the song
+   * exists in the songbook, so save it there first rather than reporting a
+   * success that wrote nothing durable.
+   */
+  const handleSaveRevision = async (promptForName: boolean) => {
     if (!score) return;
-    const name = prompt("Revision name:", score.title || "Score");
+    if (!currentSongId) {
+      await handleSaveToSongbook(false);
+      // Bail if the user cancelled the name prompt.
+      if (!useScoreStore.getState().uiState.currentSongId) return;
+    }
+    const name = promptForName
+      ? prompt("Revision name:", score.title || "Score")
+      : `${score.title || "Score"} \u2014 ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
     if (!name) return;
     saveRevision(name);
     void pushNamedRevisionToCloud(name);
@@ -398,8 +447,13 @@ export default function MenuBar({
     { label: "Reset local and pull from cloud...", action: () => onResetAndPullFromCloud?.() },
     { label: "Import...", shortcut: "", action: () => fileInputRef.current?.click() },
     { separator: true },
-    { label: "Save Revision", shortcut: "Cmd+S", action: handleSave, enabled: !!score },
-    { label: "Save Revision As...", action: handleSaveAs, enabled: !!score },
+    // Cmd+S belongs to the save that actually persists. "Save Revision" held
+    // it while writing only an in-memory snapshot, so the universal save
+    // shortcut silently lost brand-new work.
+    { label: "Save to Songbook", shortcut: "Cmd+S", action: () => void handleSaveToSongbook(false), enabled: !!score },
+    { label: "Save to Songbook As...", action: () => void handleSaveToSongbook(true), enabled: !!score },
+    { label: "Save Revision", action: () => void handleSaveRevision(false), enabled: !!score },
+    { label: "Save Revision As...", action: () => void handleSaveRevision(true), enabled: !!score },
     { label: "Save Project", action: handleSaveProject, enabled: !!score },
     { separator: true },
     { label: "Export MusicXML", action: handleExportMusicXML, enabled: !!score },
