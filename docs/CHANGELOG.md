@@ -3,6 +3,16 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-08-17 — c5dd2cc
+
+**Chord-chart paste: treat bar-delimited rows as chords, not lyrics**
+
+- Commit: [`c5dd2cc`](../../commit/c5dd2cc3fe8f2a8b14bdcf2d887512b6d72d9ab9)
+- Author: gibsonds
+- Files changed:
+  - `src/lib/__tests__/lyric-parser.test.ts`
+  - `src/lib/lyric-parser.ts`
+
 ## 2026-08-17 — 0392ec7
 
 **Add Save to Songbook; stop saving a song that wasn't edited**
