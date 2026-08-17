@@ -3,6 +3,17 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-08-17 — 6774590
+
+**Install infra dependencies in CI so the Lambda tests can load**
+
+- Commit: [`6774590`](../../commit/6774590596a8dc84f229f02a94e91c10be718de8)
+- Author: gibsonds
+- Files changed:
+  - `.github/workflows/test.yml`
+  - `package-lock.json`
+  - `package.json`
+
 ## 2026-08-16 — ea49c10
 
 **Fix red CI: resolve jose from the root test runner, correct fetch spy types**
