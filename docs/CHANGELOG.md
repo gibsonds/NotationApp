@@ -3,6 +3,18 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-08-17 — 0392ec7
+
+**Add Save to Songbook; stop saving a song that wasn't edited**
+
+- Commit: [`0392ec7`](../../commit/0392ec78edaa1756bdb31972d1e1c4d96332b65d)
+- Author: gibsonds
+- Files changed:
+  - `src/components/MenuBar.tsx`
+  - `src/lib/__tests__/cloud-autosave.test.ts`
+  - `src/lib/cloud-autosave.ts`
+  - `src/lib/song-save.ts`
+
 ## 2026-08-17 — 6774590
 
 **Install infra dependencies in CI so the Lambda tests can load**
