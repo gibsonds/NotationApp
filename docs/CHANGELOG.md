@@ -3,6 +3,24 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-08-17 — e9b3df4
+
+**Riffs phase 2: tab renderer, inline chip, peek card**
+
+- Commit: [`e9b3df4`](../../commit/e9b3df41f29d25850d8a6921e1179e14e3e868c6)
+- Author: gibsonds
+- Files changed:
+  - `e2e/riff-peek.spec.ts`
+  - `src/app/page.tsx`
+  - `src/components/ChordChartView.tsx`
+  - `src/components/PaginatedPerformChart.tsx`
+  - `src/components/PerformView.tsx`
+  - `src/components/RiffChip.tsx`
+  - `src/components/RiffPeekCard.tsx`
+  - `src/components/RiffPeekHost.tsx`
+  - `src/components/RiffTabStaff.tsx`
+  - `src/store/score-store.ts`
+
 ## 2026-08-17 — c5dd2cc
 
 **Chord-chart paste: treat bar-delimited rows as chords, not lyrics**
