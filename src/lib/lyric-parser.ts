@@ -25,6 +25,30 @@ export function sanitizePastedText(text: string): string {
   return expandTabs(normalized);
 }
 
+/**
+ * Drop leading and trailing BLANK lines without touching the horizontal
+ * whitespace of the lines we keep.
+ *
+ * Use this instead of `String.trim()` on any chord-chart text. `trim()` also
+ * eats the leading spaces of the FIRST line — and in an above-the-line chart
+ * that indentation *is* the column data that puts a chord over its word. A
+ * paste like
+ *
+ *       "      C              G\nDriving to your house"
+ *
+ * came back as "C              G", sliding the first chord line 6 columns left
+ * while every later line kept its indent, so the chords no longer sat over
+ * their words and the user had to re-space the line by hand.
+ */
+export function trimBlankLines(text: string): string {
+  const lines = text.split("\n");
+  let start = 0;
+  let end = lines.length;
+  while (start < end && lines[start].trim() === "") start++;
+  while (end > start && lines[end - 1].trim() === "") end--;
+  return lines.slice(start, end).join("\n");
+}
+
 // ── Section header detection ──────────────────────────────────────────────────
 
 // Matches lines like "Verse 1:", "CHORUS", "Pre-Chorus:", "Bridge 2"
@@ -165,7 +189,7 @@ function parseAboveLine(text: string): WordChordPair[] {
  * Pure lyrics return pairs with no chord field set.
  */
 export function parseLyricsWithChords(text: string): WordChordPair[] {
-  const trimmed = sanitizePastedText(text).trim();
+  const trimmed = trimBlankLines(sanitizePastedText(text));
   if (!trimmed) return [];
   if (/\[[A-G][^\]]*\]/.test(trimmed)) return parseBracketed(trimmed);
   return parseAboveLine(trimmed);
@@ -209,7 +233,7 @@ function pairsToChordChartLine(pairs: WordChordPair[]): ChordChartLine {
  * Blank lines produce { chords: "", lyrics: "" } for visual spacing.
  */
 export function parseToChordChartLines(text: string): ChordChartLine[] {
-  const trimmed = sanitizePastedText(text).trim();
+  const trimmed = trimBlankLines(sanitizePastedText(text));
   if (!trimmed) return [];
 
   // Bracketed format: process line by line
@@ -265,7 +289,7 @@ export function parseToChordChartLines(text: string): ChordChartLine[] {
  * (header immediately followed by another header) are dropped.
  */
 export function parseToSections(text: string): ParsedSection[] {
-  const trimmed = sanitizePastedText(text).trim();
+  const trimmed = trimBlankLines(sanitizePastedText(text));
   if (!trimmed) return [];
 
   const rawLines = trimmed.split("\n");

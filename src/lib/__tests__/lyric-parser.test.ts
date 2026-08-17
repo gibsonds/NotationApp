@@ -76,3 +76,53 @@ describe("parseToSections — tabbed above-line paste aligns", () => {
     expect(line.chords).not.toContain("\t");
   });
 });
+
+// The chord line's leading spaces ARE the column data that puts each chord
+// over its word. A plain .trim() on the pasted blob ate them from the FIRST
+// line only, sliding that line left while every later line kept its indent —
+// so a pasted chart came in misaligned and had to be re-spaced by hand.
+describe("paste preserves chord-line indentation", () => {
+  const INDENTED = [
+    "      C              G",
+    "Driving to your house",
+    "        Am           F",
+    "Long way east then a little bit south",
+  ].join("\n");
+
+  it("keeps the first chord line's leading spaces", () => {
+    const lines = parseToChordChartLines(INDENTED);
+    expect(lines[0].chords).toBe("      C              G");
+    expect(lines[0].lyrics).toBe("Driving to your house");
+  });
+
+  it("indents the first and later chord lines consistently", () => {
+    const lines = parseToChordChartLines(INDENTED);
+    // Both chord lines keep their own indent — the bug made only the first differ.
+    expect(lines[0].chords.indexOf("C")).toBe(6);
+    expect(lines[1].chords.indexOf("Am")).toBe(8);
+  });
+
+  it("keeps indentation through parseToSections, including after a header", () => {
+    const sections = parseToSections(`Verse 1\n${INDENTED}`);
+    expect(sections).toHaveLength(1);
+    expect(sections[0].lines[0].chords).toBe("      C              G");
+  });
+
+  it("still drops surrounding blank lines", () => {
+    const lines = parseToChordChartLines(`\n\n${INDENTED}\n\n`);
+    expect(lines).toHaveLength(2);
+    expect(lines[0].chords).toBe("      C              G");
+  });
+
+  it("returns [] for whitespace-only input", () => {
+    expect(parseToChordChartLines("   \n\t\n  ")).toEqual([]);
+    expect(parseToSections("   \n\n")).toEqual([]);
+  });
+
+  it("keeps the chord over its word — the column lands on the same character", () => {
+    const lines = parseToChordChartLines(INDENTED);
+    // Column 6 of the lyric line is what "C" sits above; if the chord line got
+    // trimmed, C would land on column 0 ("D") instead.
+    expect(lines[0].lyrics[lines[0].chords.indexOf("C")]).toBe("g");
+  });
+});

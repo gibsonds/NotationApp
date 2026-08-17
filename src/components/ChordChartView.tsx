@@ -876,21 +876,35 @@ function ChordEntryBar({
       e.preventDefault();
       e.stopPropagation();
       cancel();
+    } else if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && (e.altKey || e.metaKey)) {
+      // Alt/⌥+←/→ (⌘ too, for keyboards where ⌥+arrow is taken): commit the
+      // chord and re-open one COLUMN over — i.e. nudge the chord along the
+      // line. This is how you move a chord that landed on the wrong syllable.
+      // Unmodified ←/→ deliberately falls through so it still moves the text
+      // caret inside the input.
+      e.preventDefault();
+      e.stopPropagation();
+      submit(e.key === "ArrowLeft" ? "step-left" : "step-right");
     }
   };
 
   // Keep focus on the input when a bar button is tapped — pointerdown would
   // otherwise blur it and fire the blur-commit before the button's onClick.
   const keepFocus = (e: React.PointerEvent) => e.preventDefault();
+  // min-h/min-w meet the 44px touch target from docs/ui-guidelines.md.
   const stepBtn =
-    "px-4 py-2 rounded bg-[#0f0f1f] border border-gray-700 text-gray-200 text-xl leading-none shrink-0 hover:bg-[#22223a] active:bg-[#2a2a44]";
+    "px-3 min-w-[44px] min-h-[44px] rounded bg-[#0f0f1f] border border-gray-700 text-gray-200 text-xl leading-none shrink-0 hover:bg-[#22223a] active:bg-[#2a2a44]";
+  const nudgeBtn =
+    "px-3 min-w-[44px] min-h-[44px] rounded bg-[#0f0f1f] border border-pink-500/40 text-pink-200 text-base leading-none shrink-0 hover:bg-[#22223a] active:bg-[#2a2a44]";
 
   return (
     <div
       className="fixed left-0 right-0 z-[80] print-hide flex items-center gap-2 px-3 py-2 bg-[#1a1a2e] border-t border-pink-500/50 shadow-[0_-6px_16px_rgba(0,0,0,0.5)]"
       style={{ bottom: keyboardInset, paddingBottom: "calc(0.5rem + env(safe-area-inset-bottom))" }}
     >
-      <span className="text-xs text-gray-400 shrink-0 max-w-[28%] truncate">
+      {/* Hidden below sm: the four step/nudge buttons need the width more than
+          the caption does on a phone. */}
+      <span className="hidden sm:block text-xs text-gray-400 shrink-0 max-w-[22%] truncate">
         {wordLabel ? `Chord over “${wordLabel}”` : "Add chord"}
       </span>
       <input
@@ -910,10 +924,34 @@ function ChordEntryBar({
         spellCheck={false}
         aria-label="Chord"
       />
-      <button type="button" onPointerDown={keepFocus} onClick={() => submit("prev-word")} className={stepBtn} aria-label="Previous word">
+      {/* Nudge the chord one column along the line — the touch equivalent of
+          Alt+←/→, and the only way to move a chord on an iPad soft keyboard.
+          Pink to distinguish "move this chord" from the gray "go to another
+          word" buttons beside them. */}
+      <button
+        type="button"
+        onPointerDown={keepFocus}
+        onClick={() => submit("step-left")}
+        className={nudgeBtn}
+        title="Move this chord one column left (Alt+←)"
+        aria-label="Move chord left one column"
+      >
+        &#9664;
+      </button>
+      <button
+        type="button"
+        onPointerDown={keepFocus}
+        onClick={() => submit("step-right")}
+        className={nudgeBtn}
+        title="Move this chord one column right (Alt+→)"
+        aria-label="Move chord right one column"
+      >
+        &#9654;
+      </button>
+      <button type="button" onPointerDown={keepFocus} onClick={() => submit("prev-word")} className={stepBtn} title="Previous word (Shift+Tab)" aria-label="Previous word">
         &#8249;
       </button>
-      <button type="button" onPointerDown={keepFocus} onClick={() => submit("next-word")} className={stepBtn} aria-label="Next word">
+      <button type="button" onPointerDown={keepFocus} onClick={() => submit("next-word")} className={stepBtn} title="Next word (Tab)" aria-label="Next word">
         &#8250;
       </button>
       <button
@@ -1453,22 +1491,30 @@ export default function ChordChartView({ score, performMode = false, performColu
       return;
     }
 
+    // Alt+←/→ (and the ◀ ▶ buttons) NUDGE the chord: it gets written one
+    // column over from where it currently sits, rather than back at its own
+    // column. Everything else writes at the current editing column.
+    const nudge = mode === "step-left" ? -1 : mode === "step-right" ? 1 : 0;
+    const placeCol = Math.max(0, editing.col + nudge);
+
     let newChords = line.chords;
     if (editing.originalToken) {
       newChords = setChordAtColumn(newChords, editing.originalToken.start, "");
     }
+    let placedCol = placeCol;
     if (newChord !== "") {
       // Don't clobber a different token (e.g. a bar line) sitting at the
       // target column. If the destination is already occupied by something
       // other than the token we're moving, slide the placement to right
       // after that token so a moved chord lands adjacent to a bar instead
       // of replacing it.
-      let targetCol = editing.col;
+      let targetCol = placeCol;
       const collision = findTokenAtColumn(newChords, targetCol, 0);
       if (collision) {
         targetCol = collision.start + collision.len;
       }
       newChords = setChordAtColumn(newChords, targetCol, newChord);
+      placedCol = targetCol;
     }
 
     if (newChords !== line.chords) {
@@ -1485,23 +1531,36 @@ export default function ChordChartView({ score, performMode = false, performColu
       return;
     }
 
-    // Tab / Shift+Tab → next/previous word.
-    // Alt+←/→ → previous/next column (letter-grain step).
-    // For all four, re-open the chord input at the new position so editing
-    // stays on the keyboard.
-    let target: { lineIdx: number; col: number } | null;
-    if (mode === "step-left") {
-      target = { lineIdx: editing.lineIdx, col: Math.max(0, editing.col - 1) };
-    } else if (mode === "step-right") {
-      target = { lineIdx: editing.lineIdx, col: editing.col + 1 };
-    } else {
-      target = findNextEditingTarget(
-        section,
-        editing.lineIdx,
-        editing.col,
-        mode === "next-word" ? "forward" : "backward",
-      );
+    // Nudge: re-anchor directly on the chord we just moved and keep the input
+    // open on it, so repeated Alt+← walks it along the line.
+    //
+    // This must NOT go through findTokenAtColumn the way the word-step path
+    // below does: that helper matches with `slack = 1`, so asking it for the
+    // token at the neighbouring column returns the chord we just placed and
+    // snaps the anchor back to its old start. The chord would then never
+    // actually move — which is exactly how this regressed.
+    if (nudge !== 0) {
+      setEditing({
+        sectionId: editing.sectionId,
+        lineIdx: editing.lineIdx,
+        col: placedCol,
+        initialValue: newChord,
+        originalToken:
+          newChord === ""
+            ? undefined
+            : { start: placedCol, len: newChord.length, text: newChord },
+      });
+      return;
     }
+
+    // Tab / Shift+Tab → next/previous word. Re-open the chord input at the
+    // new position so editing stays on the keyboard.
+    const target = findNextEditingTarget(
+      section,
+      editing.lineIdx,
+      editing.col,
+      mode === "next-word" ? "forward" : "backward",
+    );
     if (!target) {
       setEditing(null);
       return;
@@ -1761,9 +1820,9 @@ export default function ChordChartView({ score, performMode = false, performColu
           <code className="text-pink-300">|</code>).
           <strong> Tab</strong>: commit and jump to the next word.
           <strong> Shift+Tab</strong>: previous word.{" "}
-          <strong>Option+←/→</strong> (Alt+←/→ on Win): commit and step one column.{" "}
-          <strong>Shift+←/→</strong>: move the chord position before commit.
-          Plain ←/→ moves the text caret. <strong>Enter</strong>: commit and
+          <strong>Option+←/→</strong> (Alt+←/→ on Win), or the{" "}
+          <span className="text-pink-300">◀ ▶</span> buttons: move the chord one
+          column. Plain ←/→ moves the text caret. <strong>Enter</strong>: commit and
           close. <strong>Esc</strong>: cancel. Empty + Enter deletes.{" "}
           <strong>Double-click</strong> a lyric to edit (Enter splits line).{" "}
           <strong>Right-click</strong> a line for the line menu.{" "}
