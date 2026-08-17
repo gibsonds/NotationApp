@@ -3,6 +3,7 @@ import {
   sanitizePastedText,
   parseToChordChartLines,
   parseToSections,
+  parseLyricsWithChords,
 } from "../lyric-parser";
 
 describe("sanitizePastedText", () => {
@@ -124,5 +125,49 @@ describe("paste preserves chord-line indentation", () => {
     // Column 6 of the lyric line is what "C" sits above; if the chord line got
     // trimmed, C would land on column 0 ("D") instead.
     expect(lines[0].lyrics[lines[0].chords.indexOf("C")]).toBe("g");
+  });
+});
+
+// Bar-delimited chord rows with no lyric under them — how intros, turnarounds
+// and solo sections are actually written. A chord line is only recognized when
+// EVERY token qualifies, and "|" didn't, so these were filed as lyrics and
+// rendered as words.
+describe("bar-delimited chord rows are chords, not lyrics", () => {
+  it("recognizes a bar-delimited intro row", () => {
+    const lines = parseToChordChartLines("|Am G |Fmaj7 | F |");
+    expect(lines).toHaveLength(1);
+    expect(lines[0].lyrics).toBe("");
+    expect(lines[0].chords).toBe("|Am G |Fmaj7 | F |");
+  });
+
+  it("keeps the bar markers, so bar tracking still sees them", () => {
+    const lines = parseToChordChartLines("  C | G | C | G");
+    expect(lines[0].chords).toContain("|");
+    expect(lines[0].lyrics).toBe("");
+  });
+
+  it("handles a whole intro block of bar rows", () => {
+    const lines = parseToChordChartLines("|Am G |Fmaj7 | F |\n  C | G | C | G");
+    expect(lines).toHaveLength(2);
+    expect(lines.every((l) => l.lyrics === "")).toBe(true);
+    expect(lines.every((l) => l.chords.includes("|"))).toBe(true);
+  });
+
+  it("still pairs a bar-delimited chord line with the lyric beneath it", () => {
+    const lines = parseToChordChartLines("| Am | F |\nway back then when we were young");
+    expect(lines).toHaveLength(1);
+    expect(lines[0].chords).toBe("| Am | F |");
+    expect(lines[0].lyrics).toBe("way back then when we were young");
+  });
+
+  it("does NOT mistake an ordinary lyric line for chords", () => {
+    const lines = parseToChordChartLines("I got no one to care");
+    expect(lines[0].chords).toBe("");
+    expect(lines[0].lyrics).toBe("I got no one to care");
+  });
+
+  it("strips bars from the chord when extracting to word pairs", () => {
+    const pairs = parseLyricsWithChords("|Am    |F\nhello world");
+    expect(pairs.map((p) => p.chord)).toEqual(["Am", "F"]);
   });
 });

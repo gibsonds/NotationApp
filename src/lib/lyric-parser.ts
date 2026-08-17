@@ -104,7 +104,33 @@ const CHORD_RE = /^[A-G][b#]?(m|M|maj|min|dim|aug|sus[24]?|add)?\d*(\/[A-G][b#]?
 function stripChordPunct(s: string): string {
   return s.replace(/[.,]+$/, "");
 }
-function isChordToken(s: string): boolean { return CHORD_RE.test(stripChordPunct(s)); }
+
+/**
+ * Is this token something that can appear on a chord line?
+ *
+ * Bars count. People write intros and turnarounds as bar-delimited chord rows
+ * with no lyric under them — "|Am G |Fmaj7 | F |" — and a chord line is only
+ * recognized when EVERY token qualifies. Rejecting "|" meant those rows were
+ * filed as lyrics and rendered as words, which is how a real Intro came in as
+ * a line of text.
+ *
+ * Bars are stripped only for the chord TEST; `parseToChordChartLines` keeps the
+ * raw line, so the "|" markers survive into the chart and still drive bar
+ * tracking.
+ */
+function isChordToken(s: string): boolean {
+  const t = stripChordPunct(s);
+  if (t === "") return false;
+  if (/^\|+$/.test(t)) return true; // a bare bar, or "||"
+  const core = t.replace(/^\|+/, "").replace(/\|+$/, "");
+  return core !== "" && CHORD_RE.test(core);
+}
+
+/** The chord text itself, with any bar markers and autocorrect punctuation
+ *  removed. Used where a chord is extracted rather than kept in place. */
+function chordTextOf(s: string): string {
+  return stripChordPunct(s).replace(/^\|+/, "").replace(/\|+$/, "");
+}
 
 // Clean a line already confirmed to be chord-only: overwrite each token's
 // trailing autocorrect punctuation with spaces (not delete it) so every
@@ -122,7 +148,7 @@ function parseBracketed(text: string): WordChordPair[] {
   let m: RegExpExecArray | null;
   while ((m = re.exec(text.replace(/\n/g, " "))) !== null) {
     if (m[1] !== undefined) {
-      pendingChord = stripChordPunct(m[1].trim());
+      pendingChord = chordTextOf(m[1].trim());
     } else {
       pairs.push({ word: m[2], chord: pendingChord });
       pendingChord = undefined;
@@ -151,7 +177,10 @@ function parseAboveLine(text: string): WordChordPair[] {
       let cm: RegExpExecArray | null;
       const cr = /\S+/g;
       while ((cm = cr.exec(line)) !== null) {
-        if (isChordToken(cm[0])) chordCols.push({ col: cm.index, chord: stripChordPunct(cm[0]) });
+        if (isChordToken(cm[0])) {
+          const text = chordTextOf(cm[0]);
+          if (text) chordCols.push({ col: cm.index, chord: text });
+        }
       }
 
       const wordCols: { col: number; word: string }[] = [];
