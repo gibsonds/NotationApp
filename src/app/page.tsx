@@ -19,6 +19,7 @@ import ChordChartView from "@/components/ChordChartView";
 import AutosaveRecoveryDialog from "@/components/AutosaveRecoveryDialog";
 import PasteLyricsModal from "@/components/PasteLyricsModal";
 import RiffPeekHost from "@/components/RiffPeekHost";
+import RiffEditorHost from "@/components/RiffEditorHost";
 import MySongsModal from "@/components/MySongsModal";
 import ApiKeyModal from "@/components/ApiKeyModal";
 import JoinSongbookModal from "@/components/JoinSongbookModal";
@@ -1609,6 +1610,7 @@ export default function Home() {
           beneath the perform overlay, and PerformView mounts its own host, so
           an ungated one here would stack a second card on the first. */}
       {!uiState.performMode && <RiffPeekHost />}
+      {!uiState.performMode && <RiffEditorHost />}
 
       {/* Paste Lyrics / Chords modal */}
       {pasteLyricsOpen && (

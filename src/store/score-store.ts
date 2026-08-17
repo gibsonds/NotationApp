@@ -271,6 +271,9 @@ export interface UIState {
    *  PaginatedPerformChart for 2) can open it, while the card itself is
    *  mounted by their parents (PerformView / page). */
   openRiffId: string | null;
+  /** Open riff editor, or null. `riffId` null = creating a new riff at the
+   *  given anchor; otherwise editing that riff (its own anchor wins). */
+  riffEditor: { riffId: string | null; sectionId: string | null; lineIdx: number } | null;
 }
 
 export const DEFAULT_UI_STATE: UIState = {
@@ -285,6 +288,7 @@ export const DEFAULT_UI_STATE: UIState = {
   activeSetId: null,
   annotationFilters: DEFAULT_ANNOTATION_FILTERS,
   openRiffId: null,
+  riffEditor: null,
 };
 
 export interface SavedRevision {

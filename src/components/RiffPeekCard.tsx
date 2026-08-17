@@ -22,6 +22,7 @@ export default function RiffPeekCard({
   allRiffs,
   onClose,
   onSelect,
+  onEdit,
   performMode,
 }: {
   riff: Riff;
@@ -29,6 +30,7 @@ export default function RiffPeekCard({
   allRiffs: Riff[];
   onClose: () => void;
   onSelect: (riff: Riff) => void;
+  onEdit: (riff: Riff) => void;
   performMode?: boolean;
 }) {
   const idx = useMemo(() => allRiffs.findIndex((r) => r.id === riff.id), [allRiffs, riff.id]);
@@ -106,6 +108,15 @@ export default function RiffPeekCard({
               </button>
             </>
           )}
+          <button
+            type="button"
+            onClick={() => onEdit(riff)}
+            className="px-3 py-1 min-h-[44px] sm:min-h-0 sm:py-1 rounded text-xs text-pink-200 hover:bg-white/10 active:bg-white/20"
+            aria-label={`Edit ${riff.label}`}
+            title="Edit this riff"
+          >
+            Edit
+          </button>
           <button
             type="button"
             onClick={onClose}
