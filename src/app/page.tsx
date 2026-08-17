@@ -18,6 +18,7 @@ import InlineAIPrompt from "@/components/InlineAIPrompt";
 import ChordChartView from "@/components/ChordChartView";
 import AutosaveRecoveryDialog from "@/components/AutosaveRecoveryDialog";
 import PasteLyricsModal from "@/components/PasteLyricsModal";
+import RiffPeekHost from "@/components/RiffPeekHost";
 import MySongsModal from "@/components/MySongsModal";
 import ApiKeyModal from "@/components/ApiKeyModal";
 import JoinSongbookModal from "@/components/JoinSongbookModal";
@@ -1603,6 +1604,11 @@ export default function Home() {
         isOpen={commandPaletteOpen}
         onClose={() => setCommandPaletteOpen(false)}
       />
+
+      {/* Riff peek card. Gated on edit mode: the editor's chart stays mounted
+          beneath the perform overlay, and PerformView mounts its own host, so
+          an ungated one here would stack a second card on the first. */}
+      {!uiState.performMode && <RiffPeekHost />}
 
       {/* Paste Lyrics / Chords modal */}
       {pasteLyricsOpen && (

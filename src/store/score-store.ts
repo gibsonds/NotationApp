@@ -266,6 +266,11 @@ export interface UIState {
    *  My Songs (a song loaded from outside any set). */
   activeSetId: string | null;
   annotationFilters: AnnotationFilters;
+  /** Riff whose peek card is open, or null. Lives here rather than in a chart
+   *  component because BOTH chart renderers (ChordChartView for 1-column,
+   *  PaginatedPerformChart for 2) can open it, while the card itself is
+   *  mounted by their parents (PerformView / page). */
+  openRiffId: string | null;
 }
 
 export const DEFAULT_UI_STATE: UIState = {
@@ -279,6 +284,7 @@ export const DEFAULT_UI_STATE: UIState = {
   performFolder: null,
   activeSetId: null,
   annotationFilters: DEFAULT_ANNOTATION_FILTERS,
+  openRiffId: null,
 };
 
 export interface SavedRevision {

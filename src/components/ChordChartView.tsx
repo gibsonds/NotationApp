@@ -1,7 +1,11 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import { Score, ChordChartSection, ScorePatch } from "@/lib/schema";
+import { Fragment, useState, useRef, useEffect, useMemo } from "react";
+import { Score, ChordChartSection, ScorePatch, Riff } from "@/lib/schema";
+import { RiffChipRow } from "@/components/RiffChip";
+
+/** Shared empty index — a fresh Map per render would defeat memoization. */
+const EMPTY_RIFF_LINES: Map<number, Riff[]> = new Map();
 
 /** Display labels for the section navMark enum. Keep concise so they fit
  *  in a badge next to the section header. */
@@ -119,11 +123,18 @@ function SectionBlock({
   headerFont,
   chartFont,
   activeBarInSection,
+  riffsByLine,
+  onOpenRiff,
+  performMode,
 }: {
   section: ChordChartSection;
   onLineClick: (sectionId: string, lineIdx: number, col: number) => void;
   onLineDoubleClick: (sectionId: string, lineIdx: number) => void;
   onLineContextMenu: (sectionId: string, lineIdx: number, col: number, clientX: number, clientY: number) => void;
+  /** Riffs anchored to this section, keyed by line index. */
+  riffsByLine: Map<number, Riff[]>;
+  onOpenRiff: (riff: Riff) => void;
+  performMode?: boolean;
   editing: EditState | null;
   textEditing: TextEditState | null;
   onTextCommit: (text: string) => void;
@@ -213,9 +224,10 @@ function SectionBlock({
             line.underline ? "border-b-2 border-yellow-400/80" : "",
           ].filter(Boolean).join(" ");
           const isActiveBarLine = !!activeBarInSection && activeBarInSection.lineIdx === i;
+          const lineRiffs = riffsByLine.get(i);
           return (
+            <Fragment key={i}>
             <div
-              key={i}
               className={`mb-2 relative ${markerClasses}`}
               // Addressable by PerformView's scroll-track-active-bar
               // effect. Uses stable section id (not idx) so reorders
@@ -283,6 +295,10 @@ function SectionBlock({
                 />
               )}
             </div>
+            {lineRiffs?.length ? (
+              <RiffChipRow riffs={lineRiffs} onOpen={onOpenRiff} performMode={performMode} />
+            ) : null}
+            </Fragment>
           );
         })}
         <button
@@ -982,6 +998,7 @@ interface HeaderContextMenuState {
 
 export default function ChordChartView({ score, performMode = false, performColumns = 1, activeBar = null }: ChordChartViewProps) {
   const applyPatches = useScoreStore((s) => s.applyPatches);
+  const setUIState = useScoreStore((s) => s.setUIState);
   const [editing, setEditing] = useState<EditState | null>(null);
   const [textEditing, setTextEditing] = useState<TextEditState | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
@@ -1630,6 +1647,24 @@ export default function ChordChartView({ score, performMode = false, performColu
   // In perform mode, the parent (PerformView) owns scrolling — drop the
   // inner overflow-auto and h-full so its scrollBy() actually moves content.
   // chord-chart-perform tightens section gaps in the perform CSS layer.
+  // Riffs indexed by section, then by line, so each SectionBlock gets an O(1)
+  // lookup instead of scanning the whole riff list per line.
+  const riffsBySection = useMemo(() => {
+    const bySection = new Map<string, Map<number, Riff[]>>();
+    for (const riff of score.riffs ?? []) {
+      const sectionId = riff.anchor.sectionId;
+      if (!sectionId) continue; // orphaned — surfaced in the riff list, not inline
+      let byLine = bySection.get(sectionId);
+      if (!byLine) { byLine = new Map(); bySection.set(sectionId, byLine); }
+      const list = byLine.get(riff.anchor.lineIdx);
+      if (list) list.push(riff);
+      else byLine.set(riff.anchor.lineIdx, [riff]);
+    }
+    return bySection;
+  }, [score.riffs]);
+
+  const handleOpenRiff = (riff: Riff) => setUIState({ openRiffId: riff.id });
+
   const performColsClass = performMode && performColumns === 2 ? "perform-cols-2" : "";
   const wrapperClass = performMode
     ? `${printClass} chord-chart-perform ${performColsClass} w-full bg-[#0f0f1f] text-gray-100 px-6 pt-2 pb-4 font-sans`
@@ -1854,6 +1889,9 @@ export default function ChordChartView({ score, performMode = false, performColu
             <SectionBlock
               key={section.id}
               section={section}
+              riffsByLine={riffsBySection.get(section.id) ?? EMPTY_RIFF_LINES}
+              onOpenRiff={handleOpenRiff}
+              performMode={performMode}
               onLineClick={handleLineClick}
               onLineDoubleClick={handleLineDoubleClick}
               onLineContextMenu={handleLineContextMenu}

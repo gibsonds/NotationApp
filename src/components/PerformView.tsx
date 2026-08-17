@@ -5,6 +5,7 @@ import type { Score } from "@/lib/schema";
 import ChordChartView from "@/components/ChordChartView";
 import PaginatedPerformChart from "@/components/PaginatedPerformChart";
 import AnnotationLayer from "@/components/AnnotationLayer";
+import RiffPeekHost from "@/components/RiffPeekHost";
 import AnnotateToggle from "@/components/AnnotateToggle";
 import { useScoreStore } from "@/store/score-store";
 import { getSongs, SongsUpdatedEvent, type SongBankEntry } from "@/lib/song-bank";
@@ -561,6 +562,12 @@ export default function PerformView({ score, onExit, onOpenMySongs }: PerformVie
           scrollRef={horizScrollRef}
         />
       )}
+
+      {/* Riff peek card. Mounted once for BOTH column layouts — it's
+          position:fixed, so it neither reflows the chart nor cares where in
+          the tree it sits. Unlike AnnotationLayer, that means it works in
+          2-column perform too. */}
+      <RiffPeekHost performMode />
 
       {/* Pager — compact bidirectional control floated at bottom-center.
           Replaces the full-width top/bottom tap zones that obscured

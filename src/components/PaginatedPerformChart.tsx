@@ -1,8 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { ChordChartSection, ChordChartLine, Score } from "@/lib/schema";
+import type { ChordChartSection, ChordChartLine, Score, Riff } from "@/lib/schema";
 import { wrapChordLineAtBars } from "@/lib/chord-line-wrap";
+import { RiffChipRow } from "@/components/RiffChip";
+import { useScoreStore } from "@/store/score-store";
 
 const MONO_FONT_STACK =
   "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace";
@@ -85,6 +87,28 @@ export default function PaginatedPerformChart({
     }
     return out;
   }, [score.sections]);
+
+  // Same section->line->riffs index the 1-column view builds. Chips must
+  // render in the hidden measurement pass too, or the bin-packer would
+  // under-measure every line that carries one and overflow the column.
+  const setUIState = useScoreStore((st) => st.setUIState);
+  const riffsBySection = useMemo(() => {
+    const bySection = new Map<string, Map<number, Riff[]>>();
+    for (const riff of score.riffs ?? []) {
+      const sectionId = riff.anchor.sectionId;
+      if (!sectionId) continue;
+      let byLine = bySection.get(sectionId);
+      if (!byLine) { byLine = new Map(); bySection.set(sectionId, byLine); }
+      const list = byLine.get(riff.anchor.lineIdx);
+      if (list) list.push(riff);
+      else byLine.set(riff.anchor.lineIdx, [riff]);
+    }
+    return bySection;
+  }, [score.riffs]);
+  const handleOpenRiff = useCallback(
+    (riff: Riff) => setUIState({ openRiffId: riff.id }),
+    [setUIState],
+  );
 
   const blockKey = (b: Block) =>
     b.kind === "header" ? `h:${b.sectionId}` : `l:${b.sectionId}:${b.lineIdx}`;
@@ -265,6 +289,8 @@ export default function PaginatedPerformChart({
           }
           lines={runLines}
           maxCharsPerRow={maxCharsPerRow}
+          riffsByLine={runSectionId ? riffsBySection.get(runSectionId) : undefined}
+          onOpenRiff={handleOpenRiff}
         />,
       );
       runSectionId = null;
@@ -336,7 +362,12 @@ export default function PaginatedPerformChart({
               {b.kind === "header" ? (
                 <PerformSectionHeader section={b.section} />
               ) : (
-                <PerformLine line={b.line} maxCharsPerRow={maxCharsPerRow} />
+                <PerformLine
+                  line={b.line}
+                  maxCharsPerRow={maxCharsPerRow}
+                  riffs={riffsBySection.get(b.sectionId)?.get(b.lineIdx)}
+                  onOpenRiff={handleOpenRiff}
+                />
               )}
             </div>
           );
@@ -456,9 +487,13 @@ function PerformSectionHeader({ section }: { section: ChordChartSection }) {
 function PerformLine({
   line,
   maxCharsPerRow,
+  riffs,
+  onOpenRiff,
 }: {
   line: ChordChartLine;
   maxCharsPerRow: number | null;
+  riffs?: Riff[];
+  onOpenRiff?: (riff: Riff) => void;
 }) {
   const markerClasses = [
     line.highlight ? "bg-yellow-300/20 rounded px-1" : "",
@@ -487,6 +522,9 @@ function PerformLine({
         letterSpacing: "var(--perf-letter-spacing, normal)",
       }}
     >
+      {riffs?.length && onOpenRiff ? (
+        <RiffChipRow riffs={riffs} onOpen={onOpenRiff} performMode />
+      ) : null}
       {subRows.map((row, idx) => {
         const hasChords = row.chords.length > 0;
         const hasLyrics = row.lyrics.length > 0;
@@ -546,12 +584,16 @@ function PerformSectionGroup({
   continuationLabel,
   lines,
   maxCharsPerRow,
+  riffsByLine,
+  onOpenRiff,
 }: {
   section: ChordChartSection | null;
   continuation: boolean;
   continuationLabel?: string;
   lines: { line: ChordChartLine; lineIdx: number }[];
   maxCharsPerRow: number | null;
+  riffsByLine?: Map<number, Riff[]>;
+  onOpenRiff?: (riff: Riff) => void;
 }) {
   return (
     <section className="mb-3">
@@ -562,7 +604,13 @@ function PerformSectionGroup({
         </div>
       )}
       {lines.map(({ line, lineIdx }) => (
-        <PerformLine key={lineIdx} line={line} maxCharsPerRow={maxCharsPerRow} />
+        <PerformLine
+          key={lineIdx}
+          line={line}
+          maxCharsPerRow={maxCharsPerRow}
+          riffs={riffsByLine?.get(lineIdx)}
+          onOpenRiff={onOpenRiff}
+        />
       ))}
     </section>
   );
