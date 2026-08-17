@@ -22,5 +22,11 @@ jobs:
           node-version: "20"
           cache: "npm"
       - run: npm ci
+      # The root vitest config also runs infra/lambda/__tests__, and those
+      # tests import the Lambda source (jose, @aws-sdk/lib-dynamodb). Those
+      # deps live in infra/package.json, so without this step the suite fails
+      # to load them — locally it only passes because infra/node_modules is
+      # already on disk.
+      - run: npm ci --prefix infra
       - run: npx tsc --noEmit
       - run: npm test
