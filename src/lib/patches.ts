@@ -1,8 +1,43 @@
-import { Score, ScorePatch } from "./schema";
+import { Riff, Score, ScorePatch } from "./schema";
 import { expandIntentToScore } from "./validation";
 import { debugLog } from "./debug-log";
 import { expandTabs } from "./chord-line";
 import { reflowChordLine } from "./chord-line-wrap";
+import { parseAsciiTab } from "./riff-ascii";
+
+/**
+ * Re-point riff anchors after a structural edit to a section's lines.
+ *
+ * A riff anchors on { sectionId, lineIdx }. That survives reflowed text, font
+ * changes, and 2-column repagination — but NOT inserting or deleting lines,
+ * which shift every index below them. So every op that moves line indices runs
+ * its riffs through here.
+ *
+ * `map` returns the new anchor for a riff currently sitting on `lineIdx`, or
+ * null to orphan it. Anchors DEGRADE, they never delete: an out-of-range index
+ * clamps, and an orphaned riff gets `sectionId: null` so it surfaces in the
+ * riff list instead of disappearing with the line it happened to sit on.
+ */
+function remapRiffAnchors(
+  score: Score,
+  sectionId: string,
+  map: (lineIdx: number) => { sectionId?: string | null; lineIdx: number } | null,
+): Riff[] | undefined {
+  if (!score.riffs?.length) return score.riffs;
+  return score.riffs.map((r) => {
+    if (r.anchor.sectionId !== sectionId) return r;
+    const next = map(r.anchor.lineIdx);
+    if (!next) return { ...r, anchor: { ...r.anchor, sectionId: null } };
+    return {
+      ...r,
+      anchor: {
+        ...r.anchor,
+        sectionId: next.sectionId === undefined ? r.anchor.sectionId : next.sectionId,
+        lineIdx: Math.max(0, next.lineIdx),
+      },
+    };
+  });
+}
 
 const DURATION_BEATS: Record<string, number> = {
   whole: 4, half: 2, quarter: 1, eighth: 0.5, sixteenth: 0.25,
@@ -292,6 +327,8 @@ export function applyPatch(score: Score, patch: ScorePatch): Score {
         sections: score.sections.filter((s) => s.id !== patch.sectionId),
         // Keep `form` consistent — drop any references to the removed section.
         form: score.form.filter((id) => id !== patch.sectionId),
+        // Riffs on the deleted section are orphaned, not destroyed.
+        riffs: remapRiffAnchors(score, patch.sectionId, () => null),
       };
     }
 
@@ -354,30 +391,46 @@ export function applyPatch(score: Score, patch: ScorePatch): Score {
     }
 
     case "add_section_line": {
+      const target = score.sections.find((s) => s.id === patch.sectionId);
+      const insertAt = Math.max(
+        0,
+        Math.min(patch.index ?? (target?.lines.length ?? 0), target?.lines.length ?? 0),
+      );
       return {
         ...score,
         sections: score.sections.map((s) => {
           if (s.id !== patch.sectionId) return s;
           const lines = [...s.lines];
-          const idx = patch.index ?? lines.length;
           const cleanLine = {
             ...patch.line,
             chords: expandTabs(patch.line.chords ?? ""),
             lyrics: expandTabs(patch.line.lyrics ?? ""),
           };
-          lines.splice(Math.max(0, Math.min(idx, lines.length)), 0, cleanLine);
+          lines.splice(insertAt, 0, cleanLine);
           return { ...s, lines };
         }),
+        // Everything at or below the insertion point moves down one.
+        riffs: remapRiffAnchors(score, patch.sectionId, (li) => ({
+          lineIdx: li >= insertAt ? li + 1 : li,
+        })),
       };
     }
 
     case "remove_section_line": {
+      const target = score.sections.find((s) => s.id === patch.sectionId);
+      const remaining = Math.max(0, (target?.lines.length ?? 1) - 1);
       return {
         ...score,
         sections: score.sections.map((s) => {
           if (s.id !== patch.sectionId) return s;
           return { ...s, lines: s.lines.filter((_, i) => i !== patch.lineIdx) };
         }),
+        // Below the cut everything moves up one. A riff ON the removed line
+        // keeps its index (now the following line) but clamps to the last
+        // remaining line, so it stays visible rather than pointing off the end.
+        riffs: remapRiffAnchors(score, patch.sectionId, (li) => ({
+          lineIdx: Math.min(li > patch.lineIdx ? li - 1 : li, Math.max(0, remaining - 1)),
+        })),
       };
     }
 
@@ -394,6 +447,20 @@ export function applyPatch(score: Score, patch: ScorePatch): Score {
       // Highlight / underline ranges are dropped on reflow — they're
       // column-indexed and would need careful per-sub-row reshifting.
       // The user can re-apply via the existing annotation flow.
+      // Each source line can expand into several, so build an old→new index
+      // map as we go and move riff anchors onto the first row of their line.
+      const reflowTarget = score.sections.find((s) => s.id === patch.sectionId);
+      const firstRowOfLine: number[] = [];
+      if (reflowTarget) {
+        let cursor = 0;
+        for (const line of reflowTarget.lines) {
+          firstRowOfLine.push(cursor);
+          cursor += Math.max(
+            1,
+            reflowChordLine(line.chords ?? "", line.lyrics ?? "", patch.barsPerLine).length,
+          );
+        }
+      }
       return {
         ...score,
         sections: score.sections.map((s) => {
@@ -415,6 +482,9 @@ export function applyPatch(score: Score, patch: ScorePatch): Score {
           }
           return { ...s, lines: newLines };
         }),
+        riffs: remapRiffAnchors(score, patch.sectionId, (li) => ({
+          lineIdx: firstRowOfLine[li] ?? li,
+        })),
       };
     }
 
@@ -437,12 +507,25 @@ export function applyPatch(score: Score, patch: ScorePatch): Score {
       };
       const sections = [...score.sections];
       sections.splice(idx, 1, trimmed, fresh);
-      return { ...score, sections };
+      return {
+        ...score,
+        sections,
+        // Lines from atLineIdx on now live in the new section, renumbered from 0.
+        riffs: remapRiffAnchors(score, patch.sectionId, (li) =>
+          li >= patch.atLineIdx
+            ? { sectionId: patch.newSection.id, lineIdx: li - patch.atLineIdx }
+            : { lineIdx: li },
+        ),
+      };
     }
 
     case "replace_score": {
       const expanded = expandIntentToScore(patch.score);
-      return { ...expanded, id: score.id };
+      // Carry riffs across. expandIntentToScore builds a fresh score from an
+      // LLM intent, which has no riff field — without this an AI "rewrite the
+      // song" would silently destroy hand-authored riffs, the way it already
+      // destroys annotations.
+      return { ...expanded, id: score.id, riffs: score.riffs };
     }
 
     case "add_annotation": {
@@ -466,6 +549,49 @@ export function applyPatch(score: Score, patch: ScorePatch): Score {
         ...score,
         annotations: (score.annotations ?? []).filter((a) => a.id !== patch.id),
       };
+    }
+
+    case "add_riff": {
+      return { ...score, riffs: [...(score.riffs ?? []), patch.riff] };
+    }
+
+    case "add_riff_from_ascii": {
+      // The shared entry point for the paste box and the AI: one pure parser,
+      // so both surfaces fail (and succeed) identically.
+      const parsed = parseAsciiTab(patch.ascii, {
+        timeSignature: score.timeSignature,
+        tuning: patch.riff.tuning,
+      });
+      if (parsed.bars.length === 0) return score; // nothing readable → no-op
+      const riff: Riff = {
+        id: patch.riff.id,
+        label: patch.riff.label,
+        kind: "tab",
+        tuning: parsed.tuning,
+        anchor: patch.riff.anchor,
+        bars: parsed.bars,
+        visibility: "shared",
+        source: "ascii",
+        // createdAt comes from the caller so applyPatch stays pure and
+        // undo/redo replays identically.
+        createdAt: patch.riff.createdAt ?? 0,
+      };
+      return { ...score, riffs: [...(score.riffs ?? []), riff] };
+    }
+
+    case "update_riff": {
+      return {
+        ...score,
+        riffs: (score.riffs ?? []).map((r) =>
+          r.id === patch.id
+            ? { ...r, ...patch.updates, updatedAt: patch.updatedAt ?? r.updatedAt }
+            : r,
+        ),
+      };
+    }
+
+    case "remove_riff": {
+      return { ...score, riffs: (score.riffs ?? []).filter((r) => r.id !== patch.id) };
     }
 
     default:

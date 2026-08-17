@@ -235,6 +235,90 @@ export const AnnotationSchema = z.object({
 });
 export type Annotation = z.infer<typeof AnnotationSchema>;
 
+// ── Riff (a short tab/notation snippet pinned inside a chord chart) ────────
+//
+// The use case: you haven't played the song in months, you hit the signature
+// lick, and you need one or two lines of tab without losing sight of the rest
+// of the chart. A riff is small, anchored to a line, and shown on demand.
+//
+// The event shape is deliberately a strict SUPERSET of `Note`, with `measure`
+// factored out into the `bars` array index. `duration` reuses NoteDuration and
+// `beat` uses the same 1-based convention as Note.beat, so a riff converts to
+// staff notes (and back) without vocabulary drift — see riff-convert.ts. That
+// is what lets a future full tab staff (#31) absorb riffs rather than
+// duplicate them.
+
+/** One fretted note. `pitch` is optional and derived from tuning+fret when absent. */
+export const RiffNoteSchema = z.object({
+  /** 1 = highest-pitched string (high E on standard guitar tuning). */
+  string: z.number().int().min(1).max(12),
+  fret: z.number().int().min(0).max(24),
+  pitch: z.string().optional(),
+  articulation: z.enum(["hammer", "pull", "slide", "bend", "mute"]).optional(),
+  tieStart: z.boolean().optional(),
+  tieEnd: z.boolean().optional(),
+});
+export type RiffNote = z.infer<typeof RiffNoteSchema>;
+
+/** A rhythmic position within a bar. `notes: []` is a rest. */
+export const RiffEventSchema = z.object({
+  /** 1-based, matching Note.beat. */
+  beat: z.number().min(1),
+  duration: NoteDuration.default("eighth"),
+  dots: z.number().int().min(0).max(2).default(0),
+  notes: z.array(RiffNoteSchema).default([]),
+});
+export type RiffEvent = z.infer<typeof RiffEventSchema>;
+
+export const RiffBarSchema = z.object({
+  events: z.array(RiffEventSchema).default([]),
+});
+export type RiffBar = z.infer<typeof RiffBarSchema>;
+
+/**
+ * Where a riff hangs in the chart.
+ *
+ * Structural (`sectionId` + `lineIdx`), NOT the normalized-fraction anchoring
+ * annotations use. A sticky note is spatial ("this bit of the page"); a riff is
+ * musical ("this bar"). The chart reflows constantly — reflow_section,
+ * wrapChordLineAtBars in 2-col perform, and per-user font size all move things,
+ * and a fraction anchor drifts under every one of them. This matches the
+ * existing `data-bar-line="${sectionId}-${lineIdx}"` addressing.
+ *
+ * `sectionId: null` means the anchor was orphaned (its section was deleted);
+ * the riff still exists and is listed rather than being silently destroyed.
+ */
+export const RiffAnchorSchema = z.object({
+  sectionId: z.string().nullable(),
+  lineIdx: z.number().int().min(0),
+  /** Reserved for bar-level precision; unused today. */
+  col: z.number().int().min(0).optional(),
+});
+export type RiffAnchor = z.infer<typeof RiffAnchorSchema>;
+
+/** Standard guitar tuning, string 1 (high E) first. */
+export const DEFAULT_TUNING = ["E4", "B3", "G3", "D3", "A2", "E2"] as const;
+
+export const RiffSchema = z.object({
+  id: z.string(),
+  label: z.string().default("Riff"),
+  /** "notation" joins later — same bars, rendered on a staff instead. */
+  kind: z.enum(["tab"]).default("tab"),
+  tuning: z.array(z.string()).default([...DEFAULT_TUNING]),
+  anchor: RiffAnchorSchema,
+  bars: z.array(RiffBarSchema).default([]),
+  timeSignature: z.string().regex(/^\d+\/\d+$/).optional(),
+  tempo: z.number().int().min(20).max(300).optional(),
+  capo: z.number().int().min(0).max(12).optional(),
+  visibility: z.enum(["shared", "personal"]).default("shared"),
+  source: z.enum(["ascii", "ai", "midi", "lifted"]).default("ascii"),
+  createdAt: z.number(),
+  /** Real last-modified, unlike Annotation.createdAt which merge treats as one
+   *  but nothing ever rewrites. Merge tie-breaks on `updatedAt ?? createdAt`. */
+  updatedAt: z.number().optional(),
+});
+export type Riff = z.infer<typeof RiffSchema>;
+
 // ── Mid-score changes ─────────────────────────────────────────────────────
 //
 // At a given measure, override the score's tempo / time signature / key
@@ -285,6 +369,14 @@ export const ScoreSchema = z.object({
   form: z.array(z.string()).default([]),
   metadata: z.record(z.string(), z.string()).default({}),
   annotations: z.array(AnnotationSchema).default([]),
+  /** Tab/notation snippets pinned to chord-chart lines.
+   *
+   *  `.optional()` rather than `.default([])` on purpose: a defaulted array is
+   *  REQUIRED in the inferred type, which is why ~20 files across src/, bin/,
+   *  and e2e/ each carry a literal `annotations: []`. Optional + `?? []` at the
+   *  read sites (the defensive style already used for annotations) keeps every
+   *  existing score literal valid. */
+  riffs: z.array(RiffSchema).optional(),
 });
 export type Score = z.infer<typeof ScoreSchema>;
 
@@ -554,6 +646,49 @@ export const ScorePatchSchema = z.discriminatedUnion("op", [
   }),
   z.object({
     op: z.literal("remove_annotation"),
+    id: z.string(),
+  }),
+
+  // ── Riffs ───────────────────────────────────────────────────────────────
+  // Four ops, not three. `add_riff_from_ascii` exists so the ASCII paste box
+  // and the AI share ONE pure, tested parser: the model emits tab notation it
+  // has seen a million examples of, instead of a nested fret-object grammar it
+  // would get wrong. It's the only riff-create op documented to the LLM.
+  z.object({
+    op: z.literal("add_riff"),
+    riff: RiffSchema,
+  }),
+  z.object({
+    op: z.literal("add_riff_from_ascii"),
+    riff: z.object({
+      id: z.string(),
+      label: z.string().default("Riff"),
+      anchor: RiffAnchorSchema,
+      tuning: z.array(z.string()).optional(),
+      createdAt: z.number().optional(),
+    }),
+    ascii: z.string(),
+  }),
+  z.object({
+    op: z.literal("update_riff"),
+    id: z.string(),
+    updates: z.object({
+      label: z.string().optional(),
+      bars: z.array(RiffBarSchema).optional(),
+      tuning: z.array(z.string()).optional(),
+      anchor: RiffAnchorSchema.optional(),
+      visibility: z.enum(["shared", "personal"]).optional(),
+      capo: z.number().int().min(0).max(12).optional(),
+      timeSignature: z.string().regex(/^\d+\/\d+$/).optional(),
+      tempo: z.number().int().min(20).max(300).optional(),
+    }),
+    /** Stamped by the caller, never by applyPatch — that function is pure and
+     *  is replayed by undo/redo, so a Date.now() inside it would make replay
+     *  non-deterministic and break the fixture-based tests. */
+    updatedAt: z.number().optional(),
+  }),
+  z.object({
+    op: z.literal("remove_riff"),
     id: z.string(),
   }),
 ]);

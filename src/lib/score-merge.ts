@@ -20,6 +20,7 @@ import type {
   ChordChartLine,
   Annotation,
 } from "./schema";
+import { mergeRiffs } from "./annotation-merge";
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -65,6 +66,8 @@ export interface MergeResult {
     linesChanged: number;
     annotationsAdded: number;
     annotationsRemoved: number;
+    riffsAdded: number;
+    riffsRemoved: number;
   };
 }
 
@@ -306,6 +309,8 @@ export function mergeScores(
     linesChanged: 0,
     annotationsAdded: 0,
     annotationsRemoved: 0,
+    riffsAdded: 0,
+    riffsRemoved: 0,
   };
 
   // ── Score-wide fields ───────────────────────────────────────────────
@@ -435,6 +440,22 @@ export function mergeScores(
     }
   }
   merged.annotations = Array.from(annById.values());
+
+  // ── Riffs: union by id ──────────────────────────────────────────────
+  // Same conflict-free property as annotations, so this never contributes a
+  // MergeConflict and cloud-autosave's silent-merge path keeps working: a riff
+  // added on the iPad merges cleanly with a chord edit made on the Mac.
+  // Tie-break is `updatedAt ?? createdAt` — riffs stamp a real last-modified,
+  // unlike annotations above, which lean on createdAt because nothing ever
+  // rewrites it.
+  const anyRiffs =
+    (base.riffs?.length ?? 0) + (mine.riffs?.length ?? 0) + (theirs.riffs?.length ?? 0) > 0;
+  if (anyRiffs) {
+    const riffMerge = mergeRiffs(base.riffs ?? [], mine.riffs ?? [], theirs.riffs ?? []);
+    merged.riffs = riffMerge.riffs;
+    stats.riffsAdded += riffMerge.stats.added;
+    stats.riffsRemoved += riffMerge.stats.removed;
+  }
 
   return { score: merged, conflicts, stats };
 }

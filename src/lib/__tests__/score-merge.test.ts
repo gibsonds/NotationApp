@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { mergeScores, chordTokens, chordSequencesEqual } from "../score-merge";
-import type { Score, ChordChartSection, ChordChartLine, Annotation } from "../schema";
+import type { Score, ChordChartSection, ChordChartLine, Annotation, Riff } from "../schema";
 
 // ── Helpers to build test scores compactly ────────────────────────────
 
@@ -293,5 +293,76 @@ describe("mergeScores — Star to Star regression scenario", () => {
     expect(conflicts).toHaveLength(0);
     expect(score.sections[0].lines[0].chords).toBe("D       G");
     expect(score.sections[0].lines[1].chords).toBe("A     D");
+  });
+});
+
+// ── Riffs ─────────────────────────────────────────────────────────────
+// Conflict-free by construction, like annotations: union by id, delete only
+// when BOTH sides dropped it, concurrent edits resolved by updatedAt. This is
+// what keeps cloud-autosave's silent-merge path working when a riff added on
+// the iPad meets a chord edit made on the Mac.
+
+function riff(id: string, over: Partial<Riff> = {}): Riff {
+  return {
+    id,
+    label: id,
+    kind: "tab",
+    tuning: ["E4", "B3", "G3", "D3", "A2", "E2"],
+    anchor: { sectionId: "v", lineIdx: 0 },
+    bars: [],
+    visibility: "shared",
+    source: "ascii",
+    createdAt: 1,
+    ...over,
+  };
+}
+
+describe("mergeScores — riffs", () => {
+  it("unions riffs added on both sides", () => {
+    const base = emptyScore({ riffs: [] });
+    const mine = emptyScore({ riffs: [riff("a")] });
+    const theirs = emptyScore({ riffs: [riff("b")] });
+    const { score, conflicts, stats } = mergeScores(base, mine, theirs);
+    expect(conflicts).toEqual([]); // riffs never conflict
+    expect(score.riffs!.map((r) => r.id).sort()).toEqual(["a", "b"]);
+    expect(stats.riffsAdded).toBe(2);
+  });
+
+  it("drops a riff only when BOTH sides removed it", () => {
+    const base = emptyScore({ riffs: [riff("a"), riff("b")] });
+    const mine = emptyScore({ riffs: [riff("b")] });
+    const theirs = emptyScore({ riffs: [riff("b")] });
+    const { score, stats } = mergeScores(base, mine, theirs);
+    expect(score.riffs!.map((r) => r.id)).toEqual(["b"]);
+    expect(stats.riffsRemoved).toBe(1);
+  });
+
+  it("keeps a riff one side removed and the other kept", () => {
+    const base = emptyScore({ riffs: [riff("a")] });
+    const mine = emptyScore({ riffs: [] });
+    const theirs = emptyScore({ riffs: [riff("a")] });
+    const { score } = mergeScores(base, mine, theirs);
+    expect(score.riffs!.map((r) => r.id)).toEqual(["a"]);
+  });
+
+  it("resolves concurrent edits by updatedAt, newest wins", () => {
+    const base = emptyScore({ riffs: [riff("a", { label: "base", updatedAt: 1 })] });
+    const mine = emptyScore({ riffs: [riff("a", { label: "mine", updatedAt: 5 })] });
+    const theirs = emptyScore({ riffs: [riff("a", { label: "theirs", updatedAt: 9 })] });
+    const { score } = mergeScores(base, mine, theirs);
+    expect(score.riffs![0].label).toBe("theirs");
+  });
+
+  it("falls back to createdAt when updatedAt is absent", () => {
+    const base = emptyScore({ riffs: [riff("a", { label: "base", createdAt: 1 })] });
+    const mine = emptyScore({ riffs: [riff("a", { label: "mine", createdAt: 9 })] });
+    const theirs = emptyScore({ riffs: [riff("a", { label: "theirs", createdAt: 2 })] });
+    const { score } = mergeScores(base, mine, theirs);
+    expect(score.riffs![0].label).toBe("mine");
+  });
+
+  it("leaves riffs undefined when no side has any", () => {
+    const { score } = mergeScores(emptyScore(), emptyScore(), emptyScore());
+    expect(score.riffs).toBeUndefined();
   });
 });

@@ -12,7 +12,7 @@
  * path that doesn't need full score merging.
  */
 
-import type { Annotation } from "./schema";
+import type { Annotation, Riff } from "./schema";
 
 export interface AnnotationMergeStats {
   added: number;
@@ -25,21 +25,37 @@ export interface AnnotationMergeResult {
   stats: AnnotationMergeStats;
 }
 
-export function mergeAnnotations(
-  base: readonly Annotation[],
-  mine: readonly Annotation[],
-  theirs: readonly Annotation[],
-): AnnotationMergeResult {
+export interface MergeByIdResult<T> {
+  items: T[];
+  stats: AnnotationMergeStats;
+}
+
+/**
+ * Generic 3-way set-union over id-keyed items. Annotations and riffs are both
+ * conflict-free by construction — every item carries a UUID, so adds from
+ * either side compose, and a delete is only honoured when BOTH sides dropped
+ * something the base had (keep wins over delete). Concurrent edits to the same
+ * id resolve by `timestampOf`, newest wins, ties to mine.
+ *
+ * One algorithm, two callers: writing this a third time for riffs is how the
+ * two copies drift apart.
+ */
+export function mergeById<T extends { id: string }>(
+  base: readonly T[],
+  mine: readonly T[],
+  theirs: readonly T[],
+  timestampOf: (item: T) => number,
+): MergeByIdResult<T> {
   const stats: AnnotationMergeStats = { added: 0, removed: 0, updated: 0 };
 
-  const baseById = new Map<string, Annotation>();
+  const baseById = new Map<string, T>();
   for (const a of base) baseById.set(a.id, a);
-  const mineById = new Map<string, Annotation>();
+  const mineById = new Map<string, T>();
   for (const a of mine) mineById.set(a.id, a);
-  const theirsById = new Map<string, Annotation>();
+  const theirsById = new Map<string, T>();
   for (const a of theirs) theirsById.set(a.id, a);
 
-  const result = new Map<string, Annotation>();
+  const result = new Map<string, T>();
 
   // Pass 1: walk every id present in any side.
   const allIds = new Set<string>([
@@ -83,20 +99,37 @@ export function mergeAnnotations(
       continue;
     }
 
-    // Both sides have it — pick newer createdAt (treated as last-modified).
-    if (m.createdAt === t.createdAt && jsonEqual(m, t)) {
+    // Both sides have it — newest wins, ties to mine.
+    if (timestampOf(m) === timestampOf(t) && jsonEqual(m, t)) {
       result.set(id, m);
       continue;
     }
-    const winner = m.createdAt >= t.createdAt ? m : t;
+    const winner = timestampOf(m) >= timestampOf(t) ? m : t;
     result.set(id, winner);
     if (!b || !jsonEqual(b, winner)) stats.updated++;
   }
 
-  return {
-    annotations: Array.from(result.values()),
-    stats,
-  };
+  return { items: Array.from(result.values()), stats };
+}
+
+export function mergeAnnotations(
+  base: readonly Annotation[],
+  mine: readonly Annotation[],
+  theirs: readonly Annotation[],
+): AnnotationMergeResult {
+  // Annotation has no updatedAt, so createdAt stands in as last-modified.
+  const { items, stats } = mergeById(base, mine, theirs, (a) => a.createdAt);
+  return { annotations: items, stats };
+}
+
+/** Riffs carry a real `updatedAt`; fall back to createdAt for older entries. */
+export function mergeRiffs(
+  base: readonly Riff[],
+  mine: readonly Riff[],
+  theirs: readonly Riff[],
+): { riffs: Riff[]; stats: AnnotationMergeStats } {
+  const { items, stats } = mergeById(base, mine, theirs, (r) => r.updatedAt ?? r.createdAt);
+  return { riffs: items, stats };
 }
 
 function jsonEqual(a: unknown, b: unknown): boolean {
