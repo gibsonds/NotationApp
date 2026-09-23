@@ -5,6 +5,7 @@ import { useScoreStore } from "@/store/score-store";
 import { ChordSymbol, Note, ScorePatch } from "@/lib/schema";
 import {
   detectTitleLine,
+  looksProportionallySpaced,
   normalizeTitleCase,
   parseLyricsWithChords,
   parseToSections,
@@ -93,6 +94,10 @@ export default function PasteLyricsModal({ onClose }: { onClose: () => void }) {
   const titleMatchesCurrent =
     !!proposedTitle && currentTitle.toLowerCase() === proposedTitle.toLowerCase();
   const [useTitle, setUseTitle] = useState(true);
+  const proportional = useMemo(
+    () => isChordChartMode && !!text.trim() && looksProportionallySpaced(text),
+    [text, isChordChartMode],
+  );
 
   // Keep a ref to the apply handler so the keyboard effect never goes stale
   const applyRef = useRef<() => void>(() => {});
@@ -289,6 +294,11 @@ export default function PasteLyricsModal({ onClose }: { onClose: () => void }) {
                 </span>
               </label>
             )
+          )}
+          {proportional && (
+            <p className="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+              The chord spacing looks like it came from a proportional font (Notes, Pages, Word). Chords will be re-aligned over the words they sat above there.
+            </p>
           )}
           {!isChordChartMode && score && !stepEntry && notes.length > 0 && (
             <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
