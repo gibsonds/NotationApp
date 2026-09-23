@@ -3,6 +3,17 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-09-23 — 36e2ab2
+
+**Paste: offer to copy chords to sections that have none (#180)**
+
+- Commit: [`36e2ab2`](../../commit/36e2ab2f7bb6f5a47da3a4f3917d07fd36cd3c2f)
+- Author: gibsonds
+- Files changed:
+  - `src/components/PasteLyricsModal.tsx`
+  - `src/lib/__tests__/chord-copy.test.ts`
+  - `src/lib/chord-copy.ts`
+
 ## 2026-09-23 — d123753
 
 **Riffs: write the rhythm, and read "57" as two frets (#179)**
