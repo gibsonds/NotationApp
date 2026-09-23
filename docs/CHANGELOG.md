@@ -3,6 +3,18 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-09-23 — a0eaa15
+
+**Paste: read glued chords like "GA", keep chords after a mid-line bar (#186)**
+
+- Commit: [`a0eaa15`](../../commit/a0eaa154ca0905df9a1879445c80ff85955e6265)
+- Author: gibsonds
+- Files changed:
+  - `src/lib/__tests__/key-inference.test.ts`
+  - `src/lib/__tests__/lyric-parser.test.ts`
+  - `src/lib/key-inference.ts`
+  - `src/lib/lyric-parser.ts`
+
 ## 2026-09-23 — 79cbead
 
 **Fix crash on load for existing users after #184 (#185)**
