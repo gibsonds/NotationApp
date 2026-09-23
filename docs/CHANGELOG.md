@@ -3,6 +3,18 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-09-23 — db1816b
+
+**Perform mode: draw small riffs inline, with a Hide button (#184)**
+
+- Commit: [`db1816b`](../../commit/db1816b74d9f826abcca9dee2c38681b4b67a044)
+- Author: gibsonds
+- Files changed:
+  - `src/components/RiffChip.tsx`
+  - `src/lib/__tests__/riff-inline.test.ts`
+  - `src/lib/riff-inline.ts`
+  - `src/store/score-store.ts`
+
 ## 2026-09-23 — 4a18cf5
 
 **Riffs: accept fret-run and chord-voicing shorthands from GuitarLLM (#183)**
