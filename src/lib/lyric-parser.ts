@@ -128,7 +128,7 @@ const NUMBER_WORDS: Record<string, number> = {
 const HEADER_KEYWORDS =
   "verse|chorus|bridge|intro|outro|pre[\\s-]?chorus|post[\\s-]?chorus|refrain|hook|" +
   "(?:guitar|piano|bass|drum|sax|keys?)?\\s*solo|instrumental|interlude|breakdown|" +
-  "tag|coda|ending|vamp|turnaround|middle\\s?(?:8|eight)";
+  "tag|coda|ending|vamp|turnaround|riff|lick|middle\\s?(?:8|eight)";
 const SECTION_HEADER_RE = new RegExp(
   "^[\\(\\[]?\\s*(" + HEADER_KEYWORDS + ")" +                       // keyword
     "(?:\\s+(\\d+|" + Object.keys(NUMBER_WORDS).join("|") + "))?" + // number
@@ -161,6 +161,8 @@ const SECTION_LABEL_MAP: Record<string, string> = {
   ending: "Ending",
   vamp: "Vamp",
   turnaround: "Turnaround",
+  riff: "Riff",
+  lick: "Lick",
   middle8: "Middle 8",
   "middle 8": "Middle 8",
   "middle eight": "Middle 8",
@@ -294,6 +296,180 @@ function isChordRow(tokens: string[]): boolean {
   return tokens.some((t) => repeatCountOf(t) === null);
 }
 
+// "(No chord)", "No chord", "N.C.", "NC" on a line of its own: a chord row
+// that says to play nothing. Rendered as "N.C." on the chord line.
+const NO_CHORD_RE = /^[\(\[]?\s*(?:no\s+chords?|n\.?\s?c\.?)\s*[\)\]]?$/i;
+const NO_CHORD_TEXT = "N.C.";
+
+function isNoChordLine(line: string): boolean {
+  return NO_CHORD_RE.test(line.trim());
+}
+
+/**
+ * A bar-led chord row with a note after its last bar:
+ *   "|G F | C   | repeat on feel, approx. x7"
+ * Everything up to and including the last "|" must be chords and bars (with
+ * at least one chord); the tail is free text that stays on the chord line.
+ * Returns the split, or null when the line is not shaped like this.
+ */
+function splitBarLedRow(line: string): { head: string; tail: string } | null {
+  if (!line.trimStart().startsWith("|")) return null;
+  // The last CLOSING bar: a token that ends with "|" ("|", "C|", "||"). The
+  // bar that opens "|G" belongs to the chord after it and does not count.
+  let cut = -1;
+  let m: RegExpExecArray | null;
+  const re = /\S+/g;
+  while ((m = re.exec(line)) !== null) {
+    if (/\|$/.test(m[0])) cut = m.index + m[0].length;
+  }
+  if (cut < 0) return null;
+  const head = line.slice(0, cut);
+  const tail = line.slice(cut);
+  if (!tail.trim()) return null; // a plain chord row; isChordRow handles it
+  const tokens = head.trim().split(/\s+/).filter(Boolean);
+  if (!isChordRow(tokens)) return null;
+  // At least one actual chord before the note — "| hello there" is a lyric.
+  if (!tokens.some((t) => !/^\|+$/.test(stripChordPunct(t)) && repeatCountOf(t) === null)) return null;
+  return { head, tail };
+}
+
+/** Is this line a chord row in any of the shapes we accept? */
+function isChordRowLine(line: string): boolean {
+  const tokens = line.trim().split(/\s+/).filter(Boolean);
+  return isChordRow(tokens) || isNoChordLine(line) || splitBarLedRow(line) !== null;
+}
+
+/** The chord-line text for a line isChordRowLine accepted. */
+function chordRowText(line: string): string {
+  if (isNoChordLine(line)) return NO_CHORD_TEXT;
+  const split = splitBarLedRow(line);
+  if (split) {
+    // Clean only the chord part; the trailing note keeps its punctuation.
+    return cleanChordLine(split.head).padEnd(split.head.length) + split.tail.replace(/\s+$/, "");
+  }
+  return cleanChordLine(line);
+}
+
+// ── Proportional-font realignment ────────────────────────────────────────────
+//
+// Charts written in Notes, Pages or Word are spaced in a proportional font,
+// where a space is about half as wide as a letter. The author nudged each
+// chord with spaces until it sat over the right word THERE. The chart here
+// is monospace, so those spaces are each a full column and every chord
+// slides right — the third chord of a row typically lands a word or two late
+// and the last one falls off the end of the lyric.
+//
+// The fix estimates where each chord sat visually (per-glyph widths of a
+// Helvetica-class face, in 1/1000 em) and re-places it over the lyric
+// character at that same visual x. Widths need only be roughly right: a
+// chord snaps to the nearest word start when it lands within a character of
+// one, which absorbs the error between SF, Helvetica and Arial.
+
+const GLYPH_WIDTH: Record<string, number> = {
+  " ": 278, "|": 260, "#": 556, ",": 278, ".": 278, "'": 191, '"': 355, "?": 556,
+  "!": 278, "(": 333, ")": 333, "-": 333, "/": 278, ":": 278, ";": 278,
+  a: 556, b: 556, c: 500, d: 556, e: 556, f: 278, g: 556, h: 556, i: 222, j: 222,
+  k: 500, l: 222, m: 833, n: 556, o: 556, p: 556, q: 556, r: 333, s: 500, t: 278,
+  u: 556, v: 500, w: 722, x: 500, y: 500, z: 500,
+  A: 667, B: 667, C: 722, D: 722, E: 667, F: 611, G: 778, H: 722, I: 278, J: 500,
+  K: 667, L: 556, M: 833, N: 722, O: 778, P: 667, Q: 778, R: 722, S: 667, T: 611,
+  U: 722, V: 667, W: 944, X: 667, Y: 667, Z: 611,
+};
+for (const d of "0123456789") GLYPH_WIDTH[d] = 556;
+
+function visualX(s: string, end: number): number {
+  let x = 0;
+  for (let i = 0; i < end && i < s.length; i++) x += GLYPH_WIDTH[s[i]] ?? 556;
+  return x;
+}
+
+/** Chord/lyric pairs of a prepared text: a chord row directly above a lyric
+ *  line. Used by the proportional-spacing detector. */
+function chordLyricPairs(text: string): { chords: string; lyric: string }[] {
+  const lines = text.split("\n");
+  const out: { chords: string; lyric: string }[] = [];
+  for (let i = 0; i + 1 < lines.length; i++) {
+    const a = lines[i];
+    const b = lines[i + 1];
+    if (!b.trim() || isNoChordLine(a) || !isChordRowLine(a) || isChordRowLine(b)) continue;
+    out.push({ chords: a, lyric: b });
+  }
+  return out;
+}
+
+/**
+ * Does this paste look spaced for a proportional font? The tell is a chord
+ * (not a bar or repeat marker) whose column is past the END of the lyric
+ * beneath it. That cannot happen in a chart authored in monospace — you would
+ * see it hanging in space — but it is exactly what over-padding with narrow
+ * spaces produces. Two or more such pairs, making up at least a third of the
+ * chord/lyric pairs, is the threshold.
+ */
+export function looksProportionallySpaced(text: string): boolean {
+  const pairs = chordLyricPairs(prepare(text));
+  if (pairs.length < 2) return false;
+  let past = 0;
+  for (const { chords, lyric } of pairs) {
+    const end = lyric.replace(/\s+$/, "").length;
+    const split = splitBarLedRow(chords);
+    const row = split ? split.head : chords;
+    let m: RegExpExecArray | null;
+    const re = /\S+/g;
+    let hit = false;
+    while ((m = re.exec(row)) !== null) {
+      if (repeatCountOf(m[0]) !== null || /^\|+$/.test(m[0])) continue;
+      if (m.index >= end) { hit = true; break; }
+    }
+    if (hit) past++;
+  }
+  return past >= 2 && past / pairs.length >= 1 / 3;
+}
+
+/**
+ * Re-place each token of a chord row over the lyric character at the same
+ * visual x it had in a proportional font. Tokens keep their order and at
+ * least one space between them. A bar-led row's trailing note is kept after
+ * the last chord.
+ */
+export function realignChordRow(chordRow: string, lyric: string): string {
+  const split = splitBarLedRow(chordRow);
+  const row = split ? split.head : chordRow;
+  // Visual x of every lyric column, once; then the word starts as targets.
+  const lyricX: number[] = [0];
+  for (let i = 0; i < lyric.length; i++) lyricX.push(lyricX[i] + (GLYPH_WIDTH[lyric[i]] ?? 556));
+  const lyricEnd = lyric.replace(/\s+$/, "").length;
+  const targets: number[] = [];
+  let wm: RegExpExecArray | null;
+  const wr = /\S+/g;
+  while ((wm = wr.exec(lyric)) !== null) targets.push(wm.index);
+
+  let out = "";
+  let m: RegExpExecArray | null;
+  const re = /\S+/g;
+  while ((m = re.exec(row)) !== null) {
+    // Snap the chord letter, not a bar that opens it: "|G" sits with G over
+    // the word and the bar one column to its left.
+    const lead = (/^\|*/.exec(m[0]) ?? [""])[0].length;
+    const x = visualX(row, m.index + lead);
+    let j: number;
+    if (x > lyricX[lyricEnd]) {
+      // Past the last word: keep it past, in average letter widths.
+      j = lyricEnd + Math.max(1, Math.round((x - lyricX[lyricEnd]) / 556));
+    } else {
+      // Chords in a chart spaced by eye sit on words: nearest word start.
+      j = targets[0] ?? 0;
+      let best = Infinity;
+      for (const t of targets) {
+        const d = Math.abs(lyricX[t] - x);
+        if (d < best) { best = d; j = t; }
+      }
+    }
+    const col = Math.max(j - lead, out.length === 0 ? 0 : out.length + 1);
+    out = out.padEnd(col) + m[0];
+  }
+  return split ? `${out}  ${split.tail.trim()}` : out;
+}
+
 /** The chord text itself, with any bar markers and autocorrect punctuation
  *  removed. Used where a chord is extracted rather than kept in place. */
 function chordTextOf(s: string): string {
@@ -335,19 +511,23 @@ function parseAboveLine(text: string): WordChordPair[] {
     const tokens = line.trim().split(/\s+/).filter(Boolean);
     if (tokens.length === 0) { i++; continue; }
 
-    const isChordLine = isChordRow(tokens);
+    const isChordLine = isChordRowLine(line);
     const nextLine = i + 1 < lines.length ? lines[i + 1] : null;
-    const nextTokens = nextLine?.trim().split(/\s+/).filter(Boolean) ?? [];
-    const nextIsLyric = nextTokens.length > 0 && !isChordRow(nextTokens);
+    const nextIsLyric = !!nextLine && nextLine.trim().length > 0 && !isChordRowLine(nextLine);
 
     if (isChordLine && nextIsLyric) {
       const chordCols: { col: number; chord: string }[] = [];
-      let cm: RegExpExecArray | null;
-      const cr = /\S+/g;
-      while ((cm = cr.exec(line)) !== null) {
-        if (isChordToken(cm[0]) && repeatCountOf(cm[0]) === null) {
-          const text = chordTextOf(cm[0]);
-          if (text) chordCols.push({ col: cm.index, chord: text });
+      if (isNoChordLine(line)) {
+        chordCols.push({ col: 0, chord: NO_CHORD_TEXT });
+      } else {
+        const head = splitBarLedRow(line)?.head ?? line;
+        let cm: RegExpExecArray | null;
+        const cr = /\S+/g;
+        while ((cm = cr.exec(head)) !== null) {
+          if (isChordToken(cm[0]) && repeatCountOf(cm[0]) === null) {
+            const text = chordTextOf(cm[0]);
+            if (text) chordCols.push({ col: cm.index, chord: text });
+          }
         }
       }
 
@@ -429,9 +609,13 @@ function pairsToChordChartLine(pairs: WordChordPair[]): ChordChartLine {
  * - Pure lyrics: each line becomes a ChordChartLine with empty chords.
  * Blank lines produce { chords: "", lyrics: "" } for visual spacing.
  */
-export function parseToChordChartLines(text: string): ChordChartLine[] {
+export function parseToChordChartLines(
+  text: string,
+  opts?: { proportional?: boolean },
+): ChordChartLine[] {
   const trimmed = prepare(text);
   if (!trimmed) return [];
+  const proportional = opts?.proportional ?? looksProportionallySpaced(trimmed);
 
   // Bracketed format: process line by line
   if (/\[[A-G][^\]]*\]/.test(trimmed)) {
@@ -456,16 +640,19 @@ export function parseToChordChartLines(text: string): ChordChartLine[] {
       continue;
     }
 
-    const isChordLine = isChordRow(tokens);
+    const isChordLine = isChordRowLine(line);
     const nextLine = i + 1 < lines.length ? lines[i + 1] : null;
-    const nextTokens = nextLine?.trim().split(/\s+/).filter(Boolean) ?? [];
-    const nextIsLyric = nextTokens.length > 0 && !isChordRow(nextTokens);
+    const nextIsLyric = !!nextLine && nextLine.trim().length > 0 && !isChordRowLine(nextLine);
 
     if (isChordLine && nextIsLyric) {
-      result.push({ chords: cleanChordLine(line), lyrics: nextLine! });
+      const chords = chordRowText(line);
+      result.push({
+        chords: proportional && chords !== NO_CHORD_TEXT ? realignChordRow(chords, nextLine!) : chords,
+        lyrics: nextLine!,
+      });
       i += 2;
     } else if (isChordLine) {
-      result.push({ chords: cleanChordLine(line), lyrics: "" });
+      result.push({ chords: chordRowText(line), lyrics: "" });
       i++;
     } else {
       result.push({ chords: "", lyrics: line });
@@ -491,9 +678,12 @@ export function parseToSections(text: string): ParsedSection[] {
 
   const rawLines = trimmed.split("\n");
   const hasHeaders = rawLines.some(l => parseSectionHeaderFull(l) !== null);
+  // Decide proportional spacing over the WHOLE paste so every section is
+  // treated alike — a short section on its own has too few pairs to judge.
+  const proportional = looksProportionallySpaced(trimmed);
 
   if (!hasHeaders) {
-    return [{ label: "", lines: parseToChordChartLines(trimmed) }];
+    return [{ label: "", lines: parseToChordChartLines(trimmed, { proportional }) }];
   }
 
   // Collect raw line blocks keyed by label
@@ -531,7 +721,7 @@ export function parseToSections(text: string): ParsedSection[] {
     }
     const merged = [...pending, ...block.raw];
     pending = [];
-    const lines = parseToChordChartLines(merged.join("\n"));
+    const lines = parseToChordChartLines(merged.join("\n"), { proportional });
     if (lines.length > 0 || block.reference) {
       result.push({ label: block.label, lines });
     }
@@ -539,7 +729,7 @@ export function parseToSections(text: string): ParsedSection[] {
   // Trailing pending (edge case: content after last header with no following header)
   // — unreachable in practice given the loop structure, but guard anyway.
   if (pending.some(l => l.trim()) && result.length > 0) {
-    const extra = parseToChordChartLines(pending.join("\n"));
+    const extra = parseToChordChartLines(pending.join("\n"), { proportional });
     result[result.length - 1].lines.push(...extra);
   }
 

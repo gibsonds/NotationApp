@@ -8,6 +8,8 @@ import {
   detectTitleLine,
   normalizeTitleCase,
   stripCommonIndent,
+  looksProportionallySpaced,
+  realignChordRow,
 } from "../lyric-parser";
 
 describe("sanitizePastedText", () => {
@@ -316,5 +318,105 @@ describe("title line detection", () => {
     expect(normalizeTitleCase("ROCK-A-BYE (LIVE)")).toBe("Rock-A-Bye (Live)");
     expect(normalizeTitleCase("Look What I Made")).toBe("Look What I Made");
     expect(normalizeTitleCase("iPad song")).toBe("iPad song");
+  });
+});
+
+// ── 7 Years import ───────────────────────────────────────────────────────────
+
+/** The word of `lyric` under column `col` of its chord row. */
+function wordUnder(chords: string, chord: string, lyric: string): string {
+  const col = chords.indexOf(chord) + (chord.startsWith("|") ? 1 : 0);
+  const words = [...lyric.matchAll(/\S+/g)].map(m => ({ col: m.index!, word: m[0] }));
+  const w = words.filter(w => w.col <= col).pop();
+  return w?.word ?? "";
+}
+
+describe("no-chord markers", () => {
+  it("turns '(No chord)' above a lyric into an N.C. chord line", () => {
+    const lines = parseToChordChartLines("(No chord)\nWhen it all started I tried and tried\nN.C.\nLet myself feel it");
+    expect(lines).toEqual([
+      { chords: "N.C.", lyrics: "When it all started I tried and tried" },
+      { chords: "N.C.", lyrics: "Let myself feel it" },
+    ]);
+  });
+
+  it("assigns N.C. to the first word when extracting pairs", () => {
+    const pairs = parseLyricsWithChords("(no chord)\nhello world");
+    expect(pairs.map(p => p.chord)).toEqual(["N.C.", undefined]);
+  });
+});
+
+describe("bar-led chord rows with a trailing note", () => {
+  it("keeps '|G F | C | repeat on feel, approx. x7' as the chord line", () => {
+    const [line] = parseToChordChartLines("|G F | C   | repeat on feel, approx. x7\nOh I needed you there, scat x7");
+    expect(line.lyrics).toBe("Oh I needed you there, scat x7");
+    expect(line.chords).toMatch(/^\|G F \| C\s+\|\s+repeat on feel, approx\. x7$/);
+  });
+
+  it("does not split a row whose only bars open chords", () => {
+    const pairs = parseLyricsWithChords("|Am    |F\nhello world");
+    expect(pairs.map(p => p.chord)).toEqual(["Am", "F"]);
+  });
+
+  it("does not mistake a lyric that starts with a bar for chords", () => {
+    expect(parseToChordChartLines("| hello there\nworld")[0]).toEqual({ chords: "", lyrics: "| hello there" });
+  });
+});
+
+describe("Riff header", () => {
+  it("makes Riff its own section", () => {
+    const sections = parseToSections("GUITAR SOLO\n|E |F# |G | A x8\n\nRiff\n|E |F# |G | A\n");
+    expect(sections.map(s => s.label)).toEqual(["Guitar Solo", "Riff"]);
+    expect(sections[1].lines[0].chords).toBe("|E |F# |G | A");
+  });
+});
+
+describe("proportional-font realignment", () => {
+  const notes =
+    "VERSE 2\n" +
+    "|C             Bb              |Bb               C   \n" +
+    "If only you knew how troubled I'd be\n" +
+    "|Am         G                        |Fmaj7                  |\n" +
+    "But watch how I'm happy now, being here with him\n\n" +
+    "CHORUS\n" +
+    "|E        F#          |G           A\n" +
+    "7 years I've been wasting time\n" +
+    "|E        F#          |G           A\n" +
+    "Now I realize only I can rescue me\n";
+
+  it("detects chord rows padded for a proportional font", () => {
+    expect(looksProportionallySpaced(notes)).toBe(true);
+  });
+
+  it("leaves a monospace-authored chart alone", () => {
+    const mono = "G       C     G\nAmazing grace how sweet\nD           G\nthe sound that saved\n";
+    expect(looksProportionallySpaced(mono)).toBe(false);
+    expect(parseToChordChartLines(mono)[0].chords).toBe("G       C     G");
+  });
+
+  it("puts each chord back over the word it sat above in Notes", () => {
+    const [v1, v2] = parseToSections(notes)[0].lines;
+    expect(wordUnder(v1.chords, "Bb", v1.lyrics)).toBe("knew");
+    expect(wordUnder(v1.chords, "|Bb", v1.lyrics)).toBe("troubled");
+    expect(wordUnder(v2.chords, "G", v2.lyrics)).toBe("how");
+    expect(wordUnder(v2.chords, "|Fmaj7", v2.lyrics)).toBe("now,");
+
+    const [c1, c2] = parseToSections(notes)[1].lines;
+    expect(wordUnder(c1.chords, "F#", c1.lyrics)).toBe("I've");
+    expect(wordUnder(c1.chords, "|G", c1.lyrics)).toBe("wasting");
+    expect(wordUnder(c1.chords, "A", c1.lyrics)).toBe("time");
+    expect(wordUnder(c2.chords, "|G", c2.lyrics)).toBe("I");
+    expect(wordUnder(c2.chords, "A", c2.lyrics)).toBe("rescue");
+    // Nothing hangs past the end of the lyric any more.
+    expect(c1.chords.length).toBeLessThanOrEqual(c1.lyrics.length);
+  });
+
+  it("keeps a bar-led row's trailing note after realignment", () => {
+    expect(realignChordRow("|G F | C   | repeat on feel", "Oh I needed you there")).toMatch(/\|\s+repeat on feel$/);
+  });
+
+  it("keeps token order and at least one space between chords", () => {
+    const out = realignChordRow("|E        F#          |G           A", "7 years I've been wasting time");
+    expect(out.split(/\s+/)).toEqual(["|E", "F#", "|G", "A"]);
   });
 });
