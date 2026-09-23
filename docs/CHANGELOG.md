@@ -3,6 +3,19 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-09-23 — 83643ce
+
+**Infer the key from the chords instead of picking it by hand (#178)**
+
+- Commit: [`83643ce`](../../commit/83643ce6b040ee1a914a8a2dc850481e2c37263f)
+- Author: gibsonds
+- Files changed:
+  - `src/components/ChordChartView.tsx`
+  - `src/components/PasteLyricsModal.tsx`
+  - `src/components/PropertiesPanel.tsx`
+  - `src/lib/__tests__/key-inference.test.ts`
+  - `src/lib/key-inference.ts`
+
 ## 2026-09-23 — c3bdd8f
 
 **Paste: realign proportional-font chord rows, N.C. markers, bar-led notes, Riff (#176)**
