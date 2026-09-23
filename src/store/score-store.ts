@@ -274,6 +274,10 @@ export interface UIState {
   /** Open riff editor, or null. `riffId` null = creating a new riff at the
    *  given anchor; otherwise editing that riff (its own anchor wins). */
   riffEditor: { riffId: string | null; sectionId: string | null; lineIdx: number } | null;
+  /** Small riffs are drawn inline in perform mode by default; these are the
+   *  ones the user hid (back to a chip). Persisted so a set list stays the
+   *  way it was left. */
+  hiddenInlineRiffIds: string[];
 }
 
 export const DEFAULT_UI_STATE: UIState = {
@@ -289,6 +293,7 @@ export const DEFAULT_UI_STATE: UIState = {
   annotationFilters: DEFAULT_ANNOTATION_FILTERS,
   openRiffId: null,
   riffEditor: null,
+  hiddenInlineRiffIds: [],
 };
 
 export interface SavedRevision {
