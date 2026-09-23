@@ -3,6 +3,18 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-09-23 — 4a18cf5
+
+**Riffs: accept fret-run and chord-voicing shorthands from GuitarLLM (#183)**
+
+- Commit: [`4a18cf5`](../../commit/4a18cf5397a701296f213775f31039cc7d0d6bb0)
+- Author: gibsonds
+- Files changed:
+  - `src/components/RiffEditorSheet.tsx`
+  - `src/lib/__tests__/riff-compact.test.ts`
+  - `src/lib/riff-ascii.ts`
+  - `src/lib/riff-compact.ts`
+
 ## 2026-09-23 — 36e2ab2
 
 **Paste: offer to copy chords to sections that have none (#180)**
