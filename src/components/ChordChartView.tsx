@@ -1409,6 +1409,14 @@ export default function ChordChartView({ score, performMode = false, performColu
         label: "Edit chord line (text)",
         onClick: () => handleLineDoubleClick(ctx.sectionId, ctx.lineIdx, "chords"),
       },
+      {
+        divider: true,
+        label: "Add riff here…",
+        onClick: () =>
+          setUIState({
+            riffEditor: { riffId: null, sectionId: ctx.sectionId, lineIdx: ctx.lineIdx },
+          }),
+      },
     ];
 
     if (word && line) {

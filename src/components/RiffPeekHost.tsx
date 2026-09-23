@@ -33,6 +33,12 @@ export default function RiffPeekHost({ performMode }: { performMode?: boolean })
       performMode={performMode}
       onClose={() => setUIState({ openRiffId: null })}
       onSelect={(next) => setUIState({ openRiffId: next.id })}
+      onEdit={(target) =>
+        setUIState({
+          openRiffId: null,
+          riffEditor: { riffId: target.id, sectionId: null, lineIdx: 0 },
+        })
+      }
     />
   );
 }

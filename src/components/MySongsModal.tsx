@@ -33,6 +33,7 @@ import {
   type SyncStatus as CloudSyncStatus,
 } from "@/lib/song-cloud";
 import { logEvent, scoreTypeOf } from "@/lib/analytics";
+import { adoptSyncedOpenSong } from "@/lib/open-song-sync";
 import { LegacyImportBanner, SongbookSwitcher } from "@/components/SongbookSwitcher";
 
 type SyncStatus = "idle" | CloudSyncStatus;
@@ -239,26 +240,16 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
     // a fresh timestamp but the editor keeps rendering the stale score
     // the user originally loaded.
     //
-    // Safe-replace check: only swap when the displayed score is
-    // structurally identical to what was in localStorage BEFORE sync.
-    // If they differ, the user has in-flight local edits not yet
-    // autosaved — don't clobber.
-    if (currentSongId && score) {
-      const fresh = merged.find((e) => e.id === currentSongId);
-      const preLocal = preLocalById.get(currentSongId);
-      if (fresh && fresh.score !== score) {
-        const cloudIsNewer = JSON.stringify(fresh.score) !== JSON.stringify(score);
-        const noLocalUnsavedEdits = !!preLocal && JSON.stringify(score) === JSON.stringify(preLocal.score);
-        if (cloudIsNewer && noLocalUnsavedEdits) {
-          setScore(fresh.score);
-        }
-      }
-    }
+    // The helper reads the store LIVE. This sync starts on modal open and
+    // takes seconds; if the user picks a song meanwhile, the `score` and
+    // `currentSongId` this closure captured describe the PREVIOUS song,
+    // and judging by them replaced the just-loaded song with the old
+    // one's cloud copy — the "app loaded the wrong song" bug.
+    adoptSyncedOpenSong(merged, preLocalById);
   };
 
   useEffect(() => {
     void runSync();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Share links always point at the deployed Pages site so they're

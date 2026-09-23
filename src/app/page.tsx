@@ -19,6 +19,7 @@ import ChordChartView from "@/components/ChordChartView";
 import AutosaveRecoveryDialog from "@/components/AutosaveRecoveryDialog";
 import PasteLyricsModal from "@/components/PasteLyricsModal";
 import RiffPeekHost from "@/components/RiffPeekHost";
+import RiffEditorHost from "@/components/RiffEditorHost";
 import MySongsModal from "@/components/MySongsModal";
 import ApiKeyModal from "@/components/ApiKeyModal";
 import JoinSongbookModal from "@/components/JoinSongbookModal";
@@ -29,6 +30,7 @@ import { CLOUD_ENABLED, getDeviceId, setDeviceId, cloudPutSong, syncSongbook, en
 import { setSongs as writeLocalSongs, type SongBankEntry } from "@/lib/song-bank";
 import ImportSongbookDialog, { type ImportSongbookPayload } from "@/components/ImportSongbookDialog";
 import { autosaveToCloud, CloudSaveEvents } from "@/lib/cloud-autosave";
+import { adoptMergedScore } from "@/lib/open-song-sync";
 import { getSongs, restoreBankIfLost, updateSong } from "@/lib/song-bank";
 import { AUTH_ENABLED, completeSignIn, initAuth } from "@/lib/auth";
 import type { SongDTO } from "@/lib/song-cloud-types";
@@ -730,7 +732,13 @@ export default function Home() {
       // Adopt the merged score so the editor shows the other device's
       // contributions immediately. Without this the user keeps editing
       // off a stale local score and re-collisions until reload.
-      setScore(detail.score);
+      //
+      // Only if that song is still the open one: the autosave that
+      // produced this merge started up to 8s earlier, and the user may
+      // have loaded another song since. The merge is already in the
+      // songbook entry; putting it on screen here would replace the song
+      // they just opened.
+      if (!adoptMergedScore(detail.songId, detail.score)) return;
       const parts: string[] = [];
       if (detail.stats.linesChanged) parts.push(`${detail.stats.linesChanged} line${detail.stats.linesChanged === 1 ? "" : "s"}`);
       if (detail.stats.sectionsAdded) parts.push(`${detail.stats.sectionsAdded} section${detail.stats.sectionsAdded === 1 ? "" : "s"}`);
@@ -749,7 +757,7 @@ export default function Home() {
       window.removeEventListener(CloudSaveEvents.Conflict, onConflict);
       window.removeEventListener(CloudSaveEvents.Merged, onMerged);
     };
-  }, [addMessage, setScore]);
+  }, [addMessage]);
 
   // Startup safety net: if the localStorage song bank was wiped/evicted
   // but the IndexedDB mirror still has songs, restore it and say so.
@@ -1609,6 +1617,7 @@ export default function Home() {
           beneath the perform overlay, and PerformView mounts its own host, so
           an ungated one here would stack a second card on the first. */}
       {!uiState.performMode && <RiffPeekHost />}
+      {!uiState.performMode && <RiffEditorHost />}
 
       {/* Paste Lyrics / Chords modal */}
       {pasteLyricsOpen && (
@@ -1713,9 +1722,10 @@ export default function Home() {
             setConflict(null);
           }}
           onDiscardMine={() => {
-            // Adopt the cloud version: replace open score, advance local
-            // entry's cloudVersion so future saves go through cleanly.
-            setScore(conflict.current.score);
+            // Adopt the cloud version: replace open score (if that song is
+            // still the open one), advance local entry's cloudVersion so
+            // future saves go through cleanly.
+            adoptMergedScore(conflict.songId, conflict.current.score);
             updateSong(conflict.songId, {
               score: conflict.current.score,
               cloudVersion: conflict.current.version,
