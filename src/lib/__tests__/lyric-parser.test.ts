@@ -4,6 +4,10 @@ import {
   parseToChordChartLines,
   parseToSections,
   parseLyricsWithChords,
+  parseSectionHeader,
+  detectTitleLine,
+  normalizeTitleCase,
+  stripCommonIndent,
 } from "../lyric-parser";
 
 describe("sanitizePastedText", () => {
@@ -169,5 +173,148 @@ describe("bar-delimited chord rows are chords, not lyrics", () => {
   it("strips bars from the chord when extracting to word pairs", () => {
     const pairs = parseLyricsWithChords("|Am    |F\nhello world");
     expect(pairs.map((p) => p.chord)).toEqual(["Am", "F"]);
+  });
+});
+
+// ── Paste cleanup (Lebanon / Damnation imports) ──────────────────────────────
+
+describe("repeat markers on chord rows", () => {
+  it("reads an intro row that ends in x3 as chords, not lyrics", () => {
+    const [intro, d] = parseToChordChartLines("G  D  Em  C   x3\nD");
+    expect(intro).toEqual({ chords: "G  D  Em  C   x3", lyrics: "" });
+    expect(d).toEqual({ chords: "D", lyrics: "" });
+  });
+
+  it("accepts (x2), 2x and ×3 forms", () => {
+    expect(parseToChordChartLines("| G | C | (x2)")[0].lyrics).toBe("");
+    expect(parseToChordChartLines("G C 2x")[0].lyrics).toBe("");
+    expect(parseToChordChartLines("G C ×3")[0].chords).toBe("G C x3");
+  });
+
+  it("does not treat a lone repeat marker as a chord row", () => {
+    expect(parseToChordChartLines("x3")[0]).toEqual({ chords: "", lyrics: "x3" });
+  });
+
+  it("skips the marker when extracting chords to words", () => {
+    const pairs = parseLyricsWithChords("G     C   x2\nhello world");
+    expect(pairs.map(p => p.chord)).toEqual(["G", "C"]);
+  });
+});
+
+describe("section headers — wider vocabulary", () => {
+  it.each([
+    ["Verse Two", "Verse 2"],
+    ["VERSE ONE", "Verse 1"],
+    ["Verse II", "Verse 2"],
+    ["[Chorus]", "Chorus"],
+    ["(Bridge)", "Bridge"],
+    ["Solo", "Solo"],
+    ["Guitar Solo", "Guitar Solo"],
+    ["Instrumental:", "Instrumental"],
+    ["Interlude", "Interlude"],
+    ["Breakdown", "Breakdown"],
+    ["Tag", "Tag"],
+    ["Coda", "Coda"],
+    ["Post-Chorus", "Post-Chorus"],
+    ["Middle 8", "Middle 8"],
+    ["CHORUS x2", "Chorus x2"],
+    ["Chorus (x2)", "Chorus x2"],
+    ["Chorus 2x", "Chorus x2"],
+    ["Verse 3 (x2)", "Verse 3 x2"],
+  ])("%s -> %s", (line, label) => {
+    expect(parseSectionHeader(line)).toBe(label);
+  });
+
+  it("still rejects ordinary lyric lines", () => {
+    expect(parseSectionHeader("Tangled I was strangled")).toBeNull();
+    expect(parseSectionHeader("Twice in a lifetime")).toBeNull();
+    expect(parseSectionHeader("x2")).toBeNull();
+  });
+
+  it("recognizes an indented header (Damnation's 'Verse Two')", () => {
+    const sections = parseToSections(
+      "  Verse 1\n  Deposition, you are my imposition\n\n  Verse Two\n  Officer of the register\n",
+    );
+    expect(sections.map(s => s.label)).toEqual(["Verse 1", "Verse 2"]);
+    expect(sections[1].lines[0].lyrics).toBe("Officer of the register");
+  });
+});
+
+describe("reference headers keep their place", () => {
+  it("keeps 'CHORUS x2' as a label-only section between verse and bridge", () => {
+    const sections = parseToSections(
+      "VERSE 2\n|G |F\nImagine no politics\n\n\nCHORUS x2\n\n\nBRIDGE\n|A\nTrapped in combat",
+    );
+    expect(sections.map(s => s.label)).toEqual(["Verse 2", "Chorus x2", "Bridge"]);
+    expect(sections[1].lines).toEqual([]);
+    expect(sections[0].lines.map(l => l.lyrics)).toEqual(["Imagine no politics"]);
+  });
+
+  it("keeps a bare repeated header ('Chorus' again) as a reference", () => {
+    const sections = parseToSections("Chorus\nOpen wound\n\nBridge\nMessenger\n\nChorus\n");
+    expect(sections.map(s => s.label)).toEqual(["Chorus", "Bridge", "Chorus"]);
+    expect(sections[2].lines).toEqual([]);
+  });
+
+  it("still drops a brand-new header with nothing under it", () => {
+    const sections = parseToSections("Verse 1\nhello\n\nVerse 2\n\nChorus\nworld");
+    expect(sections.map(s => s.label)).toEqual(["Verse 1", "Chorus"]);
+  });
+});
+
+describe("whitespace cleanup on paste", () => {
+  it("strips the indent every line shares, keeping chord/lyric alignment", () => {
+    expect(stripCommonIndent("  G   C\n  hello world\n\n    deeper")).toBe("G   C\nhello world\n\n  deeper");
+    const [line] = parseToChordChartLines("    G     C\n    hello world");
+    expect(line).toEqual({ chords: "G     C", lyrics: "hello world" });
+  });
+
+  it("collapses runs of blank lines to one and drops them at section edges", () => {
+    const [sec] = parseToSections("Verse 1\n\n\nfirst\n\n\n\nsecond\n\n\n");
+    expect(sec.lines.map(l => l.lyrics)).toEqual(["first", "", "second"]);
+  });
+
+  it("drops a trailing END sign-off", () => {
+    const sections = parseToSections("Chorus\nhello\n\nEND\n");
+    expect(sections[0].lines.map(l => l.lyrics)).toEqual(["hello"]);
+    expect(parseToChordChartLines("hello\nThe End").map(l => l.lyrics)).toEqual(["hello"]);
+  });
+
+  it("does not drop END when it is not the last line", () => {
+    expect(parseToChordChartLines("END\nhello").map(l => l.lyrics)).toEqual(["END", "hello"]);
+  });
+});
+
+describe("title line detection", () => {
+  const lebanon = "LEBANON\n\nINTRO\nG  D  Em  C   x3\n\nVERSE 1\nG      |F\nTangled I was strangled\n";
+
+  it("pulls a lone first line above the first header out as the title", () => {
+    const hit = detectTitleLine(lebanon);
+    expect(hit?.title).toBe("LEBANON");
+    expect(parseToSections(hit!.body).map(s => s.label)).toEqual(["Intro", "Verse 1"]);
+    expect(parseToSections(hit!.body)[0].lines[0]).toEqual({ chords: "G  D  Em  C   x3", lyrics: "" });
+  });
+
+  it("accepts a title directly followed by the first header, and an indented one", () => {
+    expect(detectTitleLine("Damnation\nVerse 1\nhello")?.title).toBe("Damnation");
+    expect(detectTitleLine("  Damnation\n\n  Verse 1\n  hello")?.title).toBe("Damnation");
+  });
+
+  it("is not fooled by a header, a chord row, or a lyric couplet on line one", () => {
+    expect(detectTitleLine("Verse 1\nhello\n\nChorus\nworld")).toBeNull();
+    expect(detectTitleLine("G  C\nhello\n\nChorus\nworld")).toBeNull();
+    expect(detectTitleLine("hello there\nhow are you\n\nChorus\nworld")).toBeNull();
+  });
+
+  it("needs section headers somewhere — plain lyrics have no title line", () => {
+    expect(detectTitleLine("Lebanon\n\nhello world")).toBeNull();
+  });
+
+  it("title-cases an ALL CAPS title and leaves mixed case alone", () => {
+    expect(normalizeTitleCase("LEBANON")).toBe("Lebanon");
+    expect(normalizeTitleCase("LOVE SEEKING MISSILE")).toBe("Love Seeking Missile");
+    expect(normalizeTitleCase("ROCK-A-BYE (LIVE)")).toBe("Rock-A-Bye (Live)");
+    expect(normalizeTitleCase("Look What I Made")).toBe("Look What I Made");
+    expect(normalizeTitleCase("iPad song")).toBe("iPad song");
   });
 });

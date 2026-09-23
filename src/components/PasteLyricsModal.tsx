@@ -3,13 +3,20 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useScoreStore } from "@/store/score-store";
 import { ChordSymbol, Note, ScorePatch } from "@/lib/schema";
-import { parseLyricsWithChords, parseToSections } from "@/lib/lyric-parser";
+import {
+  detectTitleLine,
+  normalizeTitleCase,
+  parseLyricsWithChords,
+  parseToSections,
+} from "@/lib/lyric-parser";
+import { renameSong } from "@/lib/song-bank";
 import { logEvent, scoreTypeOf } from "@/lib/analytics";
 
 export default function PasteLyricsModal({ onClose }: { onClose: () => void }) {
   const score = useScoreStore(s => s.score);
   const applyPatches = useScoreStore(s => s.applyPatches);
   const stepEntry = useScoreStore(s => s.stepEntry);
+  const currentSongId = useScoreStore(s => s.uiState.currentSongId);
   const [text, setText] = useState("");
 
   // Analytics: log open on mount; on unmount, log submit-or-cancel based on
@@ -73,13 +80,35 @@ export default function PasteLyricsModal({ onClose }: { onClose: () => void }) {
     chartHasContent ? "append" : "replace"
   );
 
+  // Title line. A chart pasted from a notes app usually starts with the song
+  // name on its own line above the first section header. That is not a lyric
+  // — offer to make it the song title and leave it out of the chart. When it
+  // already matches the title, just leave it out.
+  const titleHit = useMemo(
+    () => (isChordChartMode && text.trim() ? detectTitleLine(text) : null),
+    [text, isChordChartMode],
+  );
+  const proposedTitle = titleHit ? normalizeTitleCase(titleHit.title) : null;
+  const currentTitle = (score?.title ?? "").trim();
+  const titleMatchesCurrent =
+    !!proposedTitle && currentTitle.toLowerCase() === proposedTitle.toLowerCase();
+  const [useTitle, setUseTitle] = useState(true);
+
   // Keep a ref to the apply handler so the keyboard effect never goes stale
   const applyRef = useRef<() => void>(() => {});
 
   const handleApplyChordChart = () => {
     if (!score || !isChordChartMode) return;
-    const parsedSections = parseToSections(text);
+    const dropTitleLine = !!titleHit && (useTitle || titleMatchesCurrent);
+    const setTitleTo = titleHit && useTitle && !titleMatchesCurrent ? proposedTitle : null;
+    const parsedSections = parseToSections(dropTitleLine ? titleHit!.body : text);
     if (parsedSections.length === 0) { onClose(); return; }
+    const titlePatches: ScorePatch[] = setTitleTo ? [{ op: "set_title", value: setTitleTo }] : [];
+    if (setTitleTo && currentSongId) {
+      // The songbook entry carries its own title (it's what My Songs and
+      // the cloud list show), so rename it in step with the score.
+      renameSong(currentSongId, setTitleTo);
+    }
 
     // Append mode: add the parsed content as NEW sections at the end; never
     // touch existing sections. This is the safe default when the chart already
@@ -94,7 +123,7 @@ export default function PasteLyricsModal({ onClose }: { onClose: () => void }) {
           lines: parsed.lines.length > 0 ? parsed.lines : [{ chords: "", lyrics: "" }],
         },
       }));
-      applyPatches(patches);
+      applyPatches([...titlePatches, ...patches]);
       submittedRef.current = true;
       onClose();
       return;
@@ -114,7 +143,7 @@ export default function PasteLyricsModal({ onClose }: { onClose: () => void }) {
       for (const line of newLines) {
         patches.push({ op: "add_section_line", sectionId: section.id, line });
       }
-      applyPatches(patches);
+      applyPatches([...titlePatches, ...patches]);
     } else {
       // Section headers detected — replace ALL sections with the parsed result
       const ts = Date.now();
@@ -134,7 +163,7 @@ export default function PasteLyricsModal({ onClose }: { onClose: () => void }) {
           },
         });
       }
-      applyPatches(patches);
+      applyPatches([...titlePatches, ...patches]);
     }
     submittedRef.current = true;
     onClose();
@@ -241,6 +270,26 @@ export default function PasteLyricsModal({ onClose }: { onClose: () => void }) {
             className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y font-mono"
           />
 
+          {titleHit && proposedTitle && (
+            titleMatchesCurrent ? (
+              <p className="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                The first line, &ldquo;{titleHit.title}&rdquo;, matches the song title and will be left out of the lyrics.
+              </p>
+            ) : (
+              <label className="flex items-start gap-3 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={useTitle}
+                  onChange={e => setUseTitle(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <span>
+                  The first line looks like a title. Set the song title to <strong>&ldquo;{proposedTitle}&rdquo;</strong> and leave it out of the lyrics.
+                  {!useTitle && <> Unchecked, it stays in as the first lyric line.</>}
+                </span>
+              </label>
+            )
+          )}
           {!isChordChartMode && score && !stepEntry && notes.length > 0 && (
             <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
               No note selected — pasting from the beginning. Tap a note first to set the start position.
