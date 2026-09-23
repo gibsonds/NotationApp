@@ -3,6 +3,7 @@
 import { Fragment, useState, useRef, useEffect, useMemo } from "react";
 import { Score, ChordChartSection, ScorePatch, Riff } from "@/lib/schema";
 import { RiffChipRow } from "@/components/RiffChip";
+import { inferKey } from "@/lib/key-inference";
 
 /** Shared empty index — a fresh Map per render would defeat memoization. */
 const EMPTY_RIFF_LINES: Map<number, Riff[]> = new Map();
@@ -1853,7 +1854,25 @@ export default function ChordChartView({ score, performMode = false, performColu
         <div className="text-sm text-gray-500 mt-2 flex gap-4 flex-wrap">
           <span>{score.timeSignature}</span>
           <span>{score.tempo} bpm</span>
-          <span>Key of {score.keySignature}</span>
+          <span className="inline-flex items-center gap-1.5">
+            Key of {score.keySignature}
+            {(() => {
+              const guess = inferKey(score);
+              if (!guess || guess.key === score.keySignature) return null;
+              return (
+                <button
+                  type="button"
+                  onClick={() => applyPatches([{ op: "set_key_signature", value: guess.key }])}
+                  title={guess.confidence < 0.15
+                    ? `The chords fit more than one key; best guess is ${guess.key}`
+                    : `The chords look like ${guess.key} — click to set`}
+                  className="px-1.5 py-0.5 rounded border border-gray-700 bg-[#1a1a2e] text-gray-300 hover:bg-[#22223a] text-xs"
+                >
+                  {guess.key}?
+                </button>
+              );
+            })()}
+          </span>
           {formDisplay && <span>Form: {formDisplay}</span>}
         </div>
         <p className="text-xs text-gray-500 mt-2 italic">

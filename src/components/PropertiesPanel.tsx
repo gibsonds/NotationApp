@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useScoreStore, DEFAULT_LAYOUT, PRINT_LAYOUT, REALBOOK_LAYOUT, STYLE_PRESETS, StylePreset, LayoutSettings, MusicFont, TextFont, PageSize, PAGE_DIMENSIONS } from "@/store/score-store";
 import { downloadScoreAsMidi } from "@/lib/midi-export";
 import { KeySignature, Clef, Score, ScorePatch } from "@/lib/schema";
+import { inferKey } from "@/lib/key-inference";
 import { v4 as uuidv4 } from "uuid";
 import RevisionPanel from "./RevisionPanel";
 
@@ -37,8 +38,13 @@ export default function PropertiesPanel({ embedded = false }: PropertiesPanelPro
           <div className="space-y-1.5">
             <DarkField label="Title" value={score.title} onChange={(v) => applyPatches([{ op: "set_title", value: v }])} />
             <DarkField label="Tempo" value={String(score.tempo)} type="number" onChange={(v) => applyPatches([{ op: "set_tempo", value: parseInt(v, 10) || 120 }])} />
-            <DarkSelect label="Key" value={score.keySignature} options={["C","G","D","A","E","B","F","Bb","Eb","Ab","Db","Am","Em","Bm","Dm","Gm","Cm","Fm"]}
-              onChange={(v) => applyPatches([{ op: "set_key_signature", value: v as KeySignature }])} />
+            <div className="flex items-center gap-1">
+              <div className="flex-1">
+                <DarkSelect label="Key" value={score.keySignature} options={["C","G","D","A","E","B","F","Bb","Eb","Ab","Db","Am","Em","Bm","Dm","Gm","Cm","Fm"]}
+                  onChange={(v) => applyPatches([{ op: "set_key_signature", value: v as KeySignature }])} />
+              </div>
+              <DetectKeyButton score={score} onDetect={(k) => applyPatches([{ op: "set_key_signature", value: k }])} dark />
+            </div>
             <DarkField label="Time" value={score.timeSignature} onChange={(v) => applyPatches([{ op: "set_time_signature", value: v }])} />
             <DarkField label="Measures" value={String(score.measures)} type="number" onChange={(v) => applyPatches([{ op: "set_measures", value: parseInt(v, 10) || 8 }])} />
             <div className="flex items-center justify-between">
@@ -176,19 +182,24 @@ export default function PropertiesPanel({ embedded = false }: PropertiesPanelPro
                 applyPatches([{ op: "set_tempo", value: parseInt(v, 10) || 120 }])
               }
             />
-            <SelectField
-              label="Key"
-              value={score.keySignature}
-              options={[
-                "C", "G", "D", "A", "E", "B", "F", "Bb", "Eb", "Ab", "Db",
-                "Am", "Em", "Bm", "Dm", "Gm", "Cm", "Fm",
-              ]}
-              onChange={(v) =>
-                applyPatches([
-                  { op: "set_key_signature", value: v as KeySignature },
-                ])
-              }
-            />
+            <div className="flex items-end gap-1">
+              <div className="flex-1">
+                <SelectField
+                  label="Key"
+                  value={score.keySignature}
+                  options={[
+                    "C", "G", "D", "A", "E", "B", "F", "Bb", "Eb", "Ab", "Db",
+                    "Am", "Em", "Bm", "Dm", "Gm", "Cm", "Fm",
+                  ]}
+                  onChange={(v) =>
+                    applyPatches([
+                      { op: "set_key_signature", value: v as KeySignature },
+                    ])
+                  }
+                />
+              </div>
+              <DetectKeyButton score={score} onDetect={(k) => applyPatches([{ op: "set_key_signature", value: k }])} />
+            </div>
             <Field
               label="Time Sig"
               value={score.timeSignature}
@@ -601,6 +612,31 @@ function DarkField({ label, value, type = "text", onChange }: { label: string; v
       <input type={type} value={value} onChange={(e) => onChange(e.target.value)}
         className="flex-1 px-2 py-1 text-[11px] bg-white/5 border border-white/10 rounded text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500/50 focus:border-blue-500/50" />
     </div>
+  );
+}
+
+/** Infer the key from the chart's chords and apply it. Disabled when the
+ *  score has no chords to read. */
+function DetectKeyButton({ score, onDetect, dark = false }: { score: Score; onDetect: (k: KeySignature) => void; dark?: boolean }) {
+  const guess = inferKey(score);
+  const title = !guess
+    ? "No chords to read a key from yet"
+    : guess.confidence < 0.15
+      ? `Best guess ${guess.key} — the chords fit more than one key`
+      : `Looks like ${guess.key}`;
+  return (
+    <button
+      type="button"
+      disabled={!guess}
+      onClick={() => guess && onDetect(guess.key)}
+      title={title}
+      aria-label="Detect key from chords"
+      className={dark
+        ? "px-2 py-1 text-[10px] rounded bg-white/10 text-gray-300 hover:bg-white/15 active:bg-white/20 disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+        : "px-2 py-1.5 text-xs rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 active:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed shrink-0"}
+    >
+      Detect
+    </button>
   );
 }
 

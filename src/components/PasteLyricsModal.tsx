@@ -11,11 +11,13 @@ import {
   parseToSections,
 } from "@/lib/lyric-parser";
 import { renameSong } from "@/lib/song-bank";
+import { inferKey } from "@/lib/key-inference";
 import { logEvent, scoreTypeOf } from "@/lib/analytics";
 
 export default function PasteLyricsModal({ onClose }: { onClose: () => void }) {
   const score = useScoreStore(s => s.score);
   const applyPatches = useScoreStore(s => s.applyPatches);
+  const addMessage = useScoreStore(s => s.addMessage);
   const stepEntry = useScoreStore(s => s.stepEntry);
   const currentSongId = useScoreStore(s => s.uiState.currentSongId);
   const [text, setText] = useState("");
@@ -109,6 +111,23 @@ export default function PasteLyricsModal({ onClose }: { onClose: () => void }) {
     const parsedSections = parseToSections(dropTitleLine ? titleHit!.body : text);
     if (parsedSections.length === 0) { onClose(); return; }
     const titlePatches: ScorePatch[] = setTitleTo ? [{ op: "set_title", value: setTitleTo }] : [];
+    // Key: read it off the pasted chords rather than leaving the dropdown's
+    // default in place. Only when this paste defines the chart (replace, or
+    // a chart with nothing in it yet) — appending verses to a chart whose key
+    // the user already set must not override it.
+    const definesChart = applyMode === "replace" || !chartHasContent;
+    const guess = definesChart ? inferKey({ sections: parsedSections.map((p, i) => ({ id: String(i), label: p.label, lines: p.lines })), chordSymbols: [] }) : null;
+    if (guess && guess.key !== score.keySignature) {
+      titlePatches.push({ op: "set_key_signature", value: guess.key });
+      addMessage({
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: guess.confidence < 0.15
+          ? `Key set to ${guess.key} from the chords — the chart fits more than one key, so check it.`
+          : `Key set to ${guess.key} from the chords.`,
+        timestamp: Date.now(),
+      });
+    }
     if (setTitleTo && currentSongId) {
       // The songbook entry carries its own title (it's what My Songs and
       // the cloud list show), so rename it in step with the score.
