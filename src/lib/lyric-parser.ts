@@ -21,8 +21,75 @@ export function sanitizePastedText(text: string): string {
     .replace(/[‘’‛′]/g, "'")    // smart single quotes, prime -> '
     .replace(/[“”‟″]/g, '"')    // smart double quotes, dbl prime -> "
     .replace(/[–—−]/g, "-")          // en/em dash, minus -> -
-    .replace(/[   ]/g, " ");         // nbsp / figure / narrow-nbsp -> space
+    .replace(/[   ]/g, " ")         // nbsp / figure / narrow-nbsp -> space
+    .replace(/×/g, "x");             // multiplication sign in "×2" -> x
   return expandTabs(normalized);
+}
+
+/**
+ * Remove the indentation every non-blank line shares. Text copied out of a
+ * notes app or a PDF often arrives with every line pushed right by the same
+ * two or four spaces; the chart then renders each lyric with a visible gap on
+ * the left. Stripping only the COMMON prefix keeps chord/lyric column
+ * alignment intact — both lines lose the same amount.
+ */
+export function stripCommonIndent(text: string): string {
+  const lines = text.split("\n");
+  let common = Infinity;
+  for (const l of lines) {
+    if (l.trim() === "") continue;
+    const n = l.length - l.trimStart().length;
+    if (n < common) common = n;
+  }
+  if (!Number.isFinite(common) || common === 0) return text;
+  return lines.map((l) => (l.trim() === "" ? l : l.slice(common))).join("\n");
+}
+
+/**
+ * Collapse a block's blank lines: none at the start or end, and never more
+ * than one in a row. Pasted charts separate every chord/lyric couplet with a
+ * blank line and pile two or three between sections; one is all the chart
+ * needs for visual spacing.
+ */
+export function collapseBlankLines(lines: ChordChartLine[]): ChordChartLine[] {
+  const isBlank = (l: ChordChartLine) => !l.chords.trim() && !l.lyrics.trim();
+  const out: ChordChartLine[] = [];
+  for (const l of lines) {
+    if (isBlank(l)) {
+      if (out.length === 0 || isBlank(out[out.length - 1])) continue;
+    }
+    out.push(l);
+  }
+  while (out.length > 0 && isBlank(out[out.length - 1])) out.pop();
+  return out;
+}
+
+// A final "END" / "THE END" / "FIN" line is a sheet-music sign-off, not a
+// lyric. Only the LAST non-blank line qualifies.
+const END_MARKER_RE = /^\s*[\(\[]?\s*(the\s+end|end|fin|fine)\s*[\)\]]?\s*$/i;
+
+function stripTrailingEndMarker(text: string): string {
+  const lines = text.split("\n");
+  let last = lines.length - 1;
+  while (last >= 0 && lines[last].trim() === "") last--;
+  if (last < 0 || !END_MARKER_RE.test(lines[last])) return text;
+  return lines.slice(0, last).join("\n");
+}
+
+// Repeat markers that ride along on a chord row or a section header:
+// "x3", "3x", "(x3)", "[x2]", "X2". "×" is normalized to "x" in sanitize.
+const REPEAT_TOKEN_RE = /^[\(\[]?(?:x\s?(\d+)|(\d+)\s?x)[\)\]]?$/i;
+
+function repeatCountOf(token: string): number | null {
+  const m = REPEAT_TOKEN_RE.exec(stripChordPunct(token));
+  if (!m) return null;
+  return parseInt(m[1] ?? m[2], 10);
+}
+
+// Prepare a pasted blob for parsing: normalize characters, drop the common
+// indent, drop a trailing END sign-off, then trim surrounding blank lines.
+function prepare(text: string): string {
+  return trimBlankLines(stripTrailingEndMarker(stripCommonIndent(sanitizePastedText(text))));
 }
 
 /**
@@ -51,9 +118,25 @@ export function trimBlankLines(text: string): string {
 
 // ── Section header detection ──────────────────────────────────────────────────
 
-// Matches lines like "Verse 1:", "CHORUS", "Pre-Chorus:", "Bridge 2"
-const SECTION_HEADER_RE =
-  /^(verse|chorus|bridge|intro|outro|pre[\s-]?chorus|refrain|hook)(\s+\d+)?\s*:?\s*$/i;
+// Matches lines like "Verse 1:", "CHORUS", "Pre-Chorus:", "Bridge 2",
+// "Verse Two", "[Chorus]", "(Solo)", "CHORUS x2", "Chorus (2x)".
+const NUMBER_WORDS: Record<string, number> = {
+  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6,
+  seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12,
+  i: 1, ii: 2, iii: 3, iv: 4, v: 5, vi: 6, vii: 7, viii: 8, ix: 9, x: 10,
+};
+const HEADER_KEYWORDS =
+  "verse|chorus|bridge|intro|outro|pre[\\s-]?chorus|post[\\s-]?chorus|refrain|hook|" +
+  "(?:guitar|piano|bass|drum|sax|keys?)?\\s*solo|instrumental|interlude|breakdown|" +
+  "tag|coda|ending|vamp|turnaround|middle\\s?(?:8|eight)";
+const SECTION_HEADER_RE = new RegExp(
+  "^[\\(\\[]?\\s*(" + HEADER_KEYWORDS + ")" +                       // keyword
+    "(?:\\s+(\\d+|" + Object.keys(NUMBER_WORDS).join("|") + "))?" + // number
+    "\\s*[\\)\\]]?\\s*:?" +                                          // bracket / colon
+    "(?:\\s*[\\(\\[]?\\s*(?:x\\s?(\\d+)|(\\d+)\\s?x)\\s*[\\)\\]]?)?" + // repeat
+    "\\s*:?\\s*$",
+  "i",
+);
 
 const SECTION_LABEL_MAP: Record<string, string> = {
   verse: "Verse",
@@ -64,23 +147,96 @@ const SECTION_LABEL_MAP: Record<string, string> = {
   prechorus: "Pre-Chorus",
   "pre-chorus": "Pre-Chorus",
   "pre chorus": "Pre-Chorus",
+  postchorus: "Post-Chorus",
+  "post-chorus": "Post-Chorus",
+  "post chorus": "Post-Chorus",
   refrain: "Refrain",
   hook: "Hook",
+  solo: "Solo",
+  instrumental: "Instrumental",
+  interlude: "Interlude",
+  breakdown: "Breakdown",
+  tag: "Tag",
+  coda: "Coda",
+  ending: "Ending",
+  vamp: "Vamp",
+  turnaround: "Turnaround",
+  middle8: "Middle 8",
+  "middle 8": "Middle 8",
+  "middle eight": "Middle 8",
 };
 
+export interface ParsedHeader {
+  /** Normalized label without any repeat marker, e.g. "Verse 2". */
+  label: string;
+  /** Repeat count when the header carried one ("CHORUS x2" -> 2). */
+  repeat?: number;
+}
+
 /**
- * If `line` is a section header (case-insensitive keyword optionally followed
- * by a number and/or colon), return the normalized label ("Verse 1", "Chorus",
- * "Pre-Chorus", …). Returns null for anything else.
+ * Parse a section header line: a keyword, optional number (digits, words or
+ * roman numerals), optional colon / brackets, optional repeat marker. Returns
+ * null for anything else.
  */
-export function parseSectionHeader(line: string): string | null {
+export function parseSectionHeaderFull(line: string): ParsedHeader | null {
   const m = SECTION_HEADER_RE.exec(line.trim());
   if (!m) return null;
-  // Normalize the keyword via the map; fall back to title-case
-  const raw = m[1].toLowerCase().replace(/\s/g, " ").trim();
-  const base = SECTION_LABEL_MAP[raw] ?? (raw.charAt(0).toUpperCase() + raw.slice(1));
-  const num = m[2]?.trim();
-  return num ? `${base} ${num}` : base;
+  const raw = m[1].toLowerCase().replace(/\s+/g, " ").trim();
+  const base =
+    SECTION_LABEL_MAP[raw] ??
+    raw.split(" ").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+  const numRaw = m[2]?.toLowerCase();
+  const num = numRaw ? (/^\d+$/.test(numRaw) ? numRaw : String(NUMBER_WORDS[numRaw])) : null;
+  const label = num ? `${base} ${num}` : base;
+  const rep = m[3] ?? m[4];
+  return rep ? { label, repeat: parseInt(rep, 10) } : { label };
+}
+
+/**
+ * If `line` is a section header, return the normalized label ("Verse 1",
+ * "Chorus", "Pre-Chorus", …) with any repeat marker folded in as " x2".
+ * Returns null for anything else.
+ */
+export function parseSectionHeader(line: string): string | null {
+  const h = parseSectionHeaderFull(line);
+  if (!h) return null;
+  return h.repeat ? `${h.label} x${h.repeat}` : h.label;
+}
+
+/**
+ * A title line: the first non-blank line of a paste that has section headers,
+ * when that line comes BEFORE the first header, is neither a header nor a
+ * chord row, is short, and stands alone (a blank line or the first header
+ * follows it). "LEBANON" at the top of a chart is the song's name, not the
+ * Intro's first lyric.
+ *
+ * Returns the title as written plus the text with that line removed, or
+ * null when the first line does not look like a title.
+ */
+export function detectTitleLine(text: string): { title: string; body: string } | null {
+  const prepared = prepare(text);
+  if (!prepared) return null;
+  const lines = prepared.split("\n");
+  const first = lines[0];
+  const firstTrim = first.trim();
+  if (!firstTrim || firstTrim.length > 60) return null;
+  if (parseSectionHeaderFull(first) !== null) return null;
+  if (isChordRow(firstTrim.split(/\s+/))) return null;
+  if (/\[[A-G][^\]]*\]/.test(firstTrim)) return null;
+  if (!lines.some((l) => parseSectionHeaderFull(l) !== null)) return null;
+  const next = lines[1];
+  const standsAlone = next === undefined || next.trim() === "" || parseSectionHeaderFull(next) !== null;
+  if (!standsAlone) return null;
+  return { title: firstTrim, body: lines.slice(1).join("\n") };
+}
+
+/** "LEBANON" -> "Lebanon"; a title that already has lowercase letters is
+ *  left exactly as typed. */
+export function normalizeTitleCase(title: string): string {
+  if (/[a-z]/.test(title)) return title;
+  return title
+    .toLowerCase()
+    .replace(/(^|[\s\-\(\["'])([a-z])/g, (_m, pre, ch) => pre + ch.toUpperCase());
 }
 
 export interface ParsedSection {
@@ -122,8 +278,20 @@ function isChordToken(s: string): boolean {
   const t = stripChordPunct(s);
   if (t === "") return false;
   if (/^\|+$/.test(t)) return true; // a bare bar, or "||"
+  if (REPEAT_TOKEN_RE.test(t)) return true; // "x3" riding on a chord row
   const core = t.replace(/^\|+/, "").replace(/\|+$/, "");
   return core !== "" && CHORD_RE.test(core);
+}
+
+/**
+ * Is this whole line a chord row? Every token must be a chord, a bar, or a
+ * repeat marker — and at least one must be a chord or bar, so a lone "x3"
+ * is not a chord row.
+ */
+function isChordRow(tokens: string[]): boolean {
+  if (tokens.length === 0) return false;
+  if (!tokens.every(isChordToken)) return false;
+  return tokens.some((t) => repeatCountOf(t) === null);
 }
 
 /** The chord text itself, with any bar markers and autocorrect punctuation
@@ -167,17 +335,17 @@ function parseAboveLine(text: string): WordChordPair[] {
     const tokens = line.trim().split(/\s+/).filter(Boolean);
     if (tokens.length === 0) { i++; continue; }
 
-    const isChordLine = tokens.every(isChordToken);
+    const isChordLine = isChordRow(tokens);
     const nextLine = i + 1 < lines.length ? lines[i + 1] : null;
     const nextTokens = nextLine?.trim().split(/\s+/).filter(Boolean) ?? [];
-    const nextIsLyric = nextTokens.length > 0 && !nextTokens.every(isChordToken);
+    const nextIsLyric = nextTokens.length > 0 && !isChordRow(nextTokens);
 
     if (isChordLine && nextIsLyric) {
       const chordCols: { col: number; chord: string }[] = [];
       let cm: RegExpExecArray | null;
       const cr = /\S+/g;
       while ((cm = cr.exec(line)) !== null) {
-        if (isChordToken(cm[0])) {
+        if (isChordToken(cm[0]) && repeatCountOf(cm[0]) === null) {
           const text = chordTextOf(cm[0]);
           if (text) chordCols.push({ col: cm.index, chord: text });
         }
@@ -218,7 +386,7 @@ function parseAboveLine(text: string): WordChordPair[] {
  * Pure lyrics return pairs with no chord field set.
  */
 export function parseLyricsWithChords(text: string): WordChordPair[] {
-  const trimmed = trimBlankLines(sanitizePastedText(text));
+  const trimmed = prepare(text);
   if (!trimmed) return [];
   if (/\[[A-G][^\]]*\]/.test(trimmed)) return parseBracketed(trimmed);
   return parseAboveLine(trimmed);
@@ -262,16 +430,16 @@ function pairsToChordChartLine(pairs: WordChordPair[]): ChordChartLine {
  * Blank lines produce { chords: "", lyrics: "" } for visual spacing.
  */
 export function parseToChordChartLines(text: string): ChordChartLine[] {
-  const trimmed = trimBlankLines(sanitizePastedText(text));
+  const trimmed = prepare(text);
   if (!trimmed) return [];
 
   // Bracketed format: process line by line
   if (/\[[A-G][^\]]*\]/.test(trimmed)) {
-    return trimmed.split("\n").map(line => {
+    return collapseBlankLines(trimmed.split("\n").map(line => {
       if (!line.trim()) return { chords: "", lyrics: "" };
       const pairs = parseBracketed(line);
       return pairsToChordChartLine(pairs);
-    });
+    }));
   }
 
   // Above-the-line format or pure lyrics — preserve line structure
@@ -288,10 +456,10 @@ export function parseToChordChartLines(text: string): ChordChartLine[] {
       continue;
     }
 
-    const isChordLine = tokens.every(isChordToken);
+    const isChordLine = isChordRow(tokens);
     const nextLine = i + 1 < lines.length ? lines[i + 1] : null;
     const nextTokens = nextLine?.trim().split(/\s+/).filter(Boolean) ?? [];
-    const nextIsLyric = nextTokens.length > 0 && !nextTokens.every(isChordToken);
+    const nextIsLyric = nextTokens.length > 0 && !isChordRow(nextTokens);
 
     if (isChordLine && nextIsLyric) {
       result.push({ chords: cleanChordLine(line), lyrics: nextLine! });
@@ -304,7 +472,7 @@ export function parseToChordChartLines(text: string): ChordChartLine[] {
       i++;
     }
   }
-  return result;
+  return collapseBlankLines(result);
 }
 
 /**
@@ -318,26 +486,34 @@ export function parseToChordChartLines(text: string): ChordChartLine[] {
  * (header immediately followed by another header) are dropped.
  */
 export function parseToSections(text: string): ParsedSection[] {
-  const trimmed = trimBlankLines(sanitizePastedText(text));
+  const trimmed = prepare(text);
   if (!trimmed) return [];
 
   const rawLines = trimmed.split("\n");
-  const hasHeaders = rawLines.some(l => parseSectionHeader(l) !== null);
+  const hasHeaders = rawLines.some(l => parseSectionHeaderFull(l) !== null);
 
   if (!hasHeaders) {
     return [{ label: "", lines: parseToChordChartLines(trimmed) }];
   }
 
   // Collect raw line blocks keyed by label
-  interface Block { label: string; raw: string[] }
+  interface Block { label: string; raw: string[]; reference: boolean }
   const blocks: Block[] = [];
-  let current: Block = { label: "", raw: [] };
+  let current: Block = { label: "", raw: [], reference: false };
+  const seen = new Set<string>();
 
   for (const line of rawLines) {
-    const header = parseSectionHeader(line);
+    const header = parseSectionHeaderFull(line);
     if (header !== null) {
       blocks.push(current);
-      current = { label: header, raw: [] };
+      // A header that repeats an earlier label, or carries a repeat count,
+      // is usually a form directive ("CHORUS x2" after verse 2 = play the
+      // chorus again) rather than a new section with its own lines. Keep
+      // it as a label-only section even when nothing follows it.
+      const reference = header.repeat !== undefined || seen.has(header.label);
+      seen.add(header.label);
+      const label = header.repeat ? `${header.label} x${header.repeat}` : header.label;
+      current = { label, raw: [], reference };
     } else {
       current.raw.push(line);
     }
@@ -356,7 +532,7 @@ export function parseToSections(text: string): ParsedSection[] {
     const merged = [...pending, ...block.raw];
     pending = [];
     const lines = parseToChordChartLines(merged.join("\n"));
-    if (lines.length > 0) {
+    if (lines.length > 0 || block.reference) {
       result.push({ label: block.label, lines });
     }
   }
