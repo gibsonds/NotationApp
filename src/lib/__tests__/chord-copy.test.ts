@@ -64,6 +64,25 @@ describe("planChordCopy", () => {
     expect(plan.sections[5].lines[0].chords).toBe("");
   });
 
+  it("copies to a shortened repeat whose lines all appear in the source, in order", () => {
+    const text = [
+      "CHORUS",
+      "|Bb   F     |C",
+      "We're not there yet",
+      "|Bb   F   |C",
+      "No, not just yet",
+      "Not just yet",
+      "G riff (4 bars)",
+      "",
+      "CHORUS x2",
+      "We're not there yet",
+      "No, not just yet",
+    ].join("\n");
+    const plan = planChordCopy(parseToSections(text));
+    expect(plan.copies).toEqual([{ target: 1, source: 0 }]);
+    expect(plan.sections[1].lines.map((l) => l.chords)).toEqual(["|Bb   F     |C", "|Bb   F   |C"]);
+  });
+
   it("does not touch the input", () => {
     const parsed = parseToSections(chart);
     planChordCopy(parsed);

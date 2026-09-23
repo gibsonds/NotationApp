@@ -74,12 +74,14 @@ export function planChordCopy(input: ParsedSection[]): ChordCopyPlan {
     for (const { s: source, i: si } of candidates) {
       const src = lyricLines(source.lines);
       if (src.length === 0) continue;
-      // Same words, line by line → copy by matching text (a repeated chorus).
-      const sameWords =
-        src.length === tgt.length && src.every(({ l }, k) => norm(l.lyrics) === norm(tgt[k].l.lyrics));
-      if (sameWords || src.length === tgt.length) {
+      // Same words: each target line, in order, matches a source line (the
+      // source may carry extra lines — a tag, a "Not just yet" — the
+      // shortened repeat drops). Failing that, the same number of lines.
+      const matched = matchLyricLines(src.map(({ l }) => l.lyrics), tgt.map(({ l }) => l.lyrics));
+      const byIndex = !matched && src.length === tgt.length ? tgt.map((_, k) => k) : matched;
+      if (byIndex) {
         for (let k = 0; k < tgt.length; k++) {
-          target.lines[tgt[k].i] = { ...target.lines[tgt[k].i], chords: src[k].l.chords };
+          target.lines[tgt[k].i] = { ...target.lines[tgt[k].i], chords: src[byIndex[k]].l.chords };
         }
         copies.push({ target: t, source: si });
         done = true;
@@ -90,6 +92,24 @@ export function planChordCopy(input: ParsedSection[]): ChordCopyPlan {
   }
 
   return { sections, copies, skipped };
+}
+
+/** For each target lyric, the index of the source lyric with the same words,
+ *  taken in order; null unless every target line finds one. */
+function matchLyricLines(source: string[], target: string[]): number[] | null {
+  const out: number[] = [];
+  let from = 0;
+  for (const t of target) {
+    const want = norm(t);
+    let found = -1;
+    for (let k = from; k < source.length; k++) {
+      if (norm(source[k]) === want) { found = k; break; }
+    }
+    if (found < 0) return null;
+    out.push(found);
+    from = found + 1;
+  }
+  return out.length ? out : null;
 }
 
 /** "Verse 2 ← Verse 1, Chorus (3rd) ← Chorus (1st)" for the modal. */
