@@ -3,6 +3,26 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-09-23 — 4c68758
+
+**Fix late sync result replacing the song the user just opened (#174)**
+
+- Commit: [`4c68758`](../../commit/4c687583e62637751e064c640fde50c926b40849)
+- Author: gibsonds
+- Files changed:
+  - `e2e/riff-editor.spec.ts`
+  - `src/app/page.tsx`
+  - `src/components/ChordChartView.tsx`
+  - `src/components/MySongsModal.tsx`
+  - `src/components/PerformView.tsx`
+  - `src/components/RiffEditorHost.tsx`
+  - `src/components/RiffEditorSheet.tsx`
+  - `src/components/RiffPeekCard.tsx`
+  - `src/components/RiffPeekHost.tsx`
+  - `src/lib/__tests__/open-song-sync.test.ts`
+  - `src/lib/open-song-sync.ts`
+  - `src/store/score-store.ts`
+
 ## 2026-08-17 — e9b3df4
 
 **Riffs phase 2: tab renderer, inline chip, peek card**
