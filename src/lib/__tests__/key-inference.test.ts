@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { inferKey, parseChord } from "../key-inference";
+import { chordsOf, inferKey, parseChord } from "../key-inference";
 
 function chart(...chordLines: string[]) {
   return {
@@ -55,6 +55,11 @@ describe("inferKey", () => {
     const g = inferKey(chart("|E  F#  |G  A", "|C  Bb  |Bb  C"));
     expect(g).not.toBeNull();
     expect(g!.confidence).toBeLessThan(0.3);
+  });
+
+  it("reads glued chords like GA as G and A", () => {
+    expect(chordsOf(chart("|GA  A | GA  A")).map((c) => c.pc)).toEqual([7, 9, 9, 7, 9, 9]);
+    expect(inferKey(chart("|GA  A", "|E  |A  |D", "|A"))?.key).toBe("A");
   });
 
   it("reads notation chord symbols too", () => {
