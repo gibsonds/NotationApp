@@ -3,6 +3,19 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-09-23 — 79cbead
+
+**Fix crash on load for existing users after #184 (#185)**
+
+- Commit: [`79cbead`](../../commit/79cbeada688541dc9f53ea68e6bdca7881a4e39e)
+- Author: gibsonds
+- Files changed:
+  - `src/components/RiffChip.tsx`
+  - `src/lib/__tests__/riff-inline.test.ts`
+  - `src/lib/riff-inline.ts`
+  - `src/store/__tests__/score-store-migrate.test.ts`
+  - `src/store/score-store.ts`
+
 ## 2026-09-23 — db1816b
 
 **Perform mode: draw small riffs inline, with a Hide button (#184)**
