@@ -223,7 +223,7 @@ export function detectTitleLine(text: string): { title: string; body: string } |
   const firstTrim = first.trim();
   if (!firstTrim || firstTrim.length > 60) return null;
   if (parseSectionHeaderFull(first) !== null) return null;
-  if (isChordRow(firstTrim.split(/\s+/))) return null;
+  if (isChordRowLine(first)) return null;
   if (/\[[A-G][^\]]*\]/.test(firstTrim)) return null;
   if (!lines.some((l) => parseSectionHeaderFull(l) !== null)) return null;
   const next = lines[1];
@@ -252,8 +252,10 @@ export interface WordChordPair {
   chord?: string;
 }
 
-// Matches chord names: G, Am, C#m, Bb, D7, Cmaj7, G/B, D/F#, sus4, etc.
-const CHORD_RE = /^[A-G][b#]?(m|M|maj|min|dim|aug|sus[24]?|add)?\d*(\/[A-G][b#]?)?$/;
+// Matches chord names: G, Am, C#m, Bb, D7, Cmaj7, G/B, D/F#, sus4, and
+// altered/extended ones: Ab#4, Cm7b5, E7#9, Cmaj7#11, G7sus4, Aadd9, C+.
+const CHORD_RE =
+  /^[A-G][b#]?(?:m|M|maj|min|dim|aug|sus|add|\+|°|ø)?\d*(?:(?:[b#+-]\d+|sus[24]?|add\d*|maj7|dim7|aug|alt))*(?:\/[A-G][b#]?)?$/;
 // Two or three bare chords written as one token — "GA" for a quick G-to-A,
 // "DAD" for a D-A-D turnaround. Roots must be capitals, so ordinary words
 // don't qualify; the only casualties would be all-caps lines made entirely
@@ -296,15 +298,43 @@ function isChordToken(s: string): boolean {
   return core !== "" && (CHORD_RE.test(core) || GLUED_CHORDS_RE.test(core));
 }
 
+// Words that ride along on a chord row without making it a lyric: "G riff",
+// "|Eb  D|  repeat", "A hold", "let ring". The line must still carry a real
+// chord or bar and nothing else — "A lone ranger" has "lone", so it's a lyric.
+const CHORD_ROW_WORDS = new Set([
+  "riff", "repeat", "hold", "ring", "let", "stop", "break", "fill", "tacet", "solo",
+  "vamp", "fade", "build", "hit", "hits", "stab", "stabs", "bar", "bars", "times",
+  "then", "to", "end", "on", "feel", "approx", "approx.", "ad", "lib", "lib.",
+  "n.c.", "nc", "x", "&", "and", "-", "–", "…", "...",
+]);
+
+/** Line text with parenthesised notes and "x 8" spacing folded, for the
+ *  chord-row test only — the original line is what gets stored. */
+function chordRowTestText(line: string): string {
+  return line
+    .replace(/\([^)]*\)/g, " ")          // "(4 bars x 2)" is a note
+    .replace(/\bx\s+(\d+)\b/gi, "x$1")  // "x 8" -> "x8"
+    .replace(/\b(\d+)\s+x\b/gi, "$1x"); // "8 x" -> "8x"
+}
+
 /**
- * Is this whole line a chord row? Every token must be a chord, a bar, or a
- * repeat marker — and at least one must be a chord or bar, so a lone "x3"
- * is not a chord row.
+ * Is this whole line a chord row? Every token must be a chord, a bar, a
+ * repeat marker, or an annotation word — and at least one must be a chord
+ * or bar, so a lone "x3" or "repeat" is not a chord row.
  */
 function isChordRow(tokens: string[]): boolean {
   if (tokens.length === 0) return false;
-  if (!tokens.every(isChordToken)) return false;
-  return tokens.some((t) => repeatCountOf(t) === null);
+  let anchor = false;
+  for (const t of tokens) {
+    if (isChordToken(t)) {
+      if (repeatCountOf(t) === null) anchor = true;
+      continue;
+    }
+    if (CHORD_ROW_WORDS.has(t.toLowerCase())) continue;
+    if (/^\d+$/.test(t)) continue; // "4" in "4 bars"
+    return false;
+  }
+  return anchor;
 }
 
 // "(No chord)", "No chord", "N.C.", "NC" on a line of its own: a chord row
@@ -325,6 +355,9 @@ function isNoChordLine(line: string): boolean {
  */
 function splitBarLedRow(line: string): { head: string; tail: string } | null {
   if (!line.trimStart().startsWith("|")) return null;
+  // Already a chord row on its own terms (annotation words included)? Then
+  // there is no note to split off.
+  if (isChordRow(chordRowTestText(line).trim().split(/\s+/).filter(Boolean))) return null;
   // The last CLOSING bar: a token that ends with "|" ("|", "C|", "||"). The
   // bar that opens "|G" belongs to the chord after it and does not count.
   let cut = -1;
@@ -348,7 +381,7 @@ function splitBarLedRow(line: string): { head: string; tail: string } | null {
 
 /** Is this line a chord row in any of the shapes we accept? */
 function isChordRowLine(line: string): boolean {
-  const tokens = line.trim().split(/\s+/).filter(Boolean);
+  const tokens = chordRowTestText(line).trim().split(/\s+/).filter(Boolean);
   return isChordRow(tokens) || isNoChordLine(line) || splitBarLedRow(line) !== null;
 }
 
@@ -430,7 +463,7 @@ export function looksProportionallySpaced(text: string): boolean {
     const re = /\S+/g;
     let hit = false;
     while ((m = re.exec(row)) !== null) {
-      if (repeatCountOf(m[0]) !== null || /^\|+$/.test(m[0])) continue;
+      if (repeatCountOf(m[0]) !== null || /^\|+$/.test(m[0]) || !isChordToken(m[0])) continue;
       if (m.index >= end) { hit = true; break; }
     }
     if (hit) past++;

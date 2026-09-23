@@ -465,3 +465,31 @@ describe("lyric trailing whitespace", () => {
     expect(lines.map((l) => l.lyrics)).toEqual(["hello there", "  indented line"]);
   });
 });
+
+// ── Not Just Yet import ──────────────────────────────────────────────────────
+
+describe("annotated chord rows", () => {
+  it.each([
+    "Gmaj7 x 8",
+    "G riff (4 bars x 2)",
+    "|G riff |",
+    "|Eb Eb D D|  repeat",
+    "A hold",
+    "let ring  G",
+  ])("%s is a chord row", (line) => {
+    expect(parseToChordChartLines(`${line}\nla la la`)[0]).toEqual({ chords: line.replace(/\s+$/, ""), lyrics: "la la la" });
+  });
+
+  it.each(["A lone ranger with those", "A wall ready to fall on me", "riff", "repeat x2", "(4 bars)"])(
+    "%s is not a chord row",
+    (line) => {
+      expect(parseToChordChartLines(`${line}\nnext`)[0].lyrics).toBe(line);
+    },
+  );
+});
+
+describe("altered chords", () => {
+  it.each(["Ab#4", "Aadd4", "Cm7b5", "E7#9", "Cmaj7#11", "G7sus4", "Bb/D", "C+", "D7b9"])("%s is a chord", (c) => {
+    expect(parseToChordChartLines(`| Cm   |${c}\nwords here`)[0].chords).toBe(`| Cm   |${c}`);
+  });
+});
