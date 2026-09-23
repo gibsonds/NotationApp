@@ -804,7 +804,12 @@ export const useScoreStore = create<ProjectState>()(
     }),
     {
       name: "notation-app-store",
-      version: 14,
+      // Bump whenever UIState gains a field: migrate() is where persisted
+      // uiState is reconciled with DEFAULT_UI_STATE, and zustand only runs it
+      // when the version changes. Forgetting this shipped a render crash
+      // (hiddenInlineRiffIds undefined -> .includes on undefined) for every
+      // existing user with a riff in perform mode.
+      version: 15,
       migrate: (persisted: any, version: number) => {
         if (version < 2) {
           persisted = { ...persisted, savedRevisions: persisted.savedRevisions ?? [] };
@@ -885,6 +890,7 @@ export const useScoreStore = create<ProjectState>()(
             },
           };
         }
+        // v15: uiState.hiddenInlineRiffIds — handled by the reconcile below.
         // Always reconcile UIState with current defaults so newly-added
         // fields don't show up as undefined on first load after an upgrade.
         persisted = {
