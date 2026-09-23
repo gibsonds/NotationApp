@@ -15,6 +15,21 @@
 //
 // The top line is string 1 (highest pitched), matching how tab is always read
 // and how RiffNote.string is numbered.
+//
+// Rhythm, which tab itself never carries, can ride on an optional line above
+// the strings — one letter per note at the note's column, the way drum and
+// guitar books mark it:
+//
+//     q   e e q   e e
+//   e|--3---5-7---|--0---3-5---|
+//
+//   w whole  h half  q quarter  e eighth  s sixteenth  t thirty-second
+//   a "." after the letter dots it; a letter over no note is a rest.
+//
+// With a rhythm line, durations are authoritative and each note's beat is the
+// sum of the durations before it in the bar. Without one, rhythm is guessed
+// from spacing as before. riffToAsciiTab writes the rhythm line back out, so
+// a riff round-trips with its rhythm intact.
 
 import {
   DEFAULT_TUNING,
@@ -68,6 +83,83 @@ function looksLikeTabBody(body: string): boolean {
   return body.length > 0 && /^[-0-9|hpb/\\~xX*.\s()]+$/.test(body);
 }
 
+/** Highest fret a guitar has. A digit run that reads past it ("57") is two
+ *  frets written without a dash between them, not fret fifty-seven. */
+const MAX_FRET = 24;
+
+const DURATION_BY_LETTER: Record<string, NoteDuration> = {
+  w: "whole",
+  h: "half",
+  q: "quarter",
+  e: "eighth",
+  s: "sixteenth",
+  t: "thirty-second",
+};
+const LETTER_BY_DURATION: Partial<Record<NoteDuration, string>> = {
+  whole: "w",
+  half: "h",
+  quarter: "q",
+  eighth: "e",
+  sixteenth: "s",
+  "thirty-second": "t",
+  "sixty-fourth": "t",
+};
+const BEATS_BY_DURATION: Record<NoteDuration, number> = {
+  whole: 4,
+  half: 2,
+  quarter: 1,
+  eighth: 0.5,
+  sixteenth: 0.25,
+  "thirty-second": 0.125,
+  "sixty-fourth": 0.0625,
+};
+
+/** Beats an event occupies, dots included. */
+export function eventBeats(duration: NoteDuration, dots = 0): number {
+  const base = BEATS_BY_DURATION[duration] ?? 1;
+  let total = base;
+  let add = base;
+  for (let i = 0; i < dots; i++) {
+    add /= 2;
+    total += add;
+  }
+  return total;
+}
+
+/** A rhythm line: only duration letters (optionally dotted), bars and
+ *  spaces, with at least one letter and every letter separated by space —
+ *  so a stray word like "sweet" is not mistaken for one. */
+const RHYTHM_LINE_RE = /^\s*(?:\|\s*)*[whqest]\.?(?:(?:\s+|\s*\|\s*)[whqest]\.?)*(?:\s*\|)*\s*$/i;
+
+export function isRhythmLine(line: string): boolean {
+  return RHYTHM_LINE_RE.test(line) && /[whqest]/i.test(line);
+}
+
+interface RhythmMark {
+  col: number; // absolute column in the tab body
+  duration: NoteDuration;
+  dots: number;
+}
+
+/** Read the rhythm marks of a rhythm line, with columns relative to the tab
+ *  body. `bodyOffset` is where the body starts on a string line ("e|" -> 2)
+ *  for a rhythm line written without its own "|". */
+function readRhythmLine(line: string, bodyOffset: number): RhythmMark[] {
+  const bar = line.indexOf("|");
+  const body = bar >= 0 ? line.slice(bar + 1) : line.slice(bodyOffset);
+  const marks: RhythmMark[] = [];
+  const re = /([whqest])(\.?)/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(body)) !== null) {
+    marks.push({
+      col: m.index,
+      duration: DURATION_BY_LETTER[m[1].toLowerCase()],
+      dots: m[2] ? 1 : 0,
+    });
+  }
+  return marks;
+}
+
 /**
  * Parse ASCII tab into riff bars.
  *
@@ -85,12 +177,17 @@ export function parseAsciiTab(
   const beatsPerBar = beatsPerBarOf(opts.timeSignature);
 
   const rawLines = text.split("\n").filter((l) => l.trim() !== "");
-  const tabLines: { label: string | null; body: string }[] = [];
+  const tabLines: { label: string | null; body: string; bodyOffset: number }[] = [];
+  const rhythmLines: string[] = [];
 
   for (const line of rawLines) {
+    if (isRhythmLine(line)) {
+      rhythmLines.push(line);
+      continue;
+    }
     const m = TAB_LINE_RE.exec(line);
     if (m && looksLikeTabBody(m[2])) {
-      tabLines.push({ label: m[1] ?? null, body: m[2] });
+      tabLines.push({ label: m[1] ?? null, body: m[2], bodyOffset: line.indexOf("|") + 1 });
     } else {
       warnings.push(`Ignored line that isn't tab: "${line.trim().slice(0, 40)}"`);
     }
@@ -120,6 +217,20 @@ export function parseAsciiTab(
     warnings.push("Strings disagree on bar count; short strings padded with rests.");
   }
 
+  // Rhythm marks, if a rhythm line was written. Their columns are absolute
+  // within the body; each bar's absolute start comes from the first string.
+  const marks = rhythmLines.length
+    ? readRhythmLine(rhythmLines[0], tabLines[0].bodyOffset)
+    : null;
+  const barStarts: number[] = [];
+  {
+    let acc = leadingBarOffset(tabLines[0].body);
+    for (const seg of perString[0]) {
+      barStarts.push(acc);
+      acc += seg.length + 1;
+    }
+  }
+
   const bars: RiffBar[] = [];
   for (let b = 0; b < barCount; b++) {
     const segments = perString.map((s) => s[b] ?? "");
@@ -140,6 +251,51 @@ export function parseAsciiTab(
     }
 
     const cols = [...byCol.keys()].sort((a, b2) => a - b2);
+
+    if (marks) {
+      // Rhythm line present: durations are what it says, beats accumulate.
+      // A mark over no note is a rest; a note with no mark near it takes the
+      // previous duration.
+      const barStart = barStarts[b] ?? 0;
+      const barEnd = barStart + width;
+      const barMarks = marks.filter((mk) => mk.col >= barStart && mk.col < barEnd);
+      const items: { col: number; notes: RiffNote[]; mark?: RhythmMark }[] = [];
+      const usedMarks = new Set<RhythmMark>();
+      for (const col of cols) {
+        const abs = barStart + col;
+        let best: RhythmMark | undefined;
+        let bestD = 2; // a mark within one column of the note is its mark
+        for (const mk of barMarks) {
+          if (usedMarks.has(mk)) continue;
+          const d = Math.abs(mk.col - abs);
+          if (d < bestD) { bestD = d; best = mk; }
+        }
+        if (best) usedMarks.add(best);
+        items.push({ col, notes: byCol.get(col)!, mark: best });
+      }
+      for (const mk of barMarks) {
+        if (!usedMarks.has(mk)) items.push({ col: mk.col - barStart, notes: [], mark: mk });
+      }
+      items.sort((x, y) => x.col - y.col);
+      let beat = 1;
+      let lastDur: NoteDuration = "eighth";
+      let lastDots = 0;
+      const events: RiffEvent[] = items.map((it) => {
+        const duration = it.mark?.duration ?? lastDur;
+        const dots = it.mark?.dots ?? lastDots;
+        lastDur = duration;
+        lastDots = dots;
+        const ev: RiffEvent = { beat, duration, dots, notes: it.notes };
+        beat += eventBeats(duration, dots);
+        return ev;
+      });
+      if (beat - 1 > beatsPerBar + 1e-6) {
+        warnings.push(`Bar ${b + 1}: the rhythm adds up to ${beat - 1} beats in a ${beatsPerBar}-beat bar.`);
+      }
+      bars.push({ events });
+      continue;
+    }
+
     // Time is measured from the FIRST note, not from the "|". Essentially all
     // tab pads a couple of dashes after the barline before the first fret;
     // treating column 0 as beat 1 charges that padding as musical time and
@@ -173,23 +329,36 @@ export function parseAsciiTab(
 
 /** Render a riff back to ASCII tab. Round-trips with parseAsciiTab. */
 export function riffToAsciiTab(riff: Riff, opts: { colsPerBeat?: number } = {}): string {
-  const colsPerBeat = opts.colsPerBeat ?? 2;
   const beatsPerBar = beatsPerBarOf(riff.timeSignature);
+  // Enough columns that the shortest note still gets three of them: two
+  // digits and a dash. Adjacent digits would fuse ("5" then "7" -> "57")
+  // on the way back in.
+  let minBeats = 1;
+  for (const bar of riff.bars) {
+    for (const ev of bar.events) minBeats = Math.min(minBeats, eventBeats(ev.duration, ev.dots));
+  }
+  const colsPerBeat = Math.max(opts.colsPerBeat ?? 2, Math.ceil(3 / Math.max(minBeats, 0.0625)));
   const width = Math.max(1, Math.round(beatsPerBar * colsPerBeat));
   const stringCount = Math.max(riff.tuning.length, maxStringUsed(riff));
+  const hasEvents = riff.bars.some((b) => b.events.length > 0);
 
-  // rows[stringIdx][barIdx] = characters for that bar
+  // rows[stringIdx][barIdx] = characters for that bar; rhythm[barIdx] likewise
   const rows: string[][] = Array.from({ length: stringCount }, () => []);
+  const rhythm: string[] = [];
 
   for (const bar of riff.bars) {
     const cells: string[][] = Array.from({ length: stringCount }, () =>
       Array.from({ length: width }, () => "-"),
     );
+    const rcells: string[] = Array.from({ length: width }, () => " ");
     for (const ev of bar.events) {
       const col = Math.min(
         width - 1,
         Math.max(0, Math.round(((ev.beat - 1) / beatsPerBar) * width)),
       );
+      const letter = LETTER_BY_DURATION[ev.duration] ?? "q";
+      rcells[col] = letter;
+      if (ev.dots > 0 && col + 1 < width) rcells[col + 1] = ".";
       for (const n of ev.notes) {
         const si = n.string - 1;
         if (si < 0 || si >= stringCount) continue;
@@ -200,14 +369,17 @@ export function riffToAsciiTab(riff: Riff, opts: { colsPerBeat?: number } = {}):
       }
     }
     for (let si = 0; si < stringCount; si++) rows[si].push(cells[si].join(""));
+    rhythm.push(rcells.join(""));
   }
 
-  return rows
-    .map((barsForString, si) => {
-      const label = (riff.tuning[si] ?? "").replace(/\d+$/, "") || " ";
-      return `${label.padEnd(2)}|${barsForString.join("|")}|`;
-    })
-    .join("\n");
+  const stringLines = rows.map((barsForString, si) => {
+    const label = (riff.tuning[si] ?? "").replace(/\d+$/, "") || " ";
+    return `${label.padEnd(2)}|${barsForString.join("|")}|`;
+  });
+  // Rhythm line above the strings, same columns, spaces where the strings
+  // have bars so it reads as marks over notes rather than another string.
+  const rhythmLine = `${" ".repeat(3)}${rhythm.join(" ")}`.replace(/\s+$/, "");
+  return (hasEvents ? [rhythmLine, ...stringLines] : stringLines).join("\n");
 }
 
 // ── internals ───────────────────────────────────────────────────────────────
@@ -257,15 +429,50 @@ function readFrets(segment: string): FretHit[] {
   let m: RegExpExecArray | null;
   while ((m = re.exec(segment)) !== null) {
     const before = m.index > 0 ? segment[m.index - 1] : "";
-    hits.push({
-      col: m.index,
-      fret: parseInt(m[0], 10),
-      ...(ARTICULATION_BY_CHAR[before]
-        ? { articulation: ARTICULATION_BY_CHAR[before] }
-        : {}),
-    });
+    const articulation = ARTICULATION_BY_CHAR[before];
+    let first = true;
+    for (const { offset, fret } of splitFretRun(m[0])) {
+      hits.push({
+        col: m.index + offset,
+        fret,
+        ...(first && articulation ? { articulation } : {}),
+      });
+      first = false;
+    }
   }
   return hits;
+}
+
+/** "12" is fret 12, but "57" cannot be fret 57 — it is 5 then 7 written
+ *  without a dash. Read greedily: two digits when that is a real fret,
+ *  otherwise one. "575" -> 5,7,5; "1012" -> 10,12; "120" -> 12,0. */
+function splitFretRun(run: string): { offset: number; fret: number }[] {
+  const out: { offset: number; fret: number }[] = [];
+  let i = 0;
+  while (i < run.length) {
+    const two = i + 1 < run.length ? parseInt(run.slice(i, i + 2), 10) : NaN;
+    if (Number.isFinite(two) && two <= MAX_FRET) {
+      out.push({ offset: i, fret: two });
+      i += 2;
+    } else {
+      out.push({ offset: i, fret: parseInt(run[i], 10) });
+      i += 1;
+    }
+  }
+  return out;
+}
+
+/** Columns splitBars drops before the first bar ("|--3--|" bodies that
+ *  start with a bar, or blank leading segments). */
+function leadingBarOffset(body: string): number {
+  const parts = body.split("|");
+  let off = 0;
+  let i = 0;
+  while (i < parts.length && parts[i].trim() === "") {
+    off += parts[i].length + 1;
+    i++;
+  }
+  return off;
 }
 
 /** "e" / "E" / "Bb" as written beside a tab line → a pitch for the tuning

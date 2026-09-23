@@ -20,6 +20,11 @@ import { useMemo } from "react";
 import { beatsPerBarOf } from "@/lib/riff-ascii";
 import type { Riff, RiffEvent } from "@/lib/schema";
 
+export interface RiffEventRef {
+  bar: number;
+  ev: number;
+}
+
 interface RiffTabStaffProps {
   riff: Riff;
   /** Vertical gap between strings, px. Drives overall scale. */
@@ -27,6 +32,10 @@ interface RiffTabStaffProps {
   /** Show the tuning letters down the left edge. */
   showTuning?: boolean;
   className?: string;
+  /** Highlighted event (the editor's rhythm target). */
+  selected?: RiffEventRef | null;
+  /** Makes events tappable; called with the tapped event. */
+  onSelectEvent?: (ref: RiffEventRef) => void;
 }
 
 const PAD_X = 10;
@@ -48,6 +57,8 @@ export default function RiffTabStaff({
   stringGap = 15,
   showTuning = true,
   className,
+  selected = null,
+  onSelectEvent,
 }: RiffTabStaffProps) {
   const layout = useMemo(() => {
     const stringCount = Math.max(
@@ -90,8 +101,9 @@ export default function RiffTabStaff({
       height={height}
       viewBox={`0 0 ${width} ${height}`}
       style={{ maxWidth: "100%", height: "auto", fontFamily: "ui-monospace, monospace" }}
-      role="img"
+      role={onSelectEvent ? "group" : "img"}
       aria-label={`Tab for ${riff.label}`}
+      tabIndex={onSelectEvent ? 0 : undefined}
     >
       {/* String lines */}
       {Array.from({ length: stringCount }, (_, i) => (
@@ -141,29 +153,60 @@ export default function RiffTabStaff({
         bar.events.map((ev, evIdx) => {
           const x = xOf(barIdx, ev.beat);
           const key = `e${barIdx}-${evIdx}`;
+          const isSelected = !!selected && selected.bar === barIdx && selected.ev === evIdx;
+          const interactive = onSelectEvent
+            ? {
+                onClick: () => onSelectEvent({ bar: barIdx, ev: evIdx }),
+                style: { cursor: "pointer" as const },
+                role: "button" as const,
+                "aria-label": `${isRest(ev) ? "Rest" : "Note"} at bar ${barIdx + 1}, beat ${ev.beat}, ${ev.duration}${ev.dots ? " dotted" : ""}`,
+                "aria-pressed": isSelected,
+              }
+            : {};
+          // Selection halo behind the whole event column, stem included.
+          const halo = isSelected ? (
+            <rect
+              x={x - 9}
+              y={PAD_TOP - 8}
+              width={18}
+              height={staffHeight + 8 + PAD_BOTTOM - 4}
+              rx={4}
+              fill="#3b82f6"
+              fillOpacity={0.25}
+              stroke="#60a5fa"
+              strokeOpacity={0.8}
+              strokeWidth={1}
+            />
+          ) : null;
           if (isRest(ev)) {
             // Drawn, not typed: the Unicode rest glyphs (𝄽 and friends) are
             // absent from the monospace stacks this renders in and come out as
             // tofu. A small bar on the middle string reads fine at this size.
             const midY = yOf(Math.ceil(stringCount / 2));
             return (
-              <rect
-                key={key}
-                x={x - 3}
-                y={midY - 1.5}
-                width={6}
-                height={3}
-                rx={0.5}
-                fill="currentColor"
-                fillOpacity={0.45}
-              />
+              <g key={key} {...interactive}>
+                {halo}
+                {/* Wide invisible hit target so a rest is tappable. */}
+                {onSelectEvent && <rect x={x - 9} y={PAD_TOP - 8} width={18} height={staffHeight + 24} fill="transparent" />}
+                <rect
+                  x={x - 3}
+                  y={midY - 1.5}
+                  width={6}
+                  height={3}
+                  rx={0.5}
+                  fill="currentColor"
+                  fillOpacity={0.45}
+                />
+              </g>
             );
           }
           const stemTop = yOf(stringCount) + 4;
           const stemBottom = stemTop + 12;
           const flags = FLAGS[ev.duration] ?? 0;
           return (
-            <g key={key}>
+            <g key={key} {...interactive}>
+              {halo}
+              {onSelectEvent && <rect x={x - 9} y={PAD_TOP - 8} width={18} height={staffHeight + 24} fill="transparent" />}
               {ev.notes.map((n, ni) => {
                 const y = yOf(n.string);
                 const label = String(n.fret);

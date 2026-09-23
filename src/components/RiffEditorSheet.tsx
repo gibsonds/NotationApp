@@ -8,16 +8,43 @@
 // same text comes back when you reopen the riff, because `riffToAsciiTab` is
 // the inverse of `parseAsciiTab`.
 //
-// Rhythm is the one thing ASCII tab genuinely can't carry. The parser infers
-// it from column spacing and says so in the warnings rather than pretending to
-// be sure.
+// Rhythm is the one thing ASCII tab genuinely can't carry, so it gets two
+// ways in. A rhythm line above the strings ("q e e q") is read by the parser
+// and written back out, so it survives a round-trip. And the preview is
+// tappable: pick a note, then a value from the palette — or press 1–6, the
+// same keys the notation keyboard uses — and the editor rewrites the tab text
+// with the new rhythm line. Text stays the single source of truth either way.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { v4 as uuidv4 } from "uuid";
-import RiffTabStaff from "@/components/RiffTabStaff";
-import { parseAsciiTab, riffToAsciiTab } from "@/lib/riff-ascii";
-import { DEFAULT_TUNING, type Riff } from "@/lib/schema";
+import RiffTabStaff, { type RiffEventRef } from "@/components/RiffTabStaff";
+import { eventBeats, parseAsciiTab, riffToAsciiTab } from "@/lib/riff-ascii";
+import { DEFAULT_TUNING, type NoteDuration, type Riff, type RiffBar } from "@/lib/schema";
 import { useScoreStore } from "@/store/score-store";
+
+/** Duration palette, in the notation keyboard's order: key 1 is a whole
+ *  note, 6 a thirty-second. */
+const DURATIONS: { key: string; dur: NoteDuration; glyph: string; name: string }[] = [
+  { key: "1", dur: "whole", glyph: "𝅝", name: "Whole" },
+  { key: "2", dur: "half", glyph: "𝅗𝅥", name: "Half" },
+  { key: "3", dur: "quarter", glyph: "♩", name: "Quarter" },
+  { key: "4", dur: "eighth", glyph: "♪", name: "Eighth" },
+  { key: "5", dur: "sixteenth", glyph: "𝅘𝅥𝅯", name: "Sixteenth" },
+  { key: "6", dur: "thirty-second", glyph: "𝅘𝅥𝅰", name: "Thirty-second" },
+];
+
+/** Re-time one bar after a duration change: each event starts where the
+ *  previous one ends. */
+function retime(bar: RiffBar): RiffBar {
+  let beat = 1;
+  return {
+    events: bar.events.map((ev) => {
+      const next = { ...ev, beat };
+      beat += eventBeats(ev.duration, ev.dots);
+      return next;
+    }),
+  };
+}
 
 /** A blank six-string grid, so a new riff opens on something typeable rather
  *  than an empty box. */
@@ -81,6 +108,35 @@ export default function RiffEditorSheet({
   );
   const canSave = noteCount > 0;
 
+  // Rhythm target: the tapped event in the preview. Cleared implicitly when
+  // an edit to the text makes it point past the end.
+  const [selectedRaw, setSelected] = useState<RiffEventRef | null>(null);
+  const selected =
+    selectedRaw && parsed.bars[selectedRaw.bar]?.events[selectedRaw.ev] ? selectedRaw : null;
+  const selectedEvent = selected ? parsed.bars[selected.bar].events[selected.ev] : null;
+
+  /** Apply a rhythm change to the selected event and rewrite the tab text
+   *  from the result, rhythm line included. */
+  const editSelected = (change: (ev: RiffBar["events"][number]) => RiffBar["events"][number]) => {
+    if (!selected) return;
+    const bars = parsed.bars.map((bar, bi) =>
+      bi !== selected.bar
+        ? bar
+        : retime({ events: bar.events.map((ev, ei) => (ei === selected.ev ? change(ev) : ev)) }),
+    );
+    setAscii(riffToAsciiTab({ ...previewRiff, bars }));
+  };
+  const setDuration = (dur: NoteDuration) => editSelected((ev) => ({ ...ev, duration: dur }));
+  const toggleDot = () => editSelected((ev) => ({ ...ev, dots: ev.dots ? 0 : 1 }));
+  const moveSelection = (step: 1 | -1) => {
+    if (!selected) return;
+    const flat: RiffEventRef[] = [];
+    parsed.bars.forEach((b, bi) => b.events.forEach((_, ei) => flat.push({ bar: bi, ev: ei })));
+    const idx = flat.findIndex((r) => r.bar === selected.bar && r.ev === selected.ev);
+    const next = flat[idx + step];
+    if (next) setSelected(next);
+  };
+
   const save = () => {
     if (!canSave) return;
     const name = label.trim() || "Riff";
@@ -124,10 +180,29 @@ export default function RiffEditorSheet({
       e.preventDefault();
       e.stopPropagation();
       onClose();
-    } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+      return;
+    }
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       e.stopPropagation();
       save();
+      return;
+    }
+    // Rhythm keys act on the tapped note — never while typing in a field,
+    // where a "5" is a fret.
+    const t = e.target;
+    if (t instanceof HTMLTextAreaElement || t instanceof HTMLInputElement) return;
+    if (!selected || e.metaKey || e.ctrlKey || e.altKey) return;
+    const d = DURATIONS.find((x) => x.key === e.key);
+    if (d) {
+      e.preventDefault();
+      setDuration(d.dur);
+    } else if (e.key === ".") {
+      e.preventDefault();
+      toggleDot();
+    } else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      e.preventDefault();
+      moveSelection(e.key === "ArrowLeft" ? -1 : 1);
     }
   };
 
@@ -194,7 +269,7 @@ export default function RiffEditorSheet({
             <div className="text-xs text-gray-400 mb-1">Preview</div>
             <div className="rounded-lg border border-white/10 px-3 py-2 overflow-x-auto">
               {canSave ? (
-                <RiffTabStaff riff={previewRiff} />
+                <RiffTabStaff riff={previewRiff} selected={selected} onSelectEvent={setSelected} />
               ) : (
                 <p className="text-sm text-gray-500 py-3">
                   No frets read yet. Type fret numbers on the dashes — e.g.{" "}
@@ -212,9 +287,63 @@ export default function RiffEditorSheet({
             </ul>
           )}
 
+          {canSave && (
+            <div>
+              <div className="text-xs text-gray-400 mb-1">
+                Rhythm
+                {selectedEvent
+                  ? <span className="text-gray-500"> — bar {selected!.bar + 1}, beat {selectedEvent.beat}: {selectedEvent.duration}{selectedEvent.dots ? " dotted" : ""}</span>
+                  : <span className="text-gray-500"> — tap a note in the preview first</span>}
+              </div>
+              <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Note value">
+                {DURATIONS.map((d) => (
+                  <button
+                    key={d.key}
+                    type="button"
+                    disabled={!selected}
+                    onClick={() => setDuration(d.dur)}
+                    aria-pressed={selectedEvent?.duration === d.dur}
+                    title={`${d.name} (${d.key})`}
+                    className={`min-w-11 h-11 sm:min-w-9 sm:h-9 px-2 rounded-lg text-lg leading-none border ${
+                      selectedEvent?.duration === d.dur
+                        ? "bg-blue-600 border-blue-500 text-white"
+                        : "bg-[#0f0f1f] border-gray-700 text-gray-200 hover:bg-white/10 active:bg-white/20"
+                    } disabled:opacity-40 disabled:cursor-not-allowed`}
+                  >
+                    {d.glyph}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  disabled={!selected}
+                  onClick={toggleDot}
+                  aria-pressed={!!selectedEvent?.dots}
+                  title="Dotted (.)"
+                  className={`min-w-11 h-11 sm:min-w-9 sm:h-9 px-2 rounded-lg text-lg leading-none border ${
+                    selectedEvent?.dots
+                      ? "bg-blue-600 border-blue-500 text-white"
+                      : "bg-[#0f0f1f] border-gray-700 text-gray-200 hover:bg-white/10 active:bg-white/20"
+                  } disabled:opacity-40 disabled:cursor-not-allowed`}
+                >
+                  ·
+                </button>
+                <span className="text-[11px] text-gray-500 ml-1">
+                  Keys 1–6, . for a dot, ←/→ to move — same as the notation keyboard.
+                </span>
+              </div>
+            </div>
+          )}
+
           <p className="text-[11px] text-gray-500">
-            Rhythm is guessed from how far apart the frets sit, since tab doesn&rsquo;t
-            record it. Space them out to change it.
+            Rhythm can also be written as a line above the tab, one letter per note:
+            <code className="text-pink-300 ml-1">q</code> quarter,
+            <code className="text-pink-300 ml-1">e</code> eighth,
+            <code className="text-pink-300 ml-1">s</code> sixteenth,
+            <code className="text-pink-300 ml-1">h</code> half,
+            <code className="text-pink-300 ml-1">w</code> whole,
+            <code className="text-pink-300 ml-1">t</code> thirty-second; add
+            <code className="text-pink-300 ml-1">.</code> for dotted. Without one, rhythm is guessed
+            from how far apart the frets sit.
           </p>
         </div>
 
