@@ -3,6 +3,18 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-09-23 — d123753
+
+**Riffs: write the rhythm, and read "57" as two frets (#179)**
+
+- Commit: [`d123753`](../../commit/d1237531b420bf096e2518fc5f38d00a57c38f87)
+- Author: gibsonds
+- Files changed:
+  - `src/components/RiffEditorSheet.tsx`
+  - `src/components/RiffTabStaff.tsx`
+  - `src/lib/__tests__/riff-ascii.test.ts`
+  - `src/lib/riff-ascii.ts`
+
 ## 2026-09-23 — 83643ce
 
 **Infer the key from the chords instead of picking it by hand (#178)**
