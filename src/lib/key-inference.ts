@@ -14,6 +14,7 @@
 
 import type { KeySignature, Score } from "@/lib/schema";
 import { tokenizeChordLine } from "@/lib/chord-line";
+import { splitGluedChords } from "@/lib/lyric-parser";
 
 type Quality = "maj" | "min" | "dim";
 
@@ -50,8 +51,10 @@ export function chordsOf(score: Pick<Score, "sections" | "chordSymbols">): Parse
   for (const sec of score.sections ?? []) {
     for (const line of sec.lines) {
       for (const t of tokenizeChordLine(line.chords ?? "")) {
-        const c = parseChord(t.text);
-        if (c) out.push(c);
+        for (const part of splitGluedChords(t.text)) {
+          const c = parseChord(part);
+          if (c) out.push(c);
+        }
       }
     }
   }

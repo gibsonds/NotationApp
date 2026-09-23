@@ -10,6 +10,7 @@ import {
   stripCommonIndent,
   looksProportionallySpaced,
   realignChordRow,
+  splitGluedChords,
 } from "../lyric-parser";
 
 describe("sanitizePastedText", () => {
@@ -418,5 +419,49 @@ describe("proportional-font realignment", () => {
   it("keeps token order and at least one space between chords", () => {
     const out = realignChordRow("|E        F#          |G           A", "7 years I've been wasting time");
     expect(out.split(/\s+/)).toEqual(["|E", "F#", "|G", "A"]);
+  });
+});
+
+// ── Scarlet O'Hara import ────────────────────────────────────────────────────
+
+describe("glued chords like GA", () => {
+  it("splits two or three bare chords written as one token", () => {
+    expect(splitGluedChords("GA")).toEqual(["G", "A"]);
+    expect(splitGluedChords("DAD")).toEqual(["D", "A", "D"]);
+    expect(splitGluedChords("AmG")).toEqual(["Am", "G"]);
+    expect(splitGluedChords("Am")).toEqual(["Am"]);
+    expect(splitGluedChords("Cmaj7")).toEqual(["Cmaj7"]);
+    expect(splitGluedChords("Bad")).toEqual(["Bad"]);
+  });
+
+  it("reads '|GA     A   | GA   A' as a chord row over the lyric", () => {
+    const [line] = parseToChordChartLines("  |GA     A          | GA      A  \nI never saw her without mascara");
+    expect(line.lyrics).toBe("I never saw her without mascara");
+    expect(line.chords).toMatch(/^\s*\|GA\s+A\s+\|\s?GA\s+A$/);
+  });
+
+  it("reads an intro row '|GA  A | x4' as chords", () => {
+    expect(parseToChordChartLines("|GA  A | x4")[0]).toEqual({ chords: "|GA  A | x4", lyrics: "" });
+  });
+
+  it("does not mistake chords after a mid-line bar for a trailing note", () => {
+    const row = "  |GA     A                        | GA      A";
+    const lyric = "I never saw her without mascara";
+    // Proportional-font tell: the last A sits past the end of the lyric.
+    expect(looksProportionallySpaced(`${row}\n${lyric}\n${row}\n${lyric}`)).toBe(true);
+    const [line] = parseToChordChartLines(`${row}\n${lyric}\n${row}\n${lyric}`);
+    expect(line.chords.length).toBeLessThanOrEqual(lyric.length + 2);
+    expect(line.chords.split(/\s+/).filter(Boolean)).toEqual(["|GA", "A", "|", "GA", "A"]);
+  });
+
+  it("still files an ordinary all-caps lyric as a lyric", () => {
+    expect(parseToChordChartLines("BAD LOVE\nhello")[0].lyrics).toBe("BAD LOVE");
+  });
+});
+
+describe("lyric trailing whitespace", () => {
+  it("is trimmed, leading indentation is kept", () => {
+    const lines = parseToChordChartLines("|C\nhello there   \n  indented line  ");
+    expect(lines.map((l) => l.lyrics)).toEqual(["hello there", "  indented line"]);
   });
 });

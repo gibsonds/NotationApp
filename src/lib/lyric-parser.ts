@@ -254,6 +254,17 @@ export interface WordChordPair {
 
 // Matches chord names: G, Am, C#m, Bb, D7, Cmaj7, G/B, D/F#, sus4, etc.
 const CHORD_RE = /^[A-G][b#]?(m|M|maj|min|dim|aug|sus[24]?|add)?\d*(\/[A-G][b#]?)?$/;
+// Two or three bare chords written as one token — "GA" for a quick G-to-A,
+// "DAD" for a D-A-D turnaround. Roots must be capitals, so ordinary words
+// don't qualify; the only casualties would be all-caps lines made entirely
+// of words like BAD or ABBA, which no lyric line is.
+const GLUED_CHORDS_RE = /^(?:[A-G][b#]?m?){2,3}$/;
+
+/** "GA" -> ["G", "A"], "DAD" -> ["D", "A", "D"]; a plain chord -> [itself]. */
+export function splitGluedChords(token: string): string[] {
+  if (!GLUED_CHORDS_RE.test(token) || CHORD_RE.test(token)) return [token];
+  return token.match(/[A-G][b#]?m?/g) ?? [token];
+}
 
 // iOS/Word autocorrect can tack a trailing period or comma onto a chord token
 // ("C" + double-space -> "C.", or a comma from a list). Strip it before the
@@ -282,7 +293,7 @@ function isChordToken(s: string): boolean {
   if (/^\|+$/.test(t)) return true; // a bare bar, or "||"
   if (REPEAT_TOKEN_RE.test(t)) return true; // "x3" riding on a chord row
   const core = t.replace(/^\|+/, "").replace(/\|+$/, "");
-  return core !== "" && CHORD_RE.test(core);
+  return core !== "" && (CHORD_RE.test(core) || GLUED_CHORDS_RE.test(core));
 }
 
 /**
@@ -326,6 +337,8 @@ function splitBarLedRow(line: string): { head: string; tail: string } | null {
   const head = line.slice(0, cut);
   const tail = line.slice(cut);
   if (!tail.trim()) return null; // a plain chord row; isChordRow handles it
+  // "| GA   A" after a mid-line bar is more chords, not a note.
+  if (tail.trim().split(/\s+/).every(isChordToken)) return null;
   const tokens = head.trim().split(/\s+/).filter(Boolean);
   if (!isChordRow(tokens)) return null;
   // At least one actual chord before the note — "| hello there" is a lyric.
@@ -646,16 +659,17 @@ export function parseToChordChartLines(
 
     if (isChordLine && nextIsLyric) {
       const chords = chordRowText(line);
+      const lyrics = nextLine!.replace(/\s+$/, "");
       result.push({
-        chords: proportional && chords !== NO_CHORD_TEXT ? realignChordRow(chords, nextLine!) : chords,
-        lyrics: nextLine!,
+        chords: proportional && chords !== NO_CHORD_TEXT ? realignChordRow(chords, lyrics) : chords,
+        lyrics,
       });
       i += 2;
     } else if (isChordLine) {
       result.push({ chords: chordRowText(line), lyrics: "" });
       i++;
     } else {
-      result.push({ chords: "", lyrics: line });
+      result.push({ chords: "", lyrics: line.replace(/\s+$/, "") });
       i++;
     }
   }
