@@ -3,6 +3,17 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-09-23 — c3bdd8f
+
+**Paste: realign proportional-font chord rows, N.C. markers, bar-led notes, Riff (#176)**
+
+- Commit: [`c3bdd8f`](../../commit/c3bdd8f17d95a144203061181230bc0b129d4240)
+- Author: gibsonds
+- Files changed:
+  - `src/components/PasteLyricsModal.tsx`
+  - `src/lib/__tests__/lyric-parser.test.ts`
+  - `src/lib/lyric-parser.ts`
+
 ## 2026-09-23 — ea22400
 
 **Clean up pasted chord charts: title line, repeat markers, headers, whitespace (#175)**
