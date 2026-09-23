@@ -248,7 +248,9 @@ export default function RiffEditorSheet({
 
           <label className="block">
             <span className="block text-xs text-gray-400 mb-1">
-              Tab — paste it, or type over the grid
+              Tab — paste it, type over the grid, or use a shorthand:
+              <code className="text-pink-300 ml-1">*6 5 7 8, 5 7, 5 7</code> for a run of frets (comma = next string),
+              <code className="text-pink-300 ml-1">x32010 320003</code> for strummed chords
             </span>
             <textarea
               ref={textRef}

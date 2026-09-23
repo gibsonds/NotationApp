@@ -26,6 +26,10 @@
 //   w whole  h half  q quarter  e eighth  s sixteenth  t thirty-second
 //   a "." after the letter dots it; a letter over no note is a rest.
 //
+// Two compact shorthands are accepted too and expanded to tab before parsing
+// (see riff-compact.ts): fret runs "*6 5 7 8, 5 7, 5 7" and chord voicings
+// "x32010 320003".
+//
 // With a rhythm line, durations are authoritative and each note's beat is the
 // sum of the durations before it in the bar. Without one, rhythm is guessed
 // from spacing as before. riffToAsciiTab writes the rhythm line back out, so
@@ -39,6 +43,7 @@ import {
   type RiffEvent,
   type RiffNote,
 } from "@/lib/schema";
+import { expandCompactRiff } from "@/lib/riff-compact";
 
 export interface ParseAsciiTabResult {
   bars: RiffBar[];
@@ -176,7 +181,10 @@ export function parseAsciiTab(
   const warnings: string[] = [];
   const beatsPerBar = beatsPerBarOf(opts.timeSignature);
 
-  const rawLines = text.split("\n").filter((l) => l.trim() !== "");
+  // Compact shorthands ("*6 5 7 8, 5 7", "x32010") become tab first, so one
+  // parser serves every way of writing a riff.
+  const expanded = expandCompactRiff(text, opts.tuning ?? DEFAULT_TUNING);
+  const rawLines = expanded.split("\n").filter((l) => l.trim() !== "");
   const tabLines: { label: string | null; body: string; bodyOffset: number }[] = [];
   const rhythmLines: string[] = [];
 
