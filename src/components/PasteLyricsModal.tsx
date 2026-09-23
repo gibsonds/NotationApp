@@ -12,6 +12,7 @@ import {
 } from "@/lib/lyric-parser";
 import { renameSong } from "@/lib/song-bank";
 import { inferKey } from "@/lib/key-inference";
+import { describeCopies, describeSkips, planChordCopy } from "@/lib/chord-copy";
 import { logEvent, scoreTypeOf } from "@/lib/analytics";
 
 export default function PasteLyricsModal({ onClose }: { onClose: () => void }) {
@@ -101,6 +102,18 @@ export default function PasteLyricsModal({ onClose }: { onClose: () => void }) {
     [text, isChordChartMode],
   );
 
+  // Chords on one verse/chorus, lyrics only on the others: offer to copy the
+  // chords across on the way in. Parsed once here (the title line removed if
+  // it will be) so the offer reflects exactly what Apply will do.
+  const chordCopyPlan = useMemo(() => {
+    if (!isChordChartMode || !text.trim()) return null;
+    const hit = detectTitleLine(text);
+    const parsed = parseToSections(hit ? hit.body : text);
+    const plan = planChordCopy(parsed);
+    return plan.copies.length > 0 || plan.skipped.length > 0 ? plan : null;
+  }, [text, isChordChartMode]);
+  const [copyChords, setCopyChords] = useState(true);
+
   // Keep a ref to the apply handler so the keyboard effect never goes stale
   const applyRef = useRef<() => void>(() => {});
 
@@ -108,8 +121,20 @@ export default function PasteLyricsModal({ onClose }: { onClose: () => void }) {
     if (!score || !isChordChartMode) return;
     const dropTitleLine = !!titleHit && (useTitle || titleMatchesCurrent);
     const setTitleTo = titleHit && useTitle && !titleMatchesCurrent ? proposedTitle : null;
-    const parsedSections = parseToSections(dropTitleLine ? titleHit!.body : text);
+    let parsedSections = parseToSections(dropTitleLine ? titleHit!.body : text);
     if (parsedSections.length === 0) { onClose(); return; }
+    if (copyChords) {
+      const plan = planChordCopy(parsedSections);
+      if (plan.copies.length > 0) parsedSections = plan.sections;
+      if (plan.skipped.length > 0) {
+        addMessage({
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: `Chords were not copied to every section: ${describeSkips(plan)}. Add them in Chords mode, or ask me to place them.`,
+          timestamp: Date.now(),
+        });
+      }
+    }
     const titlePatches: ScorePatch[] = setTitleTo ? [{ op: "set_title", value: setTitleTo }] : [];
     // Key: read it off the pasted chords rather than leaving the dropdown's
     // default in place. Only when this paste defines the chart (replace, or
@@ -313,6 +338,25 @@ export default function PasteLyricsModal({ onClose }: { onClose: () => void }) {
                 </span>
               </label>
             )
+          )}
+          {chordCopyPlan && chordCopyPlan.copies.length > 0 && (
+            <label className="flex items-start gap-3 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={copyChords}
+                onChange={e => setCopyChords(e.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 accent-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <span>
+                Some sections have no chords. Copy them from the matching section: <strong>{describeCopies(chordCopyPlan)}</strong>.
+                {chordCopyPlan.skipped.length > 0 && <> Left alone: {describeSkips(chordCopyPlan)}.</>}
+              </span>
+            </label>
+          )}
+          {chordCopyPlan && chordCopyPlan.copies.length === 0 && (
+            <p className="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+              Some sections have no chords, but their line counts don&rsquo;t match the section that does ({describeSkips(chordCopyPlan)}). Add them in Chords mode after pasting, or ask the AI to place them.
+            </p>
           )}
           {proportional && (
             <p className="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
