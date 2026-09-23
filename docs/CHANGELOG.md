@@ -3,6 +3,17 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-09-23 — ea22400
+
+**Clean up pasted chord charts: title line, repeat markers, headers, whitespace (#175)**
+
+- Commit: [`ea22400`](../../commit/ea22400aac338511c0202238bb382818c8b3bf19)
+- Author: gibsonds
+- Files changed:
+  - `src/components/PasteLyricsModal.tsx`
+  - `src/lib/__tests__/lyric-parser.test.ts`
+  - `src/lib/lyric-parser.ts`
+
 ## 2026-09-23 — 4c68758
 
 **Fix late sync result replacing the song the user just opened (#174)**
