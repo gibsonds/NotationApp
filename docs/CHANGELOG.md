@@ -3,6 +3,18 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-09-23 — 2c85506
+
+**Paste: annotated chord rows, altered chords, shortened-repeat chord copy (#187)**
+
+- Commit: [`2c85506`](../../commit/2c855066b25123a5db4931882d9253512350c759)
+- Author: gibsonds
+- Files changed:
+  - `src/lib/__tests__/chord-copy.test.ts`
+  - `src/lib/__tests__/lyric-parser.test.ts`
+  - `src/lib/chord-copy.ts`
+  - `src/lib/lyric-parser.ts`
+
 ## 2026-09-23 — a0eaa15
 
 **Paste: read glued chords like "GA", keep chords after a mid-line bar (#186)**
