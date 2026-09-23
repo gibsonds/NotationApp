@@ -20,6 +20,10 @@ export function isSmallRiff(riff: Pick<Riff, "bars">): boolean {
 }
 
 /** Inline by default in perform mode unless the user hid it. */
-export function showsInline(riff: Pick<Riff, "id" | "bars">, hiddenIds: readonly string[]): boolean {
-  return isSmallRiff(riff) && !hiddenIds.includes(riff.id);
+export function showsInline(
+  riff: Pick<Riff, "id" | "bars">,
+  hiddenIds: readonly string[] | undefined,
+): boolean {
+  // `hiddenIds` can be undefined on state persisted before the field existed.
+  return isSmallRiff(riff) && !(hiddenIds ?? []).includes(riff.id);
 }

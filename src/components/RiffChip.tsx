@@ -18,6 +18,9 @@ import { showsInline } from "@/lib/riff-inline";
 import type { Riff } from "@/lib/schema";
 import { useScoreStore } from "@/store/score-store";
 
+/** Stable empty array so the selector fallback never changes identity. */
+const EMPTY_IDS: string[] = [];
+
 export default function RiffChip({
   riff,
   onOpen,
@@ -67,7 +70,9 @@ export function RiffChipRow({
   onOpen: (riff: Riff) => void;
   performMode?: boolean;
 }) {
-  const hiddenIds = useScoreStore((s) => s.uiState.hiddenInlineRiffIds);
+  // Nullish on state persisted before the field existed (the store's version
+  // bump reconciles it, but never trust a render to a migration).
+  const hiddenIds = useScoreStore((s) => s.uiState.hiddenInlineRiffIds) ?? EMPTY_IDS;
   const setUIState = useScoreStore((s) => s.setUIState);
   if (riffs.length === 0) return null;
 

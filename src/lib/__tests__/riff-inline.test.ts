@@ -23,4 +23,7 @@ describe("showsInline", () => {
     expect(showsInline(riff, ["r1"])).toBe(false);
     expect(showsInline({ id: "r2", bars: [bar(2), bar(2), bar(2)] }, [])).toBe(false);
   });
+  it("treats a missing hidden list (pre-field persisted state) as empty", () => {
+    expect(showsInline({ id: "r1", bars: [bar(4)] }, undefined)).toBe(true);
+  });
 });
