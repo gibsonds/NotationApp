@@ -3,6 +3,17 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-10-08 — e334cc3
+
+**Fix precise chord placement and accidental deletion**
+
+- Commit: [`e334cc3`](../../commit/e334cc35af2761d6818ddf2f55f473f7a785b38a)
+- Author: gibsonds
+- Files changed:
+  - `src/components/ChordChartView.tsx`
+  - `src/lib/__tests__/chord-line.test.ts`
+  - `src/lib/chord-line.ts`
+
 ## 2026-09-23 — 2c85506
 
 **Paste: annotated chord rows, altered chords, shortened-repeat chord copy (#187)**
