@@ -25,6 +25,7 @@ import { applyPatch } from "@/lib/patches";
 import type { Score } from "@/lib/schema";
 import type { ScorePatch } from "@/lib/schema";
 import type { NoteSelection } from "@/lib/transforms";
+import { revisionConversation, type ConversationTurn } from "@/lib/ai-conversation";
 
 export interface CreateScoreResult {
   score: Score;
@@ -79,14 +80,16 @@ export async function requestReviseScore(
   currentScore: Score,
   selection?: NoteSelection,
   selectedNote?: string,
+  conversation: ConversationTurn[] = [],
 ): Promise<ReviseScoreResult> {
+  const history = revisionConversation(conversation, currentScore.id);
   if (IS_STATIC_EXPORT) {
-    return reviseScoreDirect(prompt, currentScore, selection, selectedNote);
+    return reviseScoreDirect(prompt, currentScore, selection, selectedNote, history);
   }
   const res = await fetch("/api/score/revise", {
     method: "POST",
     headers: { "Content-Type": "application/json", ...getByokHeaders() },
-    body: JSON.stringify({ prompt, currentScore, selection, selectedNote }),
+    body: JSON.stringify({ prompt, currentScore, selection, selectedNote, conversation: history }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -127,6 +130,7 @@ async function reviseScoreDirect(
   currentScore: Score,
   selection?: NoteSelection,
   selectedNote?: string,
+  conversation: ConversationTurn[] = [],
 ): Promise<ReviseScoreResult> {
   // Mirror the server route's chord-chart-vs-staff augmentation.
   const isChordChart =
@@ -156,6 +160,7 @@ async function reviseScoreDirect(
     augmentedPrompt,
     currentScore,
     selection,
+    conversation,
   );
 
   let updatedScore = currentScore;

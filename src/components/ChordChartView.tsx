@@ -44,6 +44,7 @@ type LabelPosition = "above" | "left" | "right";
 type EditMode = "lyrics" | "chords" | "bars";
 import {
   findTokenAtColumn,
+  tokenizeChordLine,
   setChordAtColumn,
   findNextWordStartCol,
   findPrevWordStartCol,
@@ -85,6 +86,8 @@ interface EditState {
   originalToken?: ChordToken;
 }
 
+type ChartCursor = Pick<EditState, "sectionId" | "lineIdx" | "col">;
+
 /** Text-editing state — editing a whole line's raw text as a textarea. `field`
  *  selects which of the two monospace strings is being edited: "lyrics" (the
  *  default gesture) or "chords" (edit the whole chord line, e.g. to fix a long
@@ -112,6 +115,9 @@ function SectionBlock({
   onLineDoubleClick,
   onLineContextMenu,
   editing,
+  cursor,
+  onLineFocus,
+  onLineKeyDown,
   textEditing,
   onTextCommit,
   onTextCancel,
@@ -136,6 +142,9 @@ function SectionBlock({
   onOpenRiff: (riff: Riff) => void;
   performMode?: boolean;
   editing: EditState | null;
+  cursor: ChartCursor | null;
+  onLineFocus: (sectionId: string, lineIdx: number) => void;
+  onLineKeyDown: (e: React.KeyboardEvent<HTMLDivElement>, sectionId: string, lineIdx: number) => void;
   textEditing: TextEditState | null;
   onTextCommit: (text: string) => void;
   onTextCancel: () => void;
@@ -218,7 +227,8 @@ function SectionBlock({
             !!editing && editing.sectionId === section.id && editing.lineIdx === i;
           const isTextEditingThisLine =
             !!textEditing && textEditing.sectionId === section.id && textEditing.lineIdx === i;
-          const highlightCol = isEditingThisLine ? editing!.col : null;
+          const highlightCol = isEditingThisLine ? editing!.col
+            : cursor?.sectionId === section.id && cursor.lineIdx === i ? cursor.col : null;
           const markerClasses = [
             line.highlight ? "bg-yellow-300/20 -mx-2 px-2 rounded" : "",
             line.underline ? "border-b-2 border-yellow-400/80" : "",
@@ -228,7 +238,18 @@ function SectionBlock({
           return (
             <Fragment key={i}>
             <div
-              className={`mb-2 relative ${markerClasses}`}
+              className={`mb-2 relative scroll-mb-24 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${markerClasses}`}
+              tabIndex={performMode ? undefined : 0}
+              role={performMode ? undefined : "group"}
+              aria-label={performMode ? undefined : `${section.label}, line ${i + 1}. Arrow keys select a column; Control plus left or right selects a chord or bar. Enter edits; Delete removes the selected token.`}
+              // Mouse focus happens before click. Rebuilding the character
+              // spans at that point can swallow the click in Safari.
+              onFocus={(e) => {
+                if (e.target === e.currentTarget && e.currentTarget.matches(":focus-visible")) {
+                  onLineFocus(section.id, i);
+                }
+              }}
+              onKeyDown={(e) => { if (e.target === e.currentTarget) onLineKeyDown(e, section.id, i); }}
               // Addressable by PerformView's scroll-track-active-bar
               // effect. Uses stable section id (not idx) so reorders
               // don't break the lookup. Lyric-only / blank lines also
@@ -236,6 +257,7 @@ function SectionBlock({
               // (e.g. lyrics-line-aware features) reuse the addressing.
               data-bar-line={`${section.id}-${i}`}
             >
+              <PrintChordLine chords={line.chords} lyrics={line.lyrics} highlightRanges={line.highlightRanges} underlineRanges={line.underlineRanges} />
               {/* Auto-scroll playhead: lights the bar-line `|` character
                   itself (1ch wide at startCol) when this bar is active.
                   Narrow target — no whole-bar tint, no animated slide
@@ -251,10 +273,10 @@ function SectionBlock({
                   aria-hidden
                 />
               )}
-              {isEditingThisLine && (
+              {highlightCol !== null && (
                 <div
                   className="absolute top-0 bottom-0 w-px bg-pink-400 pointer-events-none z-0"
-                  style={{ left: `${editing!.col}ch` }}
+                  style={{ left: `${highlightCol}ch` }}
                 />
               )}
               {isTextEditingThisLine && textEditing!.field === "chords" ? (
@@ -523,7 +545,7 @@ function HighlightedText({
   if (highlightCol === null) {
     return <>{text || " "}</>;
   }
-  const before = text.slice(0, highlightCol);
+  const before = text.slice(0, highlightCol).padEnd(highlightCol, " ");
   const target = text[highlightCol] ?? " ";
   const after = text.slice(highlightCol + 1);
   return (
@@ -532,6 +554,45 @@ function HighlightedText({
       <span className={`${baseClass} font-bold bg-pink-500/30`}>{target}</span>
       <span>{after}</span>
     </>
+  );
+}
+
+/** Pair chord and lyric columns for print. Word groups wrap together at the
+ * actual paper width; exceptionally long words wrap between paired columns. */
+function PrintChordLine({ chords, lyrics, highlightRanges, underlineRanges }: {
+  chords: string;
+  lyrics: string;
+  highlightRanges?: ReadonlyArray<readonly [number, number]>;
+  underlineRanges?: ReadonlyArray<readonly [number, number]>;
+}) {
+  const length = Math.max(chords.length, lyrics.length, 1);
+  const groups: number[][] = [];
+  let group: number[] = [];
+  for (let col = 0; col < length; col++) {
+    group.push(col);
+    const lyricBoundary = !lyrics[col] || /\s/.test(lyrics[col]);
+    const chordBoundary = !chords[col] || /\s/.test(chords[col]) || !chords[col + 1] || /\s/.test(chords[col + 1]);
+    if ((lyricBoundary && chordBoundary) || col === length - 1) {
+      groups.push(group);
+      group = [];
+    }
+  }
+  return (
+    <div className="print-chord-line" aria-hidden="true">
+      {groups.map((cols, i) => (
+        <span className="print-pair-word" key={i}>
+          {cols.map(col => (
+            <span className="print-pair-char" key={col} data-print-col={col}>
+              <span className="print-pair-chord">{chords[col] ?? " "}</span>
+              <span className={[
+                highlightRanges?.some(([start, end]) => col >= start && col < end) ? "bg-yellow-300/30" : "",
+                underlineRanges?.some(([start, end]) => col >= start && col < end) ? "border-b-2 border-yellow-400/80" : "",
+              ].filter(Boolean).join(" ")}>{lyrics[col] ?? " "}</span>
+            </span>
+          ))}
+        </span>
+      ))}
+    </div>
   );
 }
 
@@ -612,8 +673,11 @@ function columnFromClick(
   const rect = textSpan.getBoundingClientRect();
   const sample = window.getComputedStyle(textSpan);
   const fontSizePx = parseFloat(sample.fontSize) || 14;
+  // Highlighting an empty column can add padding to the rendered text. Use
+  // that actual length or subsequent clicks drift away from their columns.
+  const renderedLength = textSpan.textContent?.length ?? text.length;
   const charWidth =
-    text.length > 0 ? rect.width / text.length : fontSizePx * 0.6;
+    renderedLength > 0 ? rect.width / renderedLength : fontSizePx * 0.6;
   // Anchor to the span's left edge so clicks past the end of the text still
   // resolve to a column past the last character (chord can land in the void
   // beyond the lyric — useful for instrumental tags or end-of-line bar lines).
@@ -803,9 +867,7 @@ function ClickableEmptyLine({
   );
 }
 
-// Submit intent from the chord entry bar. step-left/right are legacy no-ops
-// kept so handleEditingChange's switch stays exhaustive.
-type SubmitMode = "close" | "next-word" | "prev-word" | "step-left" | "step-right";
+type SubmitMode = "close" | "blur" | "next-word" | "prev-word" | "next-token" | "prev-token" | "next-line" | "prev-line" | "step-left" | "step-right";
 
 /**
  * Tracks how many vertical pixels the on-screen keyboard occupies, so a
@@ -838,6 +900,8 @@ function useKeyboardInset(): number {
  *   - Enter / Done   → commit and close
  *   - Tab / ›        → commit and jump to the NEXT word
  *   - Shift+Tab / ‹  → commit and jump to the PREVIOUS word
+ *   - Ctrl+←/→       → previous/next existing chord or bar (across lines)
+ *   - ↑/↓            → previous/next line at the same column
  *   - Esc            → cancel
  *   - blur           → commit nonempty changes; cancel an empty edit
  * Empty submit deletes the chord at that column. The parent keys this component
@@ -852,7 +916,7 @@ function ChordEntryBar({
   initialValue: string;
   wordLabel: string;
   onSubmit: (newChord: string, mode: SubmitMode) => void;
-  onCancel: () => void;
+  onCancel: (restoreFocus?: boolean) => void;
 }) {
   const [value, setValue] = useState(initialValue);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -871,16 +935,26 @@ function ChordEntryBar({
   const submit = (mode: SubmitMode) => {
     if (submittedRef.current) return;
     submittedRef.current = true;
-    onSubmit(value.trim(), mode);
+    // Only an explicit Enter/Done on an empty field deletes. Navigation and
+    // focus changes preserve the existing token when the draft is empty.
+    onSubmit(value.trim() || (mode === "close" ? "" : initialValue), mode);
   };
-  const cancel = () => {
+  const cancel = (restoreFocus = true) => {
     if (submittedRef.current) return;
     submittedRef.current = true;
-    onCancel();
+    onCancel(restoreFocus);
   };
 
   const handleKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
+    if (e.ctrlKey && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+      e.preventDefault();
+      e.stopPropagation();
+      submit(e.key === "ArrowLeft" ? "prev-token" : "next-token");
+    } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+      e.preventDefault();
+      e.stopPropagation();
+      submit(e.key === "ArrowUp" ? "prev-line" : "next-line");
+    } else if (e.key === "Enter") {
       e.preventDefault();
       e.stopPropagation();
       submit("close");
@@ -931,7 +1005,7 @@ function ChordEntryBar({
         onKeyDown={handleKey}
         // A blank input only deletes when the user explicitly presses Enter
         // or Done. Tapping elsewhere must not erase the selected chord.
-        onBlur={() => value.trim() ? submit("close") : cancel()}
+        onBlur={() => value.trim() ? submit("blur") : cancel(false)}
         // text-base (16px) stops iOS Safari from auto-zooming the page on focus.
         className="flex-1 min-w-0 bg-[#0f0f1f] text-yellow-200 outline-none ring-2 ring-pink-400 rounded px-3 py-2 text-base"
         style={{ fontFamily: "inherit" }}
@@ -1002,6 +1076,8 @@ export default function ChordChartView({ score, performMode = false, performColu
   const applyPatches = useScoreStore((s) => s.applyPatches);
   const setUIState = useScoreStore((s) => s.setUIState);
   const [editing, setEditing] = useState<EditState | null>(null);
+  const [cursor, setCursor] = useState<ChartCursor | null>(null);
+  const [editSession, setEditSession] = useState(0);
   const [textEditing, setTextEditing] = useState<TextEditState | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [headerContextMenu, setHeaderContextMenu] = useState<HeaderContextMenuState | null>(null);
@@ -1021,12 +1097,13 @@ export default function ChordChartView({ score, performMode = false, performColu
   // While entering a chord, keep the active line visible above the docked
   // entry bar (which covers the bottom of the chart / sits above the keyboard).
   useEffect(() => {
-    if (!editing || typeof document === "undefined") return;
+    const active = editing ?? cursor;
+    if (!active || typeof document === "undefined") return;
     const el = document.querySelector(
-      `[data-bar-line="${editing.sectionId}-${editing.lineIdx}"]`
+      `[data-bar-line="${CSS.escape(`${active.sectionId}-${active.lineIdx}`)}"]`
     );
-    el?.scrollIntoView({ block: "center", behavior: "smooth" });
-  }, [editing]);
+    el?.scrollIntoView({ block: "nearest" });
+  }, [editing, cursor]);
   // Print density toggles. Each adds a CSS class that's only consulted by
   // @media print rules — no on-screen effect. Persisted in component state
   // (not the score) so toggling them doesn't show as a revision.
@@ -1044,6 +1121,79 @@ export default function ChordChartView({ score, performMode = false, performColu
   const [chartFont, setChartFont] = useState<ChartFont>("mono");
 
   const sectionMap = new Map(score.sections.map(s => [s.id, s]));
+
+  const focusLine = (target: ChartCursor) => {
+    setCursor(target);
+    requestAnimationFrame(() => {
+      document.querySelector<HTMLElement>(
+        `[data-bar-line="${CSS.escape(`${target.sectionId}-${target.lineIdx}`)}"]`,
+      )?.focus({ preventScroll: true });
+    });
+  };
+
+  const navigationTarget = (
+    from: ChartCursor, direction: -1 | 1, kind: "token" | "line", updatedChords?: string,
+  ): ChartCursor | null => {
+    const rows = score.sections.flatMap(s => s.lines.map((line, lineIdx) => ({
+      sectionId: s.id, lineIdx, line,
+    })));
+    const index = rows.findIndex(r => r.sectionId === from.sectionId && r.lineIdx === from.lineIdx);
+    if (index < 0) return null;
+    if (kind === "line") {
+      const row = rows[index + direction];
+      return row ? { sectionId: row.sectionId, lineIdx: row.lineIdx, col: from.col } : null;
+    }
+    for (let i = index; i >= 0 && i < rows.length; i += direction) {
+      const row = rows[i];
+      const tokens = tokenizeChordLine(i === index && updatedChords !== undefined ? updatedChords : row.line.chords);
+      if (direction === -1) tokens.reverse();
+      const token = tokens.find(t => i !== index || (direction === 1 ? t.start > from.col : t.start < from.col));
+      if (token) return { sectionId: row.sectionId, lineIdx: row.lineIdx, col: token.start };
+    }
+    return null;
+  };
+
+  const handleLineFocus = (sectionId: string, lineIdx: number) => {
+    if (performMode || (cursor?.sectionId === sectionId && cursor.lineIdx === lineIdx)) return;
+    const line = sectionMap.get(sectionId)?.lines[lineIdx];
+    setCursor({ sectionId, lineIdx, col: tokenizeChordLine(line?.chords ?? "")[0]?.start ?? 0 });
+  };
+
+  const handleLineKeyDown = (e: React.KeyboardEvent<HTMLDivElement>, sectionId: string, lineIdx: number) => {
+    if (performMode || e.metaKey || e.altKey) return;
+    const line = sectionMap.get(sectionId)?.lines[lineIdx];
+    if (!line) return;
+    const from = cursor?.sectionId === sectionId && cursor.lineIdx === lineIdx
+      ? cursor : { sectionId, lineIdx, col: 0 };
+    let target: ChartCursor | null = null;
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      const direction = e.key === "ArrowLeft" ? -1 : 1;
+      target = e.ctrlKey ? navigationTarget(from, direction, "token")
+        : { ...from, col: Math.max(0, from.col + direction) };
+    } else if (e.ctrlKey) {
+      return; // Keep standard Undo/Redo and other application shortcuts.
+    } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+      target = navigationTarget(from, e.key === "ArrowUp" ? -1 : 1, "line");
+    } else if (e.key === "Home" || e.key === "End") {
+      target = { ...from, col: e.key === "Home" ? 0 : Math.max(line.chords.length, line.lyrics.length) };
+    } else if (e.key === "Enter") {
+      handleLineClick(sectionId, lineIdx, from.col);
+    } else if (e.key === "Delete" || e.key === "Backspace") {
+      const token = findTokenAtColumn(line.chords, from.col, 0);
+      if (token) applyPatches([{
+        op: "update_section_line", sectionId, lineIdx,
+        chords: setChordAtColumn(line.chords, token.start, ""),
+      }]);
+    } else if (e.key === "|") {
+      const result = toggleBarAtColumn(line.chords, from.col);
+      if (result.changed) applyPatches([{ op: "update_section_line", sectionId, lineIdx, chords: result.chords }]);
+    } else {
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    if (target) focusLine(target);
+  };
 
   // Shift every chord token in every section by `semitones`. Bars and
   // non-chord characters are preserved. Sharp/flat preference follows each
@@ -1086,6 +1236,7 @@ export default function ChordChartView({ score, performMode = false, performColu
     if (!section) return;
     const line = section.lines[lineIdx];
     if (!line) return;
+    setCursor({ sectionId, lineIdx, col });
 
     // Bars mode: tap → toggle bar at this column. Never opens chord entry.
     if (editMode === "bars") {
@@ -1116,6 +1267,7 @@ export default function ChordChartView({ score, performMode = false, performColu
     // syllable within a word. Only a tap directly on a chord edits that token;
     // the adjacent lyric column must stay available for a new placement.
     const existing = findTokenAtColumn(line.chords, col, 0);
+    setEditSession(s => s + 1);
     setEditing({
       sectionId,
       lineIdx,
@@ -1501,6 +1653,7 @@ export default function ChordChartView({ score, performMode = false, performColu
     if (newChord === null) {
       // Cancel — no patch
       setEditing(null);
+      if (mode !== "blur") focusLine(editing);
       return;
     }
 
@@ -1522,21 +1675,26 @@ export default function ChordChartView({ score, performMode = false, performColu
     const placeCol = Math.max(0, editing.col + nudge);
 
     let newChords = line.chords;
-    if (editing.originalToken) {
+    if (editing.originalToken && nudge === 0) {
+      // Editing in place must not run collision avoidance: a bar is allowed
+      // directly beside a chord (|Am). Merely visiting it must never move it.
+      newChords = setChordAtColumn(newChords, editing.originalToken.start, newChord);
+    } else if (editing.originalToken) {
       newChords = setChordAtColumn(newChords, editing.originalToken.start, "");
     }
     let placedCol = placeCol;
-    if (newChord !== "") {
+    if (newChord !== "" && (!editing.originalToken || nudge !== 0)) {
       // Don't clobber a different token (e.g. a bar line) sitting at the
       // target column. If the destination is already occupied by something
       // other than the token we're moving, slide the placement to right
       // after that token so a moved chord lands adjacent to a bar instead
       // of replacing it.
       let targetCol = placeCol;
-      let collision = findTokenAtColumn(newChords, targetCol);
+      const slack = newChord === "|" ? 0 : 1;
+      let collision = findTokenAtColumn(newChords, targetCol, slack);
       while (collision) {
-        targetCol = collision.start + collision.len + (collision.text === "|" ? 0 : 1);
-        collision = findTokenAtColumn(newChords, targetCol);
+        targetCol = collision.start + collision.len + (collision.text === "|" || newChord === "|" ? 0 : 1);
+        collision = findTokenAtColumn(newChords, targetCol, slack);
       }
       newChords = setChordAtColumn(newChords, targetCol, newChord);
       placedCol = targetCol;
@@ -1551,10 +1709,14 @@ export default function ChordChartView({ score, performMode = false, performColu
       }]);
     }
 
-    if (mode === "close") {
+    setCursor({ sectionId: editing.sectionId, lineIdx: editing.lineIdx, col: placedCol });
+    if (mode === "close" || mode === "blur") {
       setEditing(null);
+      if (mode === "close") focusLine({ ...editing, col: placedCol });
       return;
     }
+
+    setEditSession(s => s + 1);
 
     // Nudge: re-anchor directly on the chord we just moved and keep the input
     // open on it, so repeated Alt+← walks it along the line.
@@ -1580,23 +1742,26 @@ export default function ChordChartView({ score, performMode = false, performColu
 
     // Tab / Shift+Tab → next/previous word. Re-open the chord input at the
     // new position so editing stays on the keyboard.
-    const target = findNextEditingTarget(
-      section,
-      editing.lineIdx,
-      editing.col,
-      mode === "next-word" ? "forward" : "backward",
+    const tokenOrLine = mode === "next-token" || mode === "prev-token" || mode === "next-line" || mode === "prev-line";
+    const wordTarget = tokenOrLine ? null : findNextEditingTarget(
+      section, editing.lineIdx, editing.col, mode === "next-word" ? "forward" : "backward",
     );
+    const target = tokenOrLine
+      ? navigationTarget(editing, mode === "next-token" || mode === "next-line" ? 1 : -1,
+        mode === "next-line" || mode === "prev-line" ? "line" : "token", newChords)
+      : wordTarget ? { ...wordTarget, sectionId: editing.sectionId } : null;
     if (!target) {
       setEditing(null);
+      focusLine(editing);
       return;
     }
-    const targetSection = sectionMap.get(editing.sectionId)!;
-    const targetLine = newChords && target.lineIdx === editing.lineIdx
+    const targetSection = sectionMap.get(target.sectionId)!;
+    const targetLine = target.sectionId === editing.sectionId && target.lineIdx === editing.lineIdx
       ? { ...targetSection.lines[target.lineIdx], chords: newChords }
       : targetSection.lines[target.lineIdx];
     const existing = findTokenAtColumn(targetLine.chords, target.col, 0);
     setEditing({
-      sectionId: editing.sectionId,
+      sectionId: target.sectionId,
       lineIdx: target.lineIdx,
       col: existing ? existing.start : target.col,
       initialValue: existing?.text ?? "",
@@ -1884,7 +2049,11 @@ export default function ChordChartView({ score, performMode = false, performColu
           <strong>Option+←/→</strong> (Alt+←/→ on Win), or the{" "}
           <span className="text-pink-300">◀ ▶</span> buttons: move the chord one
           column. Plain ←/→ moves the text caret. <strong>Enter</strong>: commit and
-          close. <strong>Esc</strong>: cancel. Empty + Enter deletes.{" "}
+          return to the line. <strong>Esc</strong>: cancel and return to the line. Empty + Enter deletes.{" "}
+          <strong>Ctrl+←/→</strong>: select the previous/next chord or bar.
+          <strong> ↑/↓</strong>: previous/next line. With the line focused,
+          <strong> ←/→</strong>: select a column; <strong>Delete/Backspace</strong>: remove its chord or bar;
+          <strong> Enter</strong>: edit; <strong>|</strong>: toggle a bar. <strong>Cmd/Ctrl+Z</strong>: undo.{" "}
           <strong>Double-click</strong> a lyric to edit (Enter splits line).{" "}
           <strong>Right-click</strong> a line for the line menu.{" "}
           <strong>Click</strong> a section header to rename.
@@ -1922,6 +2091,9 @@ export default function ChordChartView({ score, performMode = false, performColu
               onLineDoubleClick={handleLineDoubleClick}
               onLineContextMenu={handleLineContextMenu}
               editing={editing}
+              cursor={cursor}
+              onLineFocus={handleLineFocus}
+              onLineKeyDown={handleLineKeyDown}
               textEditing={textEditing}
               onTextCommit={handleTextCommit}
               onTextCancel={handleTextCancel}
@@ -1977,11 +2149,11 @@ export default function ChordChartView({ score, performMode = false, performColu
         const wordLabel = word && ln ? ln.lyrics.slice(word[0], word[1]) : "";
         return (
           <ChordEntryBar
-            key={`${editing.sectionId}-${editing.lineIdx}-${editing.col}`}
+            key={`${editing.sectionId}-${editing.lineIdx}-${editing.col}-${editSession}`}
             initialValue={editing.initialValue}
             wordLabel={wordLabel}
             onSubmit={(val, mode) => handleEditingChange(val, mode)}
-            onCancel={() => handleEditingChange(null, "close")}
+            onCancel={(restoreFocus = true) => handleEditingChange(null, restoreFocus ? "close" : "blur")}
           />
         );
       })()}

@@ -2,6 +2,7 @@ import { Score, ScoreIntent, ScorePatch } from "./schema";
 import { logAIRequest, AILogEntry } from "./ai-logger";
 import { compactScoreForAI, estimateTokens } from "./score-compact";
 import { NoteSelection } from "./transforms";
+import { revisionConversation, type ConversationTurn } from "./ai-conversation";
 
 // ── LLM-agnostic interface ─────────────────────────────────────────────────
 
@@ -13,7 +14,8 @@ export interface ScoreIntentProvider {
   reviseScoreFromPrompt(
     prompt: string,
     currentScore: Score,
-    selection?: NoteSelection
+    selection?: NoteSelection,
+    conversation?: ConversationTurn[],
   ): Promise<{
     patches: ScorePatch[];
     message: string;
@@ -162,6 +164,7 @@ Rules:
 - "set_notes" merges by measure: only include notes for the measures you want to change. Notes in other measures are automatically preserved. Do NOT send notes for the entire score when only modifying specific measures.
 - Preserve existing content the user didn't ask to change.
 - The "message" should briefly explain what you changed in musical terms.
+- Resolve short follow-ups such as "both", "yes", or "the second one" using the preceding conversation, including your own clarification question. Once the user answers a question, perform the specified edit without asking that question again. The supplied current score is authoritative; prior messages provide intent, not an old score to restore.
 - If the request is unclear, ambiguous, or you need more information, respond with empty patches [] and ask your question in "message". It's better to ask than to guess wrong.
 - If the user asks a question about the score (not requesting a change), respond with empty patches [] and answer in "message".
 - Output raw JSON only, no markdown fences, no explanation.`;
@@ -318,7 +321,8 @@ export class ClaudeProvider implements ScoreIntentProvider {
   async reviseScoreFromPrompt(
     prompt: string,
     currentScore: Score,
-    selection?: NoteSelection
+    selection?: NoteSelection,
+    conversation: ConversationTurn[] = [],
   ): Promise<{ patches: ScorePatch[]; message: string }> {
     const startTime = Date.now();
     const logEntry: Partial<AILogEntry> = {
@@ -351,6 +355,7 @@ export class ClaudeProvider implements ScoreIntentProvider {
           max_tokens: 16384,
           system: SYSTEM_PROMPT_REVISE,
           messages: [
+            ...revisionConversation(conversation, currentScore.id),
             {
               role: "user",
               content: buildRevisionPrompt(currentScore, prompt, selection),
@@ -471,7 +476,8 @@ export class OpenAIProvider implements ScoreIntentProvider {
   async reviseScoreFromPrompt(
     prompt: string,
     currentScore: Score,
-    selection?: NoteSelection
+    selection?: NoteSelection,
+    conversation: ConversationTurn[] = [],
   ): Promise<{ patches: ScorePatch[]; message: string }> {
     const startTime = Date.now();
     const logEntry: Partial<AILogEntry> = {
@@ -497,6 +503,7 @@ export class OpenAIProvider implements ScoreIntentProvider {
           response_format: { type: "json_object" },
           messages: [
             { role: "system", content: SYSTEM_PROMPT_REVISE },
+            ...revisionConversation(conversation, currentScore.id),
             {
               role: "user",
               content: buildRevisionPrompt(currentScore, prompt, selection),

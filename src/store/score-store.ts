@@ -6,12 +6,14 @@ import { expandTabs } from "@/lib/chord-line";
 import { saveSnapshot } from "@/lib/autosave";
 import { NoteSelection, noteInSelection } from "@/lib/transforms";
 import { debugLog } from "@/lib/debug-log";
+import type { ConversationTurn } from "@/lib/ai-conversation";
 
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
   timestamp: number;
+  scoreId?: string;
 }
 
 /** A recorded operation that can be replayed on a new selection. */
@@ -23,6 +25,7 @@ export interface RecordedOperation {
   patches?: ScorePatch[];
   /** The selection it was originally applied to */
   selection?: NoteSelection;
+  conversation?: ConversationTurn[];
 }
 
 export type MusicFont = "bravura" | "petaluma" | "gonville";
@@ -465,6 +468,10 @@ export const useScoreStore = create<ProjectState>()(
       historyIndex: newHistory.length - 1,
       ...(songChanged && {
         uiState: { ...state.uiState, currentSongId: null },
+        // Associate pre-context-fix messages with the outgoing song before
+        // switching, so a follow-up cannot edit an unrelated chart.
+        messages: state.messages.map(m => ({ ...m, scoreId: m.scoreId ?? state.score!.id })),
+        lastOperation: null,
       }),
     });
   },
@@ -531,7 +538,7 @@ export const useScoreStore = create<ProjectState>()(
   },
 
   addMessage: (msg) => {
-    set((s) => ({ messages: [...s.messages, msg] }));
+    set((s) => ({ messages: [...s.messages, { ...msg, scoreId: msg.scoreId ?? s.score?.id }] }));
   },
 
   setWarnings: (warnings) => set({ warnings }),

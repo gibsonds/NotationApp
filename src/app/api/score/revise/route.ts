@@ -4,6 +4,7 @@ import { Score, ScoreSchema } from "@/lib/schema";
 import { applyPatch } from "@/lib/patches";
 import { validateScore } from "@/lib/validation";
 import { NoteSelection } from "@/lib/transforms";
+import { revisionConversation } from "@/lib/ai-conversation";
 
 export async function POST(req: NextRequest) {
   try {
@@ -72,7 +73,8 @@ export async function POST(req: NextRequest) {
     const { patches, message } = await provider.reviseScoreFromPrompt(
       augmentedPrompt,
       score,
-      selection
+      selection,
+      revisionConversation(body.conversation, score.id),
     );
 
     // Apply patches

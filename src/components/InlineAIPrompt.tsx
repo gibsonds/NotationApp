@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useScoreStore } from "@/store/score-store";
 import { requestReviseScore, aiAvailable, aiUnavailableMessage } from "@/lib/score-client";
 import { v4 as uuidv4 } from "uuid";
+import { revisionConversation } from "@/lib/ai-conversation";
 
 interface InlineAIPromptProps {
   note: { measure: number; beat: number; pitch: string; staffIndex: number };
@@ -16,7 +17,7 @@ export default function InlineAIPrompt({ note, position, onClose }: InlineAIProm
   const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const { score, setScore, applyPatches, addMessage, setWarnings } = useScoreStore();
+  const { score, setScore, applyPatches, addMessage, setWarnings, messages } = useScoreStore();
 
   useEffect(() => {
     setTimeout(() => inputRef.current?.focus(), 50);
@@ -43,6 +44,8 @@ export default function InlineAIPrompt({ note, position, onClose }: InlineAIProm
       return;
     }
     setLoading(true);
+    const conversation = revisionConversation(messages, score.id);
+    addMessage({ id: uuidv4(), role: "user", content: prompt, timestamp: Date.now() });
 
     try {
       const staff = score.staves[note.staffIndex];
@@ -62,9 +65,9 @@ export default function InlineAIPrompt({ note, position, onClose }: InlineAIProm
         startMeasure: note.measure,
         endMeasure: note.measure,
         staffIds: staff ? [staff.id] : undefined,
-      }, selectedNoteInfo);
+      }, selectedNoteInfo, conversation);
 
-      if (data.score) {
+      if (data.score && data.patches.length) {
         setScore(data.score);
       } else if (data.patches.length) {
         applyPatches(data.patches);
@@ -89,7 +92,7 @@ export default function InlineAIPrompt({ note, position, onClose }: InlineAIProm
       });
       onClose();
     }
-  }, [input, score, note, loading, setScore, applyPatches, addMessage, setWarnings, onClose]);
+  }, [input, score, note, loading, setScore, applyPatches, addMessage, setWarnings, onClose, messages]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Escape") {

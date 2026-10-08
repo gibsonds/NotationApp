@@ -14,6 +14,7 @@ import {
 } from "@/lib/score-client";
 import { v4 as uuidv4 } from "uuid";
 import { logEvent, scoreTypeOf } from "@/lib/analytics";
+import { revisionConversation } from "@/lib/ai-conversation";
 
 interface PromptPanelProps {
   /** Opens the API Keys (BYOK) modal — supplied by the page so the
@@ -88,6 +89,7 @@ export default function PromptPanel({ onOpenApiKeys }: PromptPanelProps = {}) {
     if (!input.trim() || isGenerating) return;
 
     const prompt = input.trim();
+    const conversation = revisionConversation(messages, score?.id);
     // Analytics: log only that a message was sent — NEVER the prompt content.
     logEvent({ event: "ai_send", scoreType: scoreTypeOf(score) });
     const userMsg: ChatMessage = {
@@ -193,7 +195,7 @@ export default function PromptPanel({ onOpenApiKeys }: PromptPanelProps = {}) {
       let resultMessage = "";
       let resultWarnings: string[] = [];
       if (score) {
-        const r = await requestReviseScore(prompt, score, effectiveSelection, selectedNoteInfo);
+        const r = await requestReviseScore(prompt, score, effectiveSelection, selectedNoteInfo, conversation);
         resultScore = r.score;
         resultPatches = r.patches;
         resultMessage = r.message;
@@ -205,9 +207,9 @@ export default function PromptPanel({ onOpenApiKeys }: PromptPanelProps = {}) {
         resultWarnings = r.warnings;
       }
 
-      const hasChanges = !!resultScore || resultPatches.length > 0;
+      const hasChanges = score ? resultPatches.length > 0 : !!resultScore;
 
-      if (resultScore) {
+      if (resultScore && hasChanges) {
         setScore(resultScore);
       } else if (resultPatches.length > 0) {
         applyPatches(resultPatches);
@@ -221,6 +223,7 @@ export default function PromptPanel({ onOpenApiKeys }: PromptPanelProps = {}) {
         setLastOperation({
           prompt,
           type: "ai",
+          conversation,
           patches: resultPatches.length > 0 ? resultPatches : undefined,
           selection: selection ?? undefined,
         });
@@ -276,7 +279,7 @@ export default function PromptPanel({ onOpenApiKeys }: PromptPanelProps = {}) {
     }
     setIsGenerating(true);
     try {
-      const data = await requestReviseScore(lastOperation.prompt, score, sel);
+      const data = await requestReviseScore(lastOperation.prompt, score, sel, undefined, lastOperation.conversation);
 
       if (data.score) {
         setScore(data.score);

@@ -167,6 +167,8 @@ body {
   page-break-inside: avoid;
 }
 
+.print-chord-line { display: none; }
+
 /* Print styles — show only the score */
 @media print {
   /* Reset page margins to minimum, and explicitly clear browser-added
@@ -307,6 +309,31 @@ body {
   .chord-chart section > div > div {
     margin-bottom: 1pt !important;
   }
+  .chord-chart .chord-chart-line-body {
+    font-size: var(--print-font-size, 10pt) !important;
+    line-height: var(--print-line-height, 1.15) !important;
+    letter-spacing: var(--print-letter-spacing, 0em) !important;
+    white-space: normal !important;
+    min-width: 0;
+  }
+  .chord-chart [data-bar-line] > :not(.print-chord-line) { display: none !important; }
+  .chord-chart [data-bar-line] { outline: none !important; box-shadow: none !important; }
+  .chord-chart .print-chord-line { display: block; white-space: normal; }
+  .print-pair-word {
+    display: inline-block;
+    max-width: 100%;
+    white-space: normal;
+    vertical-align: top;
+  }
+  .print-pair-char {
+    display: inline-grid;
+    width: calc(1ch + var(--print-letter-spacing, 0em));
+    vertical-align: top;
+    white-space: pre;
+    break-inside: avoid;
+  }
+  .print-pair-char > span { min-height: 1lh; }
+  .print-pair-chord { font-weight: 700; }
   .chord-chart .leading-tight { line-height: var(--print-line-height, 1.15) !important; }
   /* Hide editing affordances. */
   .chord-chart button { display: none !important; }

@@ -99,6 +99,20 @@ When a sub-action needs a focused decision sheet (e.g. "Add to set"):
   (`pt-[12vh]`).
 - Same Esc / backdrop dismissal rules. Body click does NOT close the parent.
 
+## Chord-chart keyboard entry
+
+Chart lines are keyboard focus targets. Left/right selects a character column;
+Ctrl+left/right selects an existing chord or bar across lines and sections;
+up/down changes lines. Enter opens the entry field, and Enter/Escape from that
+field returns focus to the line. On a focused line, Delete/Backspace removes
+the selected token (undoable), and `|` toggles a bar. In the entry field,
+Ctrl+left/right navigates tokens, up/down navigates lines, Tab navigates words,
+and Option/Alt+left/right moves the current token. Empty drafts are cancelled
+on blur or navigation; only an explicit empty Enter/Done deletes a token.
+
+Mouse focus must not rebuild text spans before click dispatch: Safari can
+lose the click when the target's DOM changes between mousedown and mouseup.
+
 ## Pre-flight checklist (run BEFORE designing any new component)
 
 1. **Is there an existing component I can extend?** Grep `src/components/`
