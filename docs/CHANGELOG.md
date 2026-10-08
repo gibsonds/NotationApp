@@ -3,6 +3,26 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-10-08 — 7bbbb85
+
+**Fix keyboard chord entry, revision context, and print column wrapping**
+
+- Commit: [`7bbbb85`](../../commit/7bbbb8595bab65fddf65b2b16c7671194b118ee3)
+- Author: gibsonds
+- Files changed:
+  - `docs/ui-guidelines.md`
+  - `e2e/chord-entry.spec.ts`
+  - `src/app/api/score/revise/route.ts`
+  - `src/app/globals.css`
+  - `src/components/ChordChartView.tsx`
+  - `src/components/InlineAIPrompt.tsx`
+  - `src/components/PromptPanel.tsx`
+  - `src/lib/__tests__/ai-conversation.test.ts`
+  - `src/lib/ai-conversation.ts`
+  - `src/lib/ai-provider.ts`
+  - `src/lib/score-client.ts`
+  - `src/store/score-store.ts`
+
 ## 2026-10-08 — e334cc3
 
 **Fix precise chord placement and accidental deletion**
