@@ -48,7 +48,6 @@ import {
   findNextWordStartCol,
   findPrevWordStartCol,
   findWordAt,
-  nearestWordStartCol,
   rangeCovers,
   toggleRange,
   toggleBarAtColumn,
@@ -832,7 +831,7 @@ function useKeyboardInset(): number {
 }
 
 /**
- * Docked chord-entry bar. In Chords mode, tapping a word opens this bar pinned
+ * Docked chord-entry bar. In Chords mode, tapping a lyric column opens this bar pinned
  * just above the on-screen keyboard — never clipped off the right edge like the
  * old floating popover on a narrow iPad. Keyboard contract mirrors the old
  * inline input:
@@ -840,7 +839,7 @@ function useKeyboardInset(): number {
  *   - Tab / ›        → commit and jump to the NEXT word
  *   - Shift+Tab / ‹  → commit and jump to the PREVIOUS word
  *   - Esc            → cancel
- *   - blur           → commit and close
+ *   - blur           → commit nonempty changes; cancel an empty edit
  * Empty submit deletes the chord at that column. The parent keys this component
  * by the editing position, so advancing words remounts it (fresh focus/value).
  */
@@ -930,7 +929,9 @@ function ChordEntryBar({
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={handleKey}
-        onBlur={() => submit("close")}
+        // A blank input only deletes when the user explicitly presses Enter
+        // or Done. Tapping elsewhere must not erase the selected chord.
+        onBlur={() => value.trim() ? submit("close") : cancel()}
         // text-base (16px) stops iOS Safari from auto-zooming the page on focus.
         className="flex-1 min-w-0 bg-[#0f0f1f] text-yellow-200 outline-none ring-2 ring-pink-400 rounded px-3 py-2 text-base"
         style={{ fontFamily: "inherit" }}
@@ -1007,7 +1008,7 @@ export default function ChordChartView({ score, performMode = false, performColu
   // Edit mode drives what a single tap does — the iPad-friendly replacement
   // for the old single-tap-chord / double-tap-text guessing (double-tap is
   // unreliable on touch). "lyrics": tap a line to edit its words. "chords":
-  // tap a word to put a chord on it. "bars": tap to place/remove a "|".
+  // tap a lyric column to put a chord there. "bars": tap to place/remove a "|".
   const [editMode, setEditMode] = useState<EditMode>("chords");
   // Switching mode cancels any in-progress edit so a stale input doesn't
   // commit into the wrong line/mode.
@@ -1111,17 +1112,14 @@ export default function ChordChartView({ score, performMode = false, performColu
       return;
     }
 
-    // Chords mode: snap the tap to the nearest lyric word and open chord entry
-    // at that word's start column (falls back to the raw column on lines with
-    // no lyrics, e.g. an intro vamp). Tapping a word that already has a chord
-    // edits it.
-    const snapped = nearestWordStartCol(line.lyrics, col);
-    const targetCol = snapped ?? col;
-    const existing = findTokenAtColumn(line.chords, targetCol);
+    // Chords mode: use the tapped character column so a chord can land on any
+    // syllable within a word. Only a tap directly on a chord edits that token;
+    // the adjacent lyric column must stay available for a new placement.
+    const existing = findTokenAtColumn(line.chords, col, 0);
     setEditing({
       sectionId,
       lineIdx,
-      col: existing ? existing.start : targetCol,
+      col: existing ? existing.start : col,
       initialValue: existing?.text ?? "",
       originalToken: existing,
     });
@@ -1535,9 +1533,10 @@ export default function ChordChartView({ score, performMode = false, performColu
       // after that token so a moved chord lands adjacent to a bar instead
       // of replacing it.
       let targetCol = placeCol;
-      const collision = findTokenAtColumn(newChords, targetCol, 0);
-      if (collision) {
-        targetCol = collision.start + collision.len;
+      let collision = findTokenAtColumn(newChords, targetCol);
+      while (collision) {
+        targetCol = collision.start + collision.len + (collision.text === "|" ? 0 : 1);
+        collision = findTokenAtColumn(newChords, targetCol);
       }
       newChords = setChordAtColumn(newChords, targetCol, newChord);
       placedCol = targetCol;
@@ -1595,7 +1594,7 @@ export default function ChordChartView({ score, performMode = false, performColu
     const targetLine = newChords && target.lineIdx === editing.lineIdx
       ? { ...targetSection.lines[target.lineIdx], chords: newChords }
       : targetSection.lines[target.lineIdx];
-    const existing = findTokenAtColumn(targetLine.chords, target.col);
+    const existing = findTokenAtColumn(targetLine.chords, target.col, 0);
     setEditing({
       sectionId: editing.sectionId,
       lineIdx: target.lineIdx,
@@ -1696,7 +1695,7 @@ export default function ChordChartView({ score, performMode = false, performColu
         >
           {([
             ["lyrics", "Lyrics", "Tap a line to edit its words"],
-            ["chords", "Chords", "Tap a word to put a chord on it"],
+            ["chords", "Chords", "Tap a character to place a chord there"],
             ["bars", "| Bars", "Tap to place or remove a bar (|)"],
           ] as const).map(([mode, label, tip]) => (
             <button
@@ -1876,7 +1875,7 @@ export default function ChordChartView({ score, performMode = false, performColu
           {formDisplay && <span>Form: {formDisplay}</span>}
         </div>
         <p className="text-xs text-gray-500 mt-2 italic">
-          <strong>Click</strong>: add/edit a chord ({" "}
+          <strong>Click a lyric character</strong>: add/edit a chord at that column ({" "}
           <code className="text-pink-300">D</code>,{" "}
           <code className="text-pink-300">Am7</code>) or bar line ({" "}
           <code className="text-pink-300">|</code>).

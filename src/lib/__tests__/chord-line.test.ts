@@ -67,3 +67,11 @@ describe("chord nudge — moving a chord one column", () => {
     expect(findTokenAtColumn(chords, 5, 0)).toBeUndefined();
   });
 });
+
+describe("placing chords within a lyric word", () => {
+  it("keeps an existing chord when a new one is placed in an adjacent column", () => {
+    const chords = setChordAtColumn("  Am     ", 5, "G");
+    expect(findTokenAtColumn(chords, 2, 0)?.text).toBe("Am");
+    expect(findTokenAtColumn(chords, 5, 0)?.text).toBe("G");
+  });
+});

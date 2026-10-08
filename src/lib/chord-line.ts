@@ -299,7 +299,7 @@ export function toggleBarAtColumn(chords: string, col: number): { chords: string
  * inserted at `targetCol`.
  */
 export function setChordAtColumn(chords: string, targetCol: number, newChord: string): string {
-  const existing = findTokenAtColumn(chords, targetCol);
+  const existing = findTokenAtColumn(chords, targetCol, 0);
 
   // Replace or delete an existing chord
   if (existing) {
