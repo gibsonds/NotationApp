@@ -3,6 +3,32 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-10-09 — f54e934
+
+**Isolate authenticated songbooks and add creation and invitation controls**
+
+- Commit: [`f54e934`](../../commit/f54e9346adb05ff8b25aebf0105d2dbe15b46f17)
+- Author: gibsonds
+- Files changed:
+  - `docs/ui-guidelines.md`
+  - `docs/usability-review-2026-10.md`
+  - `e2e/songbook-auth.spec.ts`
+  - `scripts/deploy-auth-frontend.sh`
+  - `src/app/page.tsx`
+  - `src/components/MenuBar.tsx`
+  - `src/components/SongbookManager.tsx`
+  - `src/components/SongbookSwitcher.tsx`
+  - `src/lib/__tests__/songbook-isolation.test.ts`
+  - `src/lib/auth.ts`
+  - `src/lib/autosave.ts`
+  - `src/lib/song-bank-guard.ts`
+  - `src/lib/song-bank.ts`
+  - `src/lib/song-cloud.ts`
+  - `src/lib/song-sets.ts`
+  - `src/lib/songbook-client.ts`
+  - `src/lib/songbook-storage.ts`
+  - `src/store/score-store.ts`
+
 ## 2026-10-08 — 7bbbb85
 
 **Fix keyboard chord entry, revision context, and print column wrapping**
