@@ -36,5 +36,17 @@ cf=aws('cloudfront','get-distribution-config','--id','E1OQKQ4KGT4DXV')['Distribu
 check('Security response headers attached',bool(cf['DefaultCacheBehavior'].get('ResponseHeadersPolicyId')))
 check('Same-origin API cache disabled',any(x['PathPattern']=='/auth-api/*' and x.get('CachePolicyId')=='4135ea2d-6df8-44a3-9df3-4b5a84be39ad' for x in cf.get('CacheBehaviors',{}).get('Items',[])))
 # The stable AWS managed CachingDisabled ID is checked from the deployed policy reference.
+for user in ['GuitarProjectAdmin','InferMusicDeploy']:
+ keys=aws('iam','list-access-keys','--user-name',user)['AccessKeyMetadata']
+ check(user+' has no active permanent keys',all(key['Status']=='Inactive' for key in keys))
+check('Deployment login has MFA',bool(aws('iam','list-mfa-devices','--user-name','InferMusicDeploy')['MFADevices']))
+for role_name in ['NotationFrontendDeploy','NotationSongRepair']:
+ role=aws('iam','get-role','--role-name',role_name)['Role']
+ allows=[s for s in role['AssumeRolePolicyDocument']['Statement'] if s.get('Effect')=='Allow']
+ expected_user='arn:aws:iam::637423285747:user/InferMusicDeploy'
+ check(role_name+' restricted to MFA login and one-hour sessions',role['MaxSessionDuration']<=3600 and bool(allows) and all(
+  s.get('Principal')=={'AWS':expected_user} and
+  s.get('Condition',{}).get('Bool',{}).get('aws:MultiFactorAuthPresent') in ['true',True]
+  for s in allows))
 print(json.dumps({'checks':checks},indent=2))
 sys.exit(0 if all(c['passed'] for c in checks) else 1)

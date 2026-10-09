@@ -20,10 +20,8 @@ export class SecurityAuditStack extends Stack {
   audit.addToPolicy(new PolicyStatement({actions:['apigateway:GET'],resources:[`arn:aws:apigateway:${this.region}::/apis/xg47257esd/stages`,`arn:aws:apigateway:${this.region}::/apis/vv4fx6t7i1/stages`]}));
   audit.addToPolicy(new PolicyStatement({actions:['cloudfront:GetDistributionConfig'],resources:[`arn:aws:cloudfront::${this.account}:distribution/E1OQKQ4KGT4DXV`]}));
   audit.addToPolicy(new PolicyStatement({actions:['s3:GetBucketVersioning','s3:GetBucketPublicAccessBlock','s3:GetBucketPolicyStatus'],resources:['arn:aws:s3:::notationauth-sitebucket397a1860-m0gyarsr1okt']}));
-  const deploy=new Role(this,'FrontendRole',{
-   roleName:'NotationFrontendDeploy',maxSessionDuration:Duration.hours(1),
-   assumedBy:new ArnPrincipal(`arn:aws:iam::${this.account}:user/GuitarProjectAdmin`).withConditions({'Bool':{'aws:MultiFactorAuthPresent':'true'}}),
-  });
+  audit.addToPolicy(new PolicyStatement({actions:['iam:ListAccessKeys','iam:ListMFADevices'],resources:['GuitarProjectAdmin','InferMusicDeploy'].map(name=>`arn:aws:iam::${this.account}:user/${name}`)}));
+  audit.addToPolicy(new PolicyStatement({actions:['iam:GetRole'],resources:['NotationFrontendDeploy','NotationSongRepair'].map(name=>`arn:aws:iam::${this.account}:role/${name}`)}));
   // Console password and MFA are enrolled by the owner outside CloudFormation.
   // No permanent access key is created. `aws login` supplies temporary credentials.
   const developer=new User(this,'FrontendDeveloper',{
@@ -31,10 +29,10 @@ export class SecurityAuditStack extends Stack {
    managedPolicies:[ManagedPolicy.fromAwsManagedPolicyName('SignInLocalDevelopmentAccess')],
   });
   developer.applyRemovalPolicy(RemovalPolicy.RETAIN);
-  deploy.assumeRolePolicy!.addStatements(new PolicyStatement({
-   actions:['sts:AssumeRole'],principals:[developer],
-   conditions:{Bool:{'aws:MultiFactorAuthPresent':'true'}},
-  }));
+  const deploy=new Role(this,'FrontendRole',{
+   roleName:'NotationFrontendDeploy',maxSessionDuration:Duration.hours(1),
+   assumedBy:new ArnPrincipal(developer.userArn).withConditions({'Bool':{'aws:MultiFactorAuthPresent':'true'}}),
+  });
   developer.addToPolicy(new PolicyStatement({
    actions:['sts:AssumeRole'],resources:[deploy.roleArn],
    conditions:{Bool:{'aws:MultiFactorAuthPresent':'true'}},
