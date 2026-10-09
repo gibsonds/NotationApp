@@ -4,7 +4,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { DeleteCommand, GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
 import type { APIGatewayProxyEventV2 } from 'aws-lambda';
 import { ddb } from './ddb';
-import { AuthError, verifyAccessToken, type AuthedUser } from './auth';
+import { AuthError, verifyAccessToken, verifyIdToken, type AuthedUser } from './auth';
 
 const COOKIE = '__Host-notation-session';
 const MAX_AGE = 12 * 3600;
@@ -24,13 +24,20 @@ export function assertBrowserRequest(event: APIGatewayProxyEventV2) {
     throw new AuthError(403, 'untrusted browser request');
   }
 }
-export async function createSession(tokens: Record<string, unknown>) {
-  if (typeof tokens.access_token !== 'string') throw new AuthError(401, 'missing access token');
-  const { payload } = await verifyAccessToken(tokens.access_token);
+export async function createSession(tokens: Record<string, unknown>, nonce: string) {
+  if (typeof tokens.id_token !== 'string') throw new AuthError(401, 'missing sign-in token');
+  const { payload } = await verifyIdToken(tokens.id_token, nonce);
+  return storeSession(payload.sub!);
+}
+export async function migrateAccessToken(token: string) {
+  const { payload } = await verifyAccessToken(token);
+  return storeSession(payload.sub!);
+}
+async function storeSession(sub: string) {
   const id = randomBytes(32).toString('base64url');
   const ttl = Math.floor(Date.now() / 1000) + MAX_AGE;
-  await ddb.send(new PutCommand({ TableName: sessionTable(), Item: { id: hash(id), sub: payload.sub!, ttl } }));
-  return { cookie: sessionCookie(id), sub: payload.sub! };
+  await ddb.send(new PutCommand({ TableName: sessionTable(), Item: { id: hash(id), sub, ttl } }));
+  return { cookie: sessionCookie(id), sub };
 }
 export async function deleteSession(event: APIGatewayProxyEventV2) {
   const id = sessionId(event);

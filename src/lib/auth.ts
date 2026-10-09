@@ -138,7 +138,8 @@ export async function beginSignIn(): Promise<void> {
   if (invite) sessionStorage.setItem("notation-app-pending-invite", invite);
   const verifier = generateVerifier();
   const state = randomState();
-  sessionStorage.setItem(PKCE_KEY, JSON.stringify({ verifier, state }));
+  const nonce = generateVerifier();
+  sessionStorage.setItem(PKCE_KEY, JSON.stringify({ verifier, state, nonce }));
   const params = new URLSearchParams({
     response_type: "code",
     client_id: OAUTH_CLIENT_ID,
@@ -148,6 +149,7 @@ export async function beginSignIn(): Promise<void> {
     // governed by the app's Refresh Token grant type instead.
     scope: "openid",
     state,
+    nonce,
     code_challenge: await challengeS256(verifier),
     code_challenge_method: "S256",
   });
@@ -158,7 +160,7 @@ export async function beginSignIn(): Promise<void> {
  *  established (caller strips the params and refreshes UI). */
 export async function completeSignIn(code: string, state: string): Promise<boolean> {
   if (!AUTH_ENABLED) return false;
-  let stash: { verifier: string; state: string } | null = null;
+  let stash: { verifier: string; state: string; nonce?: string } | null = null;
   try {
     stash = JSON.parse(sessionStorage.getItem(PKCE_KEY) ?? "null");
   } catch {
@@ -176,6 +178,7 @@ export async function completeSignIn(code: string, state: string): Promise<boole
       code,
       code_verifier: stash.verifier,
       redirect_uri: redirectUri(),
+      nonce: stash.nonce,
     }),
   });
   if (!res.ok) {
@@ -218,8 +221,14 @@ export async function signOut(clearDevice = false): Promise<void> {
     for (const key of Object.keys(localStorage)) {
       if (key.startsWith("notation-app-") || key.startsWith("notationapp-")) localStorage.removeItem(key);
     }
-    if (indexedDB.databases) {
-      for (const db of await indexedDB.databases()) if (db.name?.startsWith("notationapp-")) indexedDB.deleteDatabase(db.name);
+    if (!indexedDB.databases) throw new Error("Signed out. This browser requires clearing cached songs through its site-data settings.");
+    for (const db of await indexedDB.databases()) if (db.name?.startsWith("notationapp-")) {
+      await new Promise<void>((resolve, reject) => {
+        const request = indexedDB.deleteDatabase(db.name!);
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(new Error("Signed out, but cached songs could not be cleared. Clear this site's data in your browser settings."));
+        request.onblocked = () => reject(new Error("Signed out, but another Charts tab is keeping cached songs open. Close other Charts tabs and clear this site's data in your browser settings."));
+      });
     }
   }
   try {
