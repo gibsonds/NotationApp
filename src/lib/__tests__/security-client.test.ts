@@ -1,11 +1,12 @@
 import {beforeEach,afterEach,it,expect,vi} from 'vitest';
 beforeEach(()=>{vi.resetModules();localStorage.clear();sessionStorage.clear();});
 afterEach(()=>{vi.unstubAllEnvs();vi.unstubAllGlobals();});
-it('keeps AI keys tab-only and moves legacy persistent keys out of local storage',async()=>{
+it('keeps AI keys in memory only and moves legacy persistent keys out of local storage',async()=>{
  const keys=await import('../api-key-store');
  keys.setApiKey('openai','sk-example-secret');
  expect(localStorage.getItem('notation-app-api-keys')).toBeNull();
  expect(keys.getApiKey('openai')).toBe('sk-example-secret');
+ expect(sessionStorage.getItem('notation-app-api-keys')).toBeNull();
  sessionStorage.clear();localStorage.setItem('notation-app-api-keys',JSON.stringify({anthropic:'sk-old'}));
  expect(keys.getApiKey('anthropic')).toBe('sk-old');expect(localStorage.getItem('notation-app-api-keys')).toBeNull();
 });

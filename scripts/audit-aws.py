@@ -16,7 +16,9 @@ check('Production stub disabled',env.get('AUTH_STUB')!='1')
 check('Opaque cookie sessions enabled',env.get('COOKIE_SESSIONS')=='1')
 check('OAuth client secret is referenced, not inline',bool(env.get('OAUTH_CLIENT_SECRET_ID')) and not env.get('OAUTH_CLIENT_SECRET'))
 check('Supported Lambda runtime',config['Runtime'] in ['nodejs22.x','nodejs24.x'])
-check('Bounded Lambda concurrency',0 < aws('lambda','get-function-concurrency','--function-name',fn).get('ReservedConcurrentExecutions',0) <= 20)
+reserved=aws('lambda','get-function-concurrency','--function-name',fn).get('ReservedConcurrentExecutions',0)
+account_limit=aws('lambda','get-account-settings')['AccountLimit']['ConcurrentExecutions']
+check('Bounded Lambda concurrency (function or account)',0 < (reserved or account_limit) <= 20)
 for table in ['NotationAppAuth','NotationApp']:
  info=aws('dynamodb','describe-table','--table-name',table)['Table']
  backup=aws('dynamodb','describe-continuous-backups','--table-name',table)['ContinuousBackupsDescription']

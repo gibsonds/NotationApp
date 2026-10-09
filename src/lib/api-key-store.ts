@@ -1,7 +1,7 @@
 /**
  * Bring-your-own-key (BYOK) storage for AI provider credentials.
  *
- * Keys live ONLY in the current browser tab via sessionStorage under a single JSON blob.
+ * Keys live ONLY in module memory for the current page, until reload or close.
  * They are never persisted server-side and must never be passed to analytics,
  * logging, or telemetry. If you find yourself importing this module from
  * `analytics.ts` (or anything that ships log payloads off-device), STOP — the
@@ -23,40 +23,34 @@ interface StoredKeys {
   openai?: string;
 }
 
+let memoryKeys: StoredKeys = {};
+
 function readStore(): StoredKeys {
   if (typeof window === "undefined") return {};
-  try {
-    const old = window.localStorage.getItem(STORAGE_KEY);
-    if (old) {
-      if (!window.sessionStorage.getItem(STORAGE_KEY)) window.sessionStorage.setItem(STORAGE_KEY, old);
-      window.localStorage.removeItem(STORAGE_KEY);
-    }
-    const raw = window.sessionStorage.getItem(STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return {};
-    const out: StoredKeys = {};
-    if (typeof parsed.anthropic === "string") out.anthropic = parsed.anthropic;
-    if (typeof parsed.openai === "string") out.openai = parsed.openai;
-    return out;
-  } catch {
-    return {};
+  // Upgrade existing keys without copying them into another persistent store.
+  for (const storage of [window.localStorage, window.sessionStorage]) {
+    try {
+      const raw = storage.getItem(STORAGE_KEY);
+      storage.removeItem(STORAGE_KEY);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw);
+      if (typeof parsed?.anthropic === "string" && !memoryKeys.anthropic) memoryKeys.anthropic = parsed.anthropic;
+      if (typeof parsed?.openai === "string" && !memoryKeys.openai) memoryKeys.openai = parsed.openai;
+    } catch { /* Unavailable or corrupt legacy storage. */ }
   }
+  return { ...memoryKeys };
 }
 
 function writeStore(keys: StoredKeys): void {
   if (typeof window === "undefined") return;
-  try {
-    if (!keys.anthropic && !keys.openai) {
-      window.localStorage.removeItem(STORAGE_KEY);
-      window.sessionStorage.removeItem(STORAGE_KEY);
-      return;
-    }
-    window.localStorage.removeItem(STORAGE_KEY);
-    window.sessionStorage.removeItem(STORAGE_KEY);
-    window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(keys));
-  } catch {
-    // Quota exceeded / storage disabled — silently no-op so callers don't crash.
+  memoryKeys = { ...keys };
+}
+
+export function clearAllApiKeys(): void {
+  memoryKeys = {};
+  if (typeof window === "undefined") return;
+  for (const storage of [window.localStorage, window.sessionStorage]) {
+    try { storage.removeItem(STORAGE_KEY); } catch { /* Storage unavailable. */ }
   }
 }
 

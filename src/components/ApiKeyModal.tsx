@@ -29,19 +29,6 @@ const PROVIDER_HINT: Record<AiProvider, string> = {
   openai: "This doesn't look like a valid OpenAI key (expected sk-…).",
 };
 
-function logEvent(event: "api_key_set" | "api_key_removed", provider: AiProvider): void {
-  // Provider-only telemetry. The raw key value MUST NEVER appear here. If we
-  // ever add a real analytics module (`src/lib/analytics.ts`), wire it up
-  // here — but keep this function passing only `{ provider }`.
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const w = window as any;
-    if (typeof w?.analytics?.track === "function") w.analytics.track(event, { provider });
-  } catch {
-    // Telemetry must never break the user-facing flow.
-  }
-}
-
 export default function ApiKeyModal({ onClose }: ApiKeyModalProps) {
   const [provider, setProvider] = useState<AiProvider>("anthropic");
   const [draft, setDraft] = useState("");
@@ -80,7 +67,6 @@ export default function ApiKeyModal({ onClose }: ApiKeyModalProps) {
       return;
     }
     setApiKey(provider, draft.trim());
-    logEvent("api_key_set", provider);
     window.dispatchEvent(new CustomEvent("notation-app-byok-change"));
     setStoreRevision((r) => r + 1);
     setDraft("");
@@ -91,7 +77,6 @@ export default function ApiKeyModal({ onClose }: ApiKeyModalProps) {
 
   const handleRemove = () => {
     clearApiKey(provider);
-    logEvent("api_key_removed", provider);
     window.dispatchEvent(new CustomEvent("notation-app-byok-change"));
     setStoreRevision((r) => r + 1);
     setDraft("");
@@ -141,7 +126,7 @@ export default function ApiKeyModal({ onClose }: ApiKeyModalProps) {
         <div className="px-5 py-4 space-y-4">
           {/* Privacy info box — prominent */}
           <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5 text-[12px] text-blue-900 leading-relaxed">
-            <span className="font-semibold">Your API key stays in this tab until you close it or sign out.</span>{" "}
+            <span className="font-semibold">Your API key stays in this tab until you reload, close it, or sign out.</span>{" "}
             AI requests send your key and song content to the selected provider. Local server builds relay those requests through your local server.
           </div>
 

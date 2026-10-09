@@ -16,6 +16,7 @@
  * own broker, which forwards it to the IdP.
  */
 
+import { clearAllApiKeys } from "@/lib/api-key-store";
 import { songbookScopeIsCurrent } from "@/lib/songbook-storage";
 import { challengeS256, generateVerifier, randomState } from "@/lib/pkce";
 
@@ -212,8 +213,7 @@ export async function signOut(clearDevice = false): Promise<void> {
     if (!res.ok) throw new Error("Could not end the session. Check your connection and try again.");
   }
   writeTokens(null);
-  localStorage.removeItem("notation-app-api-keys");
-  sessionStorage.removeItem("notation-app-api-keys");
+  clearAllApiKeys();
   if (clearDevice) {
     for (const key of Object.keys(localStorage)) {
       if (key.startsWith("notation-app-") || key.startsWith("notationapp-")) localStorage.removeItem(key);

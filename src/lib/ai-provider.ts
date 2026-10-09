@@ -616,10 +616,7 @@ function buildRevisionPrompt(score: Score, prompt: string, selection?: NoteSelec
   // Otherwise, send a compact version with full notes for selected measures
   const compact = compactScoreForAI(score, { focusMeasures });
   const compactJson = JSON.stringify(compact, null, 2);
-  console.log(
-    `[AI] Score too large for full context (${fullTokens} tokens). Using compact representation (${estimateTokens(compactJson)} tokens).` +
-    (focusMeasures ? ` Focus measures: ${focusMeasures.join(", ")}` : "")
-  );
+
 
   let instructions =
     `${modeHint}Current score (compact — note details summarized per measure):\n${compactJson}\n\n` +
@@ -652,15 +649,14 @@ function safeParseJSON(text: string, context: string): any {
   try {
     return JSON.parse(cleaned);
   } catch (firstError: any) {
-    console.error(`[AI JSON] First parse attempt failed for ${context}:`, firstError.message);
-    console.error(`[AI JSON] Raw text length: ${cleaned.length}, last 100 chars: "${cleaned.slice(-100)}"`);
+    console.error("[AI JSON] Response could not be parsed; attempting repair.");
 
     // Attempt to repair truncated JSON by closing open brackets/braces
     const repaired = tryRepairJSON(cleaned);
     if (repaired) {
       try {
         const result = JSON.parse(repaired);
-        console.warn(`[AI JSON] Successfully repaired truncated JSON for ${context}`);
+        console.warn("[AI JSON] Repaired truncated response.");
         return result;
       } catch {
         // Fall through to error
@@ -670,9 +666,8 @@ function safeParseJSON(text: string, context: string): any {
     throw new Error(
       `Failed to parse AI response as JSON (${context}). ` +
       `Response length: ${cleaned.length} chars. ` +
-      `Last 80 chars: "${cleaned.slice(-80)}". ` +
       `This usually means the response was truncated (too large for max_tokens). ` +
-      `Original error: ${firstError.message}`
+      `Please retry with a smaller request.`
     );
   }
 }

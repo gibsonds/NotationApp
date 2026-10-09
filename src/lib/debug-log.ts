@@ -1,10 +1,5 @@
-/** Post debug messages to /api/debug which writes to /tmp/notation-debug.log */
+/** Local development diagnostics only; no browser telemetry endpoint. */
 export function debugLog(msg: string): void {
   if (process.env.NODE_ENV !== "development") return;
-  console.log(msg);
-  fetch("/api/debug", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ msg }),
-  }).catch(() => {});
+  console.log(JSON.stringify({ debug: msg }));
 }

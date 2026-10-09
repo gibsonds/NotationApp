@@ -75,7 +75,8 @@ export class NotationAuthStack extends Stack {
       entry: path.join(__dirname, "..", "lambda", "handler-auth.ts"),
       runtime: Runtime.NODEJS_22_X,
       memorySize: 512,
-      reservedConcurrentExecutions: 10,
+      // The account cap is 10 and AWS requires those slots to stay unreserved.
+      // API throttles provide app-specific limits.
       logGroup: new LogGroup(this, "HandlerLogs", { retention: RetentionDays.ONE_WEEK }),
       // Import copies whole legacy partitions (potentially thousands of
       // version rows) — needs more headroom than the 10s data routes.
@@ -165,7 +166,7 @@ export class NotationAuthStack extends Stack {
       viewerProtocolPolicy: ViewerProtocolPolicy.HTTPS_ONLY,
       functionAssociations: [{ eventType: FunctionEventType.VIEWER_REQUEST, function: new EdgeFunction(this, "ApiPath", { code: FunctionCode.fromInline("function handler(event) { var r = event.request; r.uri = r.uri.substring(9); return r; }") }) }],
     });
-    protectApi(this, api, fn);
+    protectApi(this, api, fn, true);
     const integration = new HttpLambdaIntegration("Integration", fn);
     api.addRoutes({ path: "/oauth/session", methods: [HttpMethod.POST], integration });
     api.addRoutes({ path: "/oauth/logout", methods: [HttpMethod.POST], integration });

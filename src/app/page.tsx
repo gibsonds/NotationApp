@@ -805,10 +805,9 @@ export default function Home() {
       addMessage({
         id: uuidv4(),
         role: "assistant",
-        content: `Sign-in was not completed (${authError}).`,
+        content: "Sign-in was not completed. Please try again.",
         timestamp: Date.now(),
       });
-      return;
     }
     if (code && state) {
       completeSignIn(code, state)

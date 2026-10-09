@@ -13,6 +13,7 @@ export class SecurityAuditStack extends Stack {
     'token.actions.githubusercontent.com:sub':'repo:gibsonds/NotationApp:ref:refs/heads/main',
    }},'sts:AssumeRoleWithWebIdentity'),
   });
+  audit.addToPolicy(new PolicyStatement({actions:['lambda:GetAccountSettings'],resources:['*']}));
   // Metadata only. No song reads, bucket object reads, secret reads, or mutations.
   audit.addToPolicy(new PolicyStatement({actions:['lambda:GetFunctionConfiguration','lambda:GetFunctionConcurrency'],resources:[`arn:aws:lambda:${this.region}:${this.account}:function:NotationAuth-*`,`arn:aws:lambda:${this.region}:${this.account}:function:NotationProd-*`]}));
   audit.addToPolicy(new PolicyStatement({actions:['dynamodb:DescribeTable','dynamodb:DescribeContinuousBackups'],resources:[`arn:aws:dynamodb:${this.region}:${this.account}:table/NotationApp*`]}));

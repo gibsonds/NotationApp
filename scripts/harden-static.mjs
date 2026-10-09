@@ -10,7 +10,7 @@ async function walk(dir) {
     if (!item.name.endsWith('.html')) continue;
     let html = await readFile(file,'utf8');
     html = html.replace(/<meta name="notation-csp"[^>]*>/g, '');
-    const hashes = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)]
+    const hashes = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)]
       .filter(m => !/\bsrc\s*=/i.test(m[1])).map(m => `'sha256-${createHash('sha256').update(m[2]).digest('base64')}'`);
     const policy = `script-src 'self' ${[...new Set(hashes)].join(' ')}; object-src 'none'; base-uri 'none'; form-action 'self'`;
     html = html.replace(/<head>/i, `<head><meta name="notation-csp" http-equiv="Content-Security-Policy" content="${policy}">`);

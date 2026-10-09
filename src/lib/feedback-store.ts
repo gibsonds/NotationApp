@@ -42,12 +42,11 @@ function sanitizeText(input: string, maxLength: number): string {
   }
   // Decode a small set of HTML entities so "&lt;script&gt;" doesn't survive
   // as visible markup-looking text.
-  cur = cur
-    .replace(/&lt;/gi, "")
-    .replace(/&gt;/gi, "")
-    .replace(/&amp;/gi, "&")
-    .replace(/&quot;/gi, '"')
-    .replace(/&#x?[0-9a-f]+;/gi, "");
+  cur = cur.replace(/&(?:lt|gt|amp|quot|#x?[0-9a-f]+);/gi, (entity) => {
+    if (entity.toLowerCase() === "&amp;") return "&";
+    if (entity.toLowerCase() === "&quot;") return '"';
+    return "";
+  });
   return cur.trim().slice(0, maxLength);
 }
 

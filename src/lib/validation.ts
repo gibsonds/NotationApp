@@ -58,16 +58,14 @@ export function validateMusicalSanity(score: Score): ValidationResult {
   for (const staff of score.staves) {
     for (const voice of staff.voices) {
       // Group notes by measure
-      const notesByMeasure: Record<number, typeof voice.notes> = {};
+      const notesByMeasure = new Map<number, typeof voice.notes>();
       for (const note of voice.notes) {
-        if (!notesByMeasure[note.measure]) {
-          notesByMeasure[note.measure] = [];
-        }
-        notesByMeasure[note.measure].push(note);
+        const notes = notesByMeasure.get(note.measure) ?? [];
+        notes.push(note);
+        notesByMeasure.set(note.measure, notes);
       }
 
-      for (const [measureStr, notes] of Object.entries(notesByMeasure)) {
-        const measure = parseInt(measureStr, 10);
+      for (const [measure, notes] of notesByMeasure) {
         if (measure > score.measures) {
           errors.push(
             `Staff "${staff.name}", voice "${voice.id}": note in measure ${measure} exceeds score length (${score.measures} measures)`

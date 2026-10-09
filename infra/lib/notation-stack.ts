@@ -43,7 +43,8 @@ export class NotationStack extends Stack {
       entry: path.join(__dirname, "..", "lambda", "handler.ts"),
       runtime: Runtime.NODEJS_22_X,
       memorySize: 512,
-      reservedConcurrentExecutions: 5,
+      // The account cap is 10 and AWS requires those slots to stay unreserved.
+      // API throttles provide app-specific limits.
       logGroup: new LogGroup(this, "HandlerLogs", { retention: RetentionDays.ONE_WEEK }),
       timeout: Duration.seconds(10),
       environment: { TABLE_NAME: table.tableName, LEGACY_READ_ONLY: process.env.LEGACY_READ_ONLY ?? "0" },

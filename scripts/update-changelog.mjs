@@ -3,7 +3,7 @@
 // Invoked from .github/workflows/update-docs.yml after each push to main.
 
 import { execSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 const CHANGELOG_PATH = "docs/CHANGELOG.md";
@@ -43,7 +43,7 @@ ${fileList}
 `;
 
 const dir = dirname(CHANGELOG_PATH);
-if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+mkdirSync(dir, { recursive: true });
 
 const header = `# Changelog
 
@@ -53,7 +53,7 @@ Newest entries on top.
 `;
 
 let existing = "";
-if (existsSync(CHANGELOG_PATH)) {
+try {
   existing = readFileSync(CHANGELOG_PATH, "utf8");
   // Strip the header from the existing file so we can re-prepend the new entry
   // beneath a single canonical header.
@@ -61,6 +61,8 @@ if (existsSync(CHANGELOG_PATH)) {
     const split = existing.indexOf("## ");
     existing = split === -1 ? "" : existing.slice(split);
   }
+} catch (err) {
+  if (err.code !== "ENOENT") throw err;
 }
 
 // Skip if HEAD's SHA is already the most recent entry — guards against the

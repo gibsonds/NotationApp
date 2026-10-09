@@ -19,12 +19,12 @@ export function secureHeaders(scope: Construct) {
     customHeadersBehavior: { customHeaders: [{ header: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()', override: true }] },
   });
 }
-export function protectApi(scope: Construct, api: HttpApi, fn: LambdaFunction) {
+export function protectApi(scope: Construct, api: HttpApi, fn: LambdaFunction, hasOAuth = false) {
   const logs = new LogGroup(scope, 'ApiAccessLogs', { retention: RetentionDays.ONE_WEEK, removalPolicy: RemovalPolicy.DESTROY });
   const stage = api.defaultStage!.node.defaultChild as CfnStage;
   stage.defaultRouteSettings = { throttlingRateLimit: 15, throttlingBurstLimit: 30, detailedMetricsEnabled: true };
   // This untyped CloudFormation map requires CloudFormation's property casing.
-  stage.routeSettings = { 'POST /oauth/exchange': { ThrottlingRateLimit: 2, ThrottlingBurstLimit: 5 } };
+  if (hasOAuth) stage.routeSettings = { 'POST /oauth/exchange': { ThrottlingRateLimit: 2, ThrottlingBurstLimit: 5 } };
   // No IP, user agent, subject, headers, raw URL, query, or body.
   stage.accessLogSettings = { destinationArn: logs.logGroupArn, format: JSON.stringify({ requestId: '$context.requestId', route: '$context.routeKey', status: '$context.status', latency: '$context.responseLatency' }) };
   for (const [name, metric, threshold] of [
