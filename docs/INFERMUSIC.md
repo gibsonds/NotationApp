@@ -101,6 +101,15 @@ Run `node scripts/security-audit.mjs` locally. Production and infrastructure dep
 
 AWS metadata checks: `python3 scripts/audit-aws.py`. The monthly workflow assumes `NotationSecurityAudit` via OIDC only from this repository's main branch. It cannot read songs or secret values. It can inspect Lambda configuration, so keeping secrets out of inline environment variables is a required check.
 
+### Temporary workstation access
+
+`InferMusicDeploy` is a console identity with no permanent access keys. After the owner enrolls a password and MFA, `aws login` (CLI 2.32+) supplies a temporary source session. Select a role explicitly:
+
+- `NotationFrontendDeploy`: one-hour maximum; publish Charts/InferMusic website files and invalidate their CloudFront distributions. No song-table or IAM access.
+- `NotationSongRepair`: one-hour maximum; inspect and repair records in `NotationAppAuth` and legacy `NotationApp`, including indexes, and create/inspect on-demand backups. No table deletion, backup deletion, infrastructure administration, or secret access. This can access **all records in these app tables**, including songbook membership/session metadata, so it is maintenance access, not a per-songbook role.
+
+Use the repair role only for an explicitly requested investigation/repair. Before writes, create a table backup and confirm it is available; inspect the affected records, prepare a precise change, and use conditional writes to avoid overwriting concurrent edits. Keep song contents and session metadata out of terminal output, logs, and Git. Never make the repair role the default profile. Restoring a whole table or changing infrastructure requires separately authorized permissions. The same MFA-authenticated source identity can assume either role: role separation limits routine mistakes but is not a second independent approval gate against a compromised source session.
+
 ### Remaining coordinated steps
 
 1. Complete console-password/MFA enrollment for `InferMusicDeploy`, then validate browser-based CLI sign-in and the MFA-protected `NotationFrontendDeploy` role. This dedicated identity has no access key or administrator permissions. Its password and MFA are managed by the owner outside CloudFormation. AWS CLI 2.32+ is required for `aws login`; the current user-local installation is `/Users/davidgibson/.local/bin/aws`. The two existing `GuitarProjectAdmin` keys (local `default` and `guitar` profiles) remain active until replacement and recovery are validated. Root has MFA and no active access keys. Infrastructure/IAM maintenance requires separately authorized access; the frontend role cannot perform it. Do not mistake creating the replacement login for revoking the old keys.

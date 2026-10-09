@@ -42,6 +42,25 @@ export class SecurityAuditStack extends Stack {
   developer.addToPolicy(new PolicyStatement({
    actions:['iam:GetUser','iam:ListMFADevices'],resources:[developer.userArn],
   }));
+  // Explicitly selected maintenance access; never use this as the default profile.
+  // Records can be repaired, but tables, IAM, and infrastructure cannot be changed.
+  const repair=new Role(this,'SongRepairRole',{
+   roleName:'NotationSongRepair',maxSessionDuration:Duration.hours(1),
+   assumedBy:new ArnPrincipal(developer.userArn).withConditions({'Bool':{'aws:MultiFactorAuthPresent':'true'}}),
+  });
+  developer.addToPolicy(new PolicyStatement({
+   actions:['sts:AssumeRole'],resources:[repair.roleArn],
+   conditions:{Bool:{'aws:MultiFactorAuthPresent':'true'}},
+  }));
+  const songTables=['NotationAppAuth','NotationApp'].map(name=>`arn:aws:dynamodb:${this.region}:${this.account}:table/${name}`);
+  repair.addToPolicy(new PolicyStatement({
+   actions:['dynamodb:DescribeTable','dynamodb:DescribeContinuousBackups','dynamodb:CreateBackup',
+    'dynamodb:GetItem','dynamodb:BatchGetItem','dynamodb:Query','dynamodb:Scan',
+    'dynamodb:PutItem','dynamodb:UpdateItem','dynamodb:DeleteItem','dynamodb:BatchWriteItem','dynamodb:ConditionCheckItem'],
+   resources:songTables,
+  }));
+  repair.addToPolicy(new PolicyStatement({actions:['dynamodb:Query','dynamodb:Scan'],resources:songTables.map(table=>`${table}/index/*`)}));
+  repair.addToPolicy(new PolicyStatement({actions:['dynamodb:DescribeBackup'],resources:songTables.map(table=>`${table}/backup/*`)}));
   for(const bucket of ['notationauth-sitebucket397a1860-m0gyarsr1okt','infermusic-sitebucket397a1860-lj4tyzy8yydi']) {
    deploy.addToPolicy(new PolicyStatement({actions:['s3:ListBucket'],resources:[`arn:aws:s3:::${bucket}`]}));
    deploy.addToPolicy(new PolicyStatement({actions:['s3:GetObject','s3:PutObject'],resources:[`arn:aws:s3:::${bucket}/*`]}));
@@ -51,5 +70,6 @@ export class SecurityAuditStack extends Stack {
   new CfnOutput(this,'AuditRoleArn',{value:audit.roleArn});
   new CfnOutput(this,'FrontendRoleArn',{value:deploy.roleArn});
   new CfnOutput(this,'FrontendLoginUser',{value:developer.userName});
+  new CfnOutput(this,'SongRepairRoleArn',{value:repair.roleArn});
  }
 }
