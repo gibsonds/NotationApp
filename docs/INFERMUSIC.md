@@ -99,11 +99,28 @@ Security hardening dated 2026-10-09:
 
 Run `node scripts/security-audit.mjs` locally. Production and infrastructure dependencies must have no moderate-or-higher findings. The unpatched development-only ESLint `braces` advisory `GHSA-vfj7-8cjw-p6xm` has an explicit exception expiring **2026-11-08**; an expired exception fails CI. Actions are pinned to commit hashes. Review findings; do not auto-merge security updates without passing checks. GitHub notification delivery depends on the maintainer's Actions/Security notification settings.
 
-AWS metadata checks: `python3 scripts/audit-aws.py`. The monthly workflow assumes `NotationSecurityAudit` via OIDC only from this repository's main branch. It cannot read songs or secret values. It can inspect Lambda configuration, so keeping secrets out of inline environment variables is a required check.
+AWS metadata checks: `python3 scripts/audit-aws.py`. The monthly workflow assumes `NotationSecurityAudit` via OIDC only from this repository's main branch. It cannot read songs or secret values. It can inspect Lambda configuration, so keeping secrets out of inline environment variables is a required check. It also checks that the retired administrator and deployment identities have no active permanent keys, the deployment identity has MFA, and both maintenance roles retain their restricted MFA trust and one-hour maximum. The default workstation deployment profile cannot run this broader audit; use the GitHub workflow for its metadata-only role.
+
+### Temporary workstation access
+
+`InferMusicDeploy` is a console identity with no permanent access keys. Password and passkey MFA enrollment and real browser sign-in were completed on 2026-10-09. `aws login` (CLI 2.32+) supplies a temporary source session. Local profiles use:
+
+- `NotationFrontendDeploy`: one-hour maximum; publish Charts/InferMusic website files and invalidate their CloudFront distributions. No song-table or IAM access.
+- `NotationSongRepair`: one-hour maximum; inspect and repair records in `NotationAppAuth` and legacy `NotationApp`, including indexes, and create/inspect on-demand backups. No table deletion, backup deletion, infrastructure administration, or secret access. This can access **all records in these app tables**, including songbook membership/session metadata, so it is maintenance access, not a per-songbook role.
+
+The workstation `default` profile now uses `NotationFrontendDeploy` via a credential process. `infermusic-deploy` selects that role explicitly; `infermusic-repair` requests a 15-minute repair session. `infermusic-login` is the source browser session, with `infermusic-source` supplying compatibility for older SDKs. The source session can refresh role credentials until it expires; the 15-minute role session is not an independent approval gate.
+
+To renew the source session, run `/Users/davidgibson/.local/bin/aws login --profile infermusic-login --region us-east-1` and select **InferMusicDeploy**, never root. The current CLI is installed under the user's `.local/bin`; the existing `/usr/local/bin/aws` still works for AWS calls through the default credential process, but is too old for `aws login`.
+
+Both `GuitarProjectAdmin` keys formerly in local `default` and `guitar` profiles were **deactivated** on 2026-10-09. AWS rejection of each old key was verified before their secret material was removed from the shared credentials file. Key records remain inactive in IAM; the old `guitar`/`dcv-admin` path is retired. Root has MFA and no active access keys and remains the owner's recovery path. This does not revoke unrelated identities or independently issued sessions elsewhere in the account.
+
+Verification: 12 IAM permission simulations passed; live role assumptions, hosting metadata reads, repair reads against synthetic keys, and expected access denials passed. Conditional write probes used a logically impossible condition in both song tables, verifying write authorization without changing any record. Infrastructure/IAM changes require separately authorized elevated access; neither local role can grant it to itself.
+
+Use the repair role only for an explicitly requested investigation/repair. Before writes, create a table backup and confirm it is available; inspect the affected records, prepare a precise change, and use conditional writes to avoid overwriting concurrent edits. Keep song contents and session metadata out of terminal output, logs, and Git. Never make the repair role the default profile. Restoring a whole table or changing infrastructure requires separately authorized permissions. The same MFA-authenticated source identity can assume either role: role separation limits routine mistakes but is not a second independent approval gate against a compromised source session.
 
 ### Remaining coordinated steps
 
-1. Validate the MFA-protected `NotationFrontendDeploy` role with the owner, then replace the workstation's broad admin credentials with appropriate temporary scoped access. Do not revoke the only working admin path before validating recovery and infrastructure maintenance access. This remains the largest account-wide blast radius.
+1. The workstation administrator-key transition is complete. Define any additional infrastructure maintenance roles deliberately when needed; do not restore standing administrator keys to regain convenience. Other applications formerly using the retired keys need their own scoped access.
 2. Finish copying/verifying legacy songs (including the working Sleepwalking draft) before making the legacy device-ID API read-only or retiring it. Scales' device-ID authentication also needs a coordinated account migration. The old identifiers remain bearer capabilities until then.
 3. Decide the public AI funding/delegation model before inviting other people to use AI. Memory-only BYOK reduces retention but does not eliminate exposure to compromised frontend code.
 4. Add account/songbook deletion with a documented backup-retention window, and choose an operational alert destination. No emails are collected merely to provide alerting or member labels.
