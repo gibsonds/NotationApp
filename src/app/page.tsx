@@ -800,8 +800,8 @@ export default function Home() {
     const code = params.get("code");
     const state = params.get("state");
     const authError = params.get("error");
+    stripOAuthParams();
     if (authError) {
-      stripOAuthParams();
       addMessage({
         id: uuidv4(),
         role: "assistant",
@@ -812,10 +812,9 @@ export default function Home() {
     if (code && state) {
       completeSignIn(code, state)
         .then((ok) => {
-          stripOAuthParams();
           if (ok) window.location.reload();
         })
-        .catch(() => stripOAuthParams());
+        .catch(() => {});
       return;
     }
     void initAuth();
