@@ -1,6 +1,6 @@
-import { CfnOutput, Duration, Stack, StackProps } from 'aws-cdk-lib';
+import { CfnOutput, Duration, RemovalPolicy, Stack, StackProps } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
-import { ArnPrincipal, FederatedPrincipal, CfnOIDCProvider, PolicyStatement, Role } from 'aws-cdk-lib/aws-iam';
+import { ArnPrincipal, FederatedPrincipal, CfnOIDCProvider, ManagedPolicy, PolicyStatement, Role, User } from 'aws-cdk-lib/aws-iam';
 
 export class SecurityAuditStack extends Stack {
  constructor(scope:Construct,id:string,props:StackProps) {
@@ -24,6 +24,24 @@ export class SecurityAuditStack extends Stack {
    roleName:'NotationFrontendDeploy',maxSessionDuration:Duration.hours(1),
    assumedBy:new ArnPrincipal(`arn:aws:iam::${this.account}:user/GuitarProjectAdmin`).withConditions({'Bool':{'aws:MultiFactorAuthPresent':'true'}}),
   });
+  // Console password and MFA are enrolled by the owner outside CloudFormation.
+  // No permanent access key is created. `aws login` supplies temporary credentials.
+  const developer=new User(this,'FrontendDeveloper',{
+   userName:'InferMusicDeploy',
+   managedPolicies:[ManagedPolicy.fromAwsManagedPolicyName('SignInLocalDevelopmentAccess')],
+  });
+  developer.applyRemovalPolicy(RemovalPolicy.RETAIN);
+  deploy.assumeRolePolicy!.addStatements(new PolicyStatement({
+   actions:['sts:AssumeRole'],principals:[developer],
+   conditions:{Bool:{'aws:MultiFactorAuthPresent':'true'}},
+  }));
+  developer.addToPolicy(new PolicyStatement({
+   actions:['sts:AssumeRole'],resources:[deploy.roleArn],
+   conditions:{Bool:{'aws:MultiFactorAuthPresent':'true'}},
+  }));
+  developer.addToPolicy(new PolicyStatement({
+   actions:['iam:GetUser','iam:ListMFADevices'],resources:[developer.userArn],
+  }));
   for(const bucket of ['notationauth-sitebucket397a1860-m0gyarsr1okt','infermusic-sitebucket397a1860-lj4tyzy8yydi']) {
    deploy.addToPolicy(new PolicyStatement({actions:['s3:ListBucket'],resources:[`arn:aws:s3:::${bucket}`]}));
    deploy.addToPolicy(new PolicyStatement({actions:['s3:GetObject','s3:PutObject'],resources:[`arn:aws:s3:::${bucket}/*`]}));
@@ -32,5 +50,6 @@ export class SecurityAuditStack extends Stack {
   deploy.addToPolicy(new PolicyStatement({actions:['cloudformation:DescribeStacks'],resources:['NotationAuth','InferMusic'].map(x=>`arn:aws:cloudformation:${this.region}:${this.account}:stack/${x}/*`)}));
   new CfnOutput(this,'AuditRoleArn',{value:audit.roleArn});
   new CfnOutput(this,'FrontendRoleArn',{value:deploy.roleArn});
+  new CfnOutput(this,'FrontendLoginUser',{value:developer.userName});
  }
 }
