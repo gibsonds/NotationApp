@@ -603,22 +603,26 @@ export default function MenuBar({
  *  on the legacy build (AUTH_ENABLED=false there). */
 function AccountMenuItem() {
   const auth = useSyncExternalStore(authSubscribe, authGetSnapshot, authGetSnapshot);
+  const [signOutError, setSignOutError] = useState("");
+  const leave = (clear = false) => { void authSignOut(clear).catch(err => setSignOutError(err.message)); };
   if (!AUTH_ENABLED) return null;
   if (auth.status === "signed-in" && auth.claims) {
-    const label = auth.claims.email ?? auth.claims.name ?? auth.claims.sub;
+    const label = "Signed in";
     const book = auth.memberships.find(m => m.songbookId === auth.activeSongbookId);
     return (
       <span className="flex items-center gap-1.5 ml-2 text-xs text-gray-400">
-        <span className="max-w-[160px] truncate" title={`Signed in as ${label}`}>
+        <span className="max-w-[160px] truncate" title="Signed in with OAuth42">
           {book ? `${book.name} · ${label}` : label}
         </span>
         <button
-          onClick={() => authSignOut()}
+          onClick={() => leave()}
           className="px-1.5 py-0.5 text-[11px] text-gray-500 hover:text-gray-200 hover:bg-white/10 rounded"
           title="Sign out"
         >
           Sign out
         </button>
+        <button onClick={() => { if (window.confirm("Sign out and remove this app’s cached songs, drafts, and AI keys from this device? Cloud songs remain saved. Export any unsynced work first.")) leave(true); }} className="px-1.5 py-1 text-[11px] text-gray-500 hover:text-gray-200 rounded" title="Sign out and clear this device">Clear device</button>
+        {signOutError && <span role="alert" className="text-red-400">{signOutError}</span>}
       </span>
     );
   }

@@ -27,19 +27,5 @@ export interface AILogEntry {
 }
 
 export function logAIRequest(entry: AILogEntry): void {
-  const status = entry.error ? "ERROR" : "OK";
-  console.log(
-    `[AI ${entry.operation.toUpperCase()}] ${status} | ${entry.provider}/${entry.model} | ${entry.durationMs}ms | prompt: "${entry.prompt.slice(0, 80)}${entry.prompt.length > 80 ? "..." : ""}"`,
-  );
-  if (entry.error) {
-    console.error(`[AI ERROR] ${entry.error}`);
-  }
-  if (entry.rawResponse) {
-    const raw = entry.rawResponse;
-    if (raw.length > 500) {
-      console.log(`[AI RAW] (${raw.length} chars) ${raw.slice(0, 300)}...${raw.slice(-200)}`);
-    } else {
-      console.log(`[AI RAW] ${raw}`);
-    }
-  }
+  console.log(`[AI ${entry.operation}] ${entry.error ? "ERROR" : "OK"} | ${entry.provider}/${entry.model} | ${entry.durationMs}ms`);
 }

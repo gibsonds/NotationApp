@@ -1,3 +1,4 @@
+import { readBody, RequestError } from "./security";
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from "aws-lambda";
 import {
   createNamedRevision,
@@ -22,6 +23,7 @@ export const handler = async (
   // HTTP API lowercases header names; check both forms defensively.
   const deviceId =
     event.headers["x-device-id"] ?? event.headers["X-Device-Id"];
+  if (process.env.LEGACY_READ_ONLY === "1" && !event.routeKey.startsWith("GET ")) return json(403, { error: "Legacy songbook is read-only; use authenticated Charts." });
   if (!deviceId) return json(401, { error: "missing X-Device-Id" });
 
   // event.routeKey is already "METHOD /path" (e.g. "GET /songs/{id}").
@@ -41,7 +43,7 @@ export const handler = async (
 
       case "PUT /songs/{id}": {
         if (!id) return json(400, { error: "missing id" });
-        const body = JSON.parse(event.body ?? "{}");
+        const body = readBody(event.body, event.isBase64Encoded);
         if (!body.title || typeof body.title !== "string") {
           return json(400, { error: "title required" });
         }
@@ -52,7 +54,7 @@ export const handler = async (
         if (body.folder !== undefined && body.folder !== null && typeof body.folder !== "string") {
           return json(400, { error: "folder must be string" });
         }
-        return json(200, await putSong(deviceId, id, body));
+        return json(200, await putSong(deviceId, id, body as Parameters<typeof putSong>[2]));
       }
 
       case "DELETE /songs/{id}": {
@@ -68,7 +70,7 @@ export const handler = async (
 
       case "POST /songs/{id}/versions": {
         if (!id) return json(400, { error: "missing id" });
-        const body = JSON.parse(event.body ?? "{}");
+        const body = readBody(event.body, event.isBase64Encoded);
         if (!body.name || typeof body.name !== "string") {
           return json(400, { error: "name required" });
         }
@@ -78,7 +80,7 @@ export const handler = async (
         if (!body.score || typeof body.score !== "object") {
           return json(400, { error: "score required" });
         }
-        return json(200, await createNamedRevision(deviceId, id, body.name, body));
+        return json(200, await createNamedRevision(deviceId, id, body.name, body as Parameters<typeof createNamedRevision>[3]));
       }
 
       case "GET /songs/{id}/versions/{ts}": {
@@ -92,10 +94,11 @@ export const handler = async (
       }
     }
   } catch (err) {
+    if (err instanceof RequestError) return json(err.statusCode, { error: err.message });
     if (err instanceof VersionConflictError) {
       return json(409, { error: "conflict", current: err.current });
     }
-    console.error("handler error", err);
+    console.error("handler error", { name: (err as Error).name, route: event.routeKey, requestId: event.requestContext?.requestId });
     return json(500, { error: "internal error" });
   }
 

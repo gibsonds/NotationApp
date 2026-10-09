@@ -1,0 +1,19 @@
+name: AWS security configuration
+on:
+  schedule:
+    - cron: '43 13 1 * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  deployed-controls:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+        with:
+          role-to-assume: arn:aws:iam::637423285747:role/NotationSecurityAudit
+          aws-region: us-east-1
+      - run: python3 scripts/audit-aws.py

@@ -23,7 +23,7 @@ describe("resolveUserFromHeaders", () => {
       {},
       okVerify
     );
-    expect(u).toEqual({ sub: "user-1", email: "u@test" });
+    expect(u).toEqual({ sub: "user-1" });
   });
 
   it("401s with no authorization header", async () => {

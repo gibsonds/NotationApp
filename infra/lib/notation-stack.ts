@@ -1,3 +1,5 @@
+import { protectApi } from "./security-controls";
+import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
 import * as path from "path";
 import { CfnOutput, Duration, RemovalPolicy, Stack, StackProps } from "aws-cdk-lib";
 import { CorsHttpMethod, HttpApi, HttpMethod } from "aws-cdk-lib/aws-apigatewayv2";
@@ -25,6 +27,7 @@ export class NotationStack extends Stack {
       partitionKey: { name: "pk", type: AttributeType.STRING },
       sortKey: { name: "sk", type: AttributeType.STRING },
       billingMode: BillingMode.PAY_PER_REQUEST,
+      deletionProtection: !isTest, maxReadRequestUnits: 50, maxWriteRequestUnits: 25,
       pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
       // Test table can be cleanly torn down; prod stays.
       removalPolicy: isTest ? RemovalPolicy.DESTROY : RemovalPolicy.RETAIN,
@@ -38,10 +41,12 @@ export class NotationStack extends Stack {
 
     const fn = new NodejsFunction(this, "Handler", {
       entry: path.join(__dirname, "..", "lambda", "handler.ts"),
-      runtime: Runtime.NODEJS_20_X,
+      runtime: Runtime.NODEJS_22_X,
       memorySize: 512,
+      reservedConcurrentExecutions: 5,
+      logGroup: new LogGroup(this, "HandlerLogs", { retention: RetentionDays.ONE_WEEK }),
       timeout: Duration.seconds(10),
-      environment: { TABLE_NAME: table.tableName },
+      environment: { TABLE_NAME: table.tableName, LEGACY_READ_ONLY: process.env.LEGACY_READ_ONLY ?? "0" },
       bundling: {
         minify: true,
         sourceMap: true,
@@ -68,6 +73,7 @@ export class NotationStack extends Stack {
       },
     });
 
+    protectApi(this, api, fn);
     api.addRoutes({ path: "/songs", methods: [HttpMethod.GET], integration });
     api.addRoutes({
       path: "/songs/{id}",

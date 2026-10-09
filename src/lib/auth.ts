@@ -11,7 +11,7 @@
  *
  * Flow: Authorization Code + PKCE. The code/refresh exchanges go through
  * OUR API's /oauth broker (OAuth42 advertises no public-client token auth;
- * the client secret lives in Lambda env, never in this bundle). PKCE is
+ * the client secret lives in Secrets Manager, never in this bundle). PKCE is
  * still end-to-end: the verifier never leaves this browser except to our
  * own broker, which forwards it to the IdP.
  */
@@ -23,7 +23,9 @@ export const OAUTH_ISSUER = process.env.NEXT_PUBLIC_OAUTH_ISSUER ?? "";
 export const OAUTH_CLIENT_ID = process.env.NEXT_PUBLIC_OAUTH_CLIENT_ID ?? "";
 export const AUTH_ENABLED = !!(OAUTH_ISSUER && OAUTH_CLIENT_ID);
 
+export const COOKIE_SESSIONS = process.env.NEXT_PUBLIC_COOKIE_SESSIONS === "1";
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "";
+export const browserRequestHeaders = (): Record<string, string> => COOKIE_SESSIONS ? { "x-notation-request": "1" } : {};
 const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
 const TOKENS_KEY = "notation-app-auth";
@@ -143,7 +145,7 @@ export async function beginSignIn(): Promise<void> {
     // No offline_access: OAuth42 rejects it as an unregistered scope
     // ("Scope 'offline_access' is not allowed") — refresh tokens are
     // governed by the app's Refresh Token grant type instead.
-    scope: "openid profile email",
+    scope: "openid",
     state,
     code_challenge: await challengeS256(verifier),
     code_challenge_method: "S256",
@@ -168,7 +170,7 @@ export async function completeSignIn(code: string, state: string): Promise<boole
   }
   const res = await fetch(`${API_BASE}/oauth/exchange`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...browserRequestHeaders() },
     body: JSON.stringify({
       code,
       code_verifier: stash.verifier,
@@ -178,6 +180,10 @@ export async function completeSignIn(code: string, state: string): Promise<boole
   if (!res.ok) {
     console.warn("[auth] code exchange failed", res.status);
     return false;
+  }
+  if (COOKIE_SESSIONS) {
+    const memberships = await loadMe();
+    return memberships.length > 0;
   }
   const body = (await res.json()) as {
     access_token?: string;
@@ -200,8 +206,22 @@ export async function completeSignIn(code: string, state: string): Promise<boole
   return true;
 }
 
-export function signOut(): void {
+export async function signOut(clearDevice = false): Promise<void> {
+  if (COOKIE_SESSIONS) {
+    const res = await fetch(`${API_BASE}/oauth/logout`, { method: "POST", headers: browserRequestHeaders() });
+    if (!res.ok) throw new Error("Could not end the session. Check your connection and try again.");
+  }
   writeTokens(null);
+  localStorage.removeItem("notation-app-api-keys");
+  sessionStorage.removeItem("notation-app-api-keys");
+  if (clearDevice) {
+    for (const key of Object.keys(localStorage)) {
+      if (key.startsWith("notation-app-") || key.startsWith("notationapp-")) localStorage.removeItem(key);
+    }
+    if (indexedDB.databases) {
+      for (const db of await indexedDB.databases()) if (db.name?.startsWith("notationapp-")) indexedDB.deleteDatabase(db.name);
+    }
+  }
   try {
     localStorage.removeItem(ACTIVE_BOOK_KEY);
   } catch {
@@ -217,6 +237,7 @@ let refreshInFlight: Promise<string | null> | null = null;
 
 export async function getAccessToken(): Promise<string | null> {
   if (!AUTH_ENABLED) return null;
+  if (COOKIE_SESSIONS) return "cookie-session"; // Presence is verified by the server, never a credential.
   const t = readTokens();
   if (!t) return null;
   if (Date.now() < t.expires_at - REFRESH_EARLY_MS) return t.access_token;
@@ -236,7 +257,7 @@ async function doRefresh(t: StoredTokens): Promise<string | null> {
   try {
     const res = await fetch(`${API_BASE}/oauth/refresh`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...browserRequestHeaders() },
       body: JSON.stringify({ refresh_token: t.refresh_token }),
     });
     if (readTokens()?.access_token !== t.access_token) return null;
@@ -313,9 +334,12 @@ export async function loadMe(): Promise<Membership[]> {
   const token = await getAccessToken();
   if (!token) return [];
   const res = await fetch(`${API_BASE}/me`, {
-    headers: { authorization: `Bearer ${token}` },
+    headers: COOKIE_SESSIONS ? browserRequestHeaders() : { authorization: `Bearer ${token}` },
   });
-  if (!res.ok) return [];
+  if (!res.ok) {
+    if (res.status === 401 && COOKIE_SESSIONS) { writeTokens(null); emit({ status: "signed-out", claims: null, memberships: [], activeSongbookId: null }); }
+    return [];
+  }
   const body = (await res.json()) as {
     sub: string;
     email?: string;
@@ -323,9 +347,12 @@ export async function loadMe(): Promise<Membership[]> {
     memberships: Membership[];
   };
   const currentTokens = readTokens();
-  if (!currentTokens || currentTokens.access_token !== token) return [];
+  if (!COOKIE_SESSIONS && (!currentTokens || currentTokens.access_token !== token)) return [];
   // /me is the verified identity; persist it for the next page's cache scope.
-  writeTokens({ ...currentTokens, claims: { sub: body.sub, email: body.email, name: body.name } });
+  if (COOKIE_SESSIONS) {
+    // Identity metadata for cache isolation only. No access/refresh token.
+    localStorage.setItem(TOKENS_KEY, JSON.stringify({ claims: { sub: body.sub } }));
+  } else writeTokens({ ...currentTokens!, claims: { sub: body.sub } });
   const memberships = body.memberships ?? [];
   const current = getActiveSongbookId();
   const active =
@@ -339,8 +366,7 @@ export async function loadMe(): Promise<Membership[]> {
     status: "signed-in",
     claims: {
       sub: body.sub,
-      ...(body.email ? { email: body.email } : {}),
-      ...(body.name ? { name: body.name } : {}),
+
     },
   });
   return memberships;
@@ -371,7 +397,7 @@ export async function importLegacyDevice(
     method: "POST",
     headers: {
       "content-type": "application/json",
-      authorization: `Bearer ${token}`,
+      ...(COOKIE_SESSIONS ? browserRequestHeaders() : { authorization: `Bearer ${token}` }),
     },
     body: JSON.stringify({ deviceId, songbookId }),
   });
@@ -389,6 +415,17 @@ export async function importLegacyDevice(
 export async function initAuth(): Promise<void> {
   if (!AUTH_ENABLED || typeof window === "undefined") return;
   const t = readTokens();
+  if (COOKIE_SESSIONS) {
+    if (t?.access_token && t.access_token !== "cookie-session") {
+      // Upgrade an existing browser session, then erase the old credentials.
+      try {
+        await fetch(`${API_BASE}/oauth/session`, { method: "POST", headers: { ...browserRequestHeaders(), "content-type": "application/json", authorization: `Bearer ${t.access_token}` }, body: "{}" });
+      } finally { localStorage.setItem(TOKENS_KEY, JSON.stringify({ claims: { sub: t.claims.sub } })); }
+    }
+    await loadMe();
+    if (!songbookScopeIsCurrent()) window.location.reload();
+    return;
+  }
   if (!t) return;
   emit({ status: "signed-in", claims: t.claims });
   await loadMe();

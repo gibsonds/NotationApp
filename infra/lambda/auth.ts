@@ -10,7 +10,7 @@
  * dev environment — never set in the CDK stack) lets local e2e tests
  * mint identities without the IdP: `Bearer stub:<sub>[:email]`.
  */
-import { createRemoteJWKSet, jwtVerify } from "jose";
+import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from "jose";
 
 export interface AuthedUser {
   sub: string;
@@ -34,24 +34,22 @@ type VerifyFn = (
 
 let jwks: ReturnType<typeof createRemoteJWKSet> | null = null;
 
-/** Real verifier: RS256 pinned (old OAuth42 images had an HS256/RS256
- *  mismatch — fail closed), issuer + audience checked, 60s clock skew. */
-const joseVerify: VerifyFn = async (token) => {
-  const issuer = process.env.OAUTH_ISSUER!;
-  if (!jwks) {
-    jwks = createRemoteJWKSet(
-      new URL(process.env.OAUTH_JWKS_URL ?? `${issuer}/.well-known/jwks.json`)
-    );
-  }
+/** OAuth42 access-token profile. ID tokens omit jti; service tokens have typ. */
+export async function verifyAccessToken(token: string, key?: JWTVerifyGetKey) {
+  const issuer = process.env.OAUTH_ISSUER;
   const audience = process.env.OAUTH_AUDIENCE;
-  const { payload } = await jwtVerify(token, jwks, {
-    issuer,
-    ...(audience ? { audience } : {}),
-    algorithms: ["RS256"],
-    clockTolerance: 60,
+  if (!issuer || !audience) throw new AuthError(503, "authentication not configured");
+  if (!key && !jwks) jwks = createRemoteJWKSet(new URL(process.env.OAUTH_JWKS_URL ?? `${issuer}/.well-known/jwks.json`));
+  const result = await jwtVerify(token, key ?? jwks!, {
+    issuer, audience, algorithms: ["RS256"], clockTolerance: 60,
+    requiredClaims: ["sub", "iss", "aud", "exp", "iat", "jti"],
   });
-  return { payload: payload as Record<string, unknown> };
-};
+  if (typeof result.payload.jti !== "string" || !result.payload.jti || result.payload.typ === "service_account" || result.payload.typ === "client") {
+    throw new AuthError(401, "user access token required");
+  }
+  return result;
+}
+const joseVerify: VerifyFn = verifyAccessToken;
 
 /** Pure decision core — exported for unit tests with a stubbed verifier. */
 export async function resolveUserFromHeaders(
@@ -83,8 +81,7 @@ export async function resolveUserFromHeaders(
     }
     return {
       sub,
-      ...(typeof payload.email === "string" ? { email: payload.email } : {}),
-      ...(typeof payload.name === "string" ? { name: payload.name } : {}),
+
     };
   } catch (err) {
     if (err instanceof AuthError) throw err;

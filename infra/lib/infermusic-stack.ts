@@ -1,3 +1,4 @@
+import { secureHeaders } from "./security-controls";
 import { CfnOutput, Fn, RemovalPolicy, Stack, StackProps } from "aws-cdk-lib";
 import { Certificate } from "aws-cdk-lib/aws-certificatemanager";
 import { CachePolicy, Distribution, ViewerProtocolPolicy } from "aws-cdk-lib/aws-cloudfront";
@@ -31,14 +32,15 @@ export class InferMusicStack extends Stack {
     if (!!props.certificateArn !== !!props.hostedZoneId) throw new Error("Provide both certificateArn and hostedZoneId for custom domains.");
     const zone = props.hostedZoneId ? HostedZone.fromHostedZoneAttributes(this, "Zone", { hostedZoneId: props.hostedZoneId, zoneName: "infermusic.ai" }) : undefined;
     const certificate = props.certificateArn ? Certificate.fromCertificateArn(this, "Certificate", props.certificateArn) : undefined;
-    const bucket = new Bucket(this, "SiteBucket", { blockPublicAccess: BlockPublicAccess.BLOCK_ALL, removalPolicy: RemovalPolicy.RETAIN });
+    const bucket = new Bucket(this, "SiteBucket", { blockPublicAccess: BlockPublicAccess.BLOCK_ALL, versioned: true, enforceSSL: true, removalPolicy: RemovalPolicy.RETAIN });
     new CfnOutput(this, "SiteBucketName", { value: bucket.bucketName });
+    const headers = secureHeaders(this);
     for (const [name, prefix, domains] of [
       ["Home", "/home", ["infermusic.ai", "www.infermusic.ai"]],
       ["Scales", "/scales", ["scales.infermusic.ai"]],
     ] as const) {
       const distribution = new Distribution(this, `${name}Distribution`, {
-        defaultBehavior: { origin: S3BucketOrigin.withOriginAccessControl(bucket, { originPath: prefix }), viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS, cachePolicy: CachePolicy.CACHING_OPTIMIZED },
+        defaultBehavior: { origin: S3BucketOrigin.withOriginAccessControl(bucket, { originPath: prefix }), viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS, cachePolicy: CachePolicy.CACHING_OPTIMIZED, responseHeadersPolicy: headers },
         defaultRootObject: "index.html",
         ...(certificate ? { certificate, domainNames: [...domains] } : {}),
       });

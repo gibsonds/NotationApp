@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { SecurityAuditStack } from "../lib/security-audit-stack";
 import { App } from "aws-cdk-lib";
 import { NotationStack } from "../lib/notation-stack";
 import { InferMusicStack, InferMusicDnsStack } from "../lib/infermusic-stack";
@@ -38,4 +39,8 @@ new InferMusicStack(app, "InferMusic", {
   env: { account: "637423285747", region: "us-east-1" },
   certificateArn: app.node.tryGetContext("infermusicCertificateArn"),
   hostedZoneId: app.node.tryGetContext("infermusicHostedZoneId"),
+});
+
+new SecurityAuditStack(app, "NotationSecurity", {
+  env: { account: "637423285747", region: "us-east-1" },
 });

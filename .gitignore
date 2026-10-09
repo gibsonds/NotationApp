@@ -63,3 +63,5 @@ next-env.d.ts
 
 # Claude Code session-only state
 /.claude
+
+/security-audit-*.json

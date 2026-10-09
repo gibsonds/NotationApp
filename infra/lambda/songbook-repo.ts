@@ -20,6 +20,7 @@ import {
   PutCommand,
   TransactWriteCommand,
 } from "@aws-sdk/lib-dynamodb";
+import { consumeLimit, RequestError } from "./security";
 import { randomUUID } from "node:crypto";
 import { ddb, TABLE, queryAll, type Item } from "./ddb";
 import type {
@@ -47,7 +48,7 @@ const versionPrefix = (id: string) => `SONG#${id}#V#`;
 
 const VERSION_INTERVAL_MS = 5 * 60 * 1000;
 const MAX_VERSIONS_PER_SONG = 30;
-const INVITE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+const INVITE_TTL_MS = 48 * 60 * 60 * 1000;
 
 const dayKey = (ts: number): string => {
   const d = new Date(ts);
@@ -58,9 +59,10 @@ const dayKey = (ts: number): string => {
 
 export async function createSongbook(
   sub: string,
-  name: string,
-  email?: string
+  name: string
 ): Promise<Membership> {
+  if ((await listMemberships(sub)).length >= 50) throw new RequestError(429, "Songbook limit reached (50).");
+  await consumeLimit(userPk(sub), "QUOTA#books", 50);
   const songbookId = randomUUID();
   const now = Date.now();
   await ddb.send(
@@ -104,7 +106,7 @@ export async function createSongbook(
               sub,
               role: "owner",
               addedAt: now,
-              ...(email ? { email } : {}),
+
             },
           },
         },
@@ -137,6 +139,7 @@ export async function getRole(
     new GetCommand({
       TableName: TABLE,
       Key: { pk: userPk(sub), sk: `MEMBER#${songbookId}` },
+      ConsistentRead: true,
     })
   );
   return (out.Item?.role as Role) ?? null;
@@ -152,7 +155,7 @@ export async function listMembers(songbookId: string): Promise<Member[]> {
     sub: it.sub as string,
     role: it.role as Role,
     addedAt: it.addedAt as number,
-    ...(it.email ? { email: it.email as string } : {}),
+
   }));
 }
 
@@ -163,6 +166,7 @@ export async function removeMember(
   await ddb.send(
     new TransactWriteCommand({
       TransactItems: [
+        { Put: { TableName: TABLE, Item: { pk: bookPk(songbookId), sk: `REMOVED#${sub}`, removedAt: Date.now(), ttl: Math.floor(Date.now()/1000) + 7 * 86400 } } },
         {
           Delete: {
             TableName: TABLE,
@@ -197,119 +201,57 @@ export async function createInvite(
     createdAt: now,
     expiresAt: now + INVITE_TTL_MS,
   };
-  await ddb.send(
-    new PutCommand({
-      TableName: TABLE,
-      Item: {
-        pk: bookPk(songbookId),
-        sk: `INVITE#${token}`,
-        entity: "Invite",
-        // GSI-free token lookup: invites are also written under their own pk
-        // so acceptance doesn't need the songbook id in the URL.
-        ...invite,
-      },
-    })
-  );
-  await ddb.send(
-    new PutCommand({
-      TableName: TABLE,
-      Item: { pk: `INVITE#${token}`, sk: "META", entity: "InviteLookup", ...invite },
-    })
-  );
+  await ddb.send(new TransactWriteCommand({ TransactItems: [
+    { Put: { TableName: TABLE, Item: { pk: bookPk(songbookId), sk: `INVITE#${token}`, entity: "Invite", ...invite, ttl: Math.ceil(invite.expiresAt / 1000) } } },
+    { Put: { TableName: TABLE, Item: { pk: `INVITE#${token}`, sk: "META", entity: "InviteLookup", ...invite, ttl: Math.ceil(invite.expiresAt / 1000) } } },
+  ] }));
   return invite;
 }
 
 export async function getInvite(token: string): Promise<Invite | null> {
   const out = await ddb.send(
-    new GetCommand({ TableName: TABLE, Key: { pk: `INVITE#${token}`, sk: "META" } })
+    new GetCommand({ TableName: TABLE, Key: { pk: `INVITE#${token}`, sk: "META" }, ConsistentRead: true })
   );
   if (!out.Item) return null;
   const inv = out.Item as unknown as Invite;
-  return inv.expiresAt > Date.now() ? inv : null;
+  return Math.min(inv.expiresAt, inv.createdAt + INVITE_TTL_MS) > Date.now() ? inv : null;
 }
 
 /** Accept an invite: the caller becomes a member at the invite's role.
  *  Idempotent — re-accepting keeps the existing (possibly higher) role. */
-export async function acceptInvite(
-  token: string,
-  sub: string,
-  email?: string
-): Promise<Membership | null> {
+export async function acceptInvite(token: string, sub: string): Promise<Membership | null> {
   const invite = await getInvite(token);
   if (!invite) return null;
   const existing = await getRole(sub, invite.songbookId);
-  if (existing) {
-    const meta = await getSongbookMeta(invite.songbookId);
-    return {
-      songbookId: invite.songbookId,
-      name: meta?.name ?? "Songbook",
-      role: existing,
-      addedAt: Date.now(),
-    };
-  }
   const meta = await getSongbookMeta(invite.songbookId);
-  const now = Date.now();
-  await ddb.send(
-    new TransactWriteCommand({
-      TransactItems: [
-        {
-          Put: {
-            TableName: TABLE,
-            Item: {
-              pk: userPk(sub),
-              sk: `MEMBER#${invite.songbookId}`,
-              entity: "Membership",
-              songbookId: invite.songbookId,
-              name: meta?.name ?? "Songbook",
-              role: invite.role,
-              addedAt: now,
-            },
-          },
-        },
-        {
-          Put: {
-            TableName: TABLE,
-            Item: {
-              pk: bookPk(invite.songbookId),
-              sk: `MEMBER#${sub}`,
-              entity: "Member",
-              sub,
-              role: invite.role,
-              addedAt: now,
-              ...(email ? { email } : {}),
-            },
-          },
-        },
-      ],
-    })
-  );
-  return {
-    songbookId: invite.songbookId,
-    name: meta?.name ?? "Songbook",
-    role: invite.role,
-    addedAt: now,
-  };
+  if (existing) return { songbookId: invite.songbookId, name: meta?.name ?? "Songbook", role: existing, addedAt: Date.now() };
+  const membership = { songbookId: invite.songbookId, name: meta?.name ?? "Songbook", role: invite.role, addedAt: Date.now() };
+  try {
+    await ddb.send(new TransactWriteCommand({ TransactItems: [
+      { Delete: { TableName: TABLE, Key: { pk: `INVITE#${token}`, sk: "META" },
+        ConditionExpression: "songbookId = :book AND expiresAt > :now", ExpressionAttributeValues: { ":book": invite.songbookId, ":now": Date.now() } } },
+      { Delete: { TableName: TABLE, Key: { pk: bookPk(invite.songbookId), sk: `INVITE#${token}` } } },
+      { ConditionCheck: { TableName: TABLE, Key: { pk: bookPk(invite.songbookId), sk: `REMOVED#${sub}` }, ConditionExpression: "attribute_not_exists(pk) OR removedAt < :created", ExpressionAttributeValues: { ":created": invite.createdAt } } },
+      { Put: { TableName: TABLE, Item: { pk: userPk(sub), sk: `MEMBER#${invite.songbookId}`, entity: "Membership", ...membership }, ConditionExpression: "attribute_not_exists(pk)" } },
+      { Put: { TableName: TABLE, Item: { pk: bookPk(invite.songbookId), sk: `MEMBER#${sub}`, entity: "Member", sub, role: invite.role, addedAt: membership.addedAt }, ConditionExpression: "attribute_not_exists(pk)" } },
+    ] }));
+  } catch (err) {
+    if ((err as Error).name === "TransactionCanceledException") return null;
+    throw err;
+  }
+  return membership;
 }
 
-export async function revokeInvite(
-  songbookId: string,
-  token: string
-): Promise<void> {
-  await ddb.send(
-    new TransactWriteCommand({
-      TransactItems: [
-        {
-          Delete: {
-            TableName: TABLE,
-            Key: { pk: bookPk(songbookId), sk: `INVITE#${token}` },
-          },
-        },
-        {
-          Delete: { TableName: TABLE, Key: { pk: `INVITE#${token}`, sk: "META" } },
-        },
-      ],
-    })
-  );
+export async function revokeInvite(songbookId: string, token: string): Promise<void> {
+  try {
+    await ddb.send(new TransactWriteCommand({ TransactItems: [
+      { Delete: { TableName: TABLE, Key: { pk: bookPk(songbookId), sk: `INVITE#${token}` } } },
+      { Delete: { TableName: TABLE, Key: { pk: `INVITE#${token}`, sk: "META" }, ConditionExpression: "attribute_not_exists(pk) OR songbookId = :book", ExpressionAttributeValues: { ":book": songbookId } } },
+    ] }));
+  } catch (err) {
+    if ((err as Error).name !== "TransactionCanceledException") throw err;
+    // A foreign token must neither be revoked nor disclose its owner.
+  }
 }
 
 async function getSongbookMeta(
@@ -397,6 +339,7 @@ export async function putSongB(
     new GetCommand({ TableName: TABLE, Key: { pk, sk: songSk(id) } })
   );
   const current = currentResp.Item;
+  if (!current) await consumeLimit(pk, "QUOTA#songs", 2000);
 
   // Optimistic concurrency (same contract as legacy): a mismatched
   // expectedVersion → 409 with the current DTO for conflict resolution.
@@ -572,6 +515,7 @@ export async function createNamedRevisionB(
   savedBy: string,
   body: { title: string; score: Record<string, unknown>; folder?: string | null }
 ): Promise<VersionEntryB> {
+  await consumeLimit(bookPk(songbookId), "QUOTA#named-revisions", 5000);
   const now = Date.now();
   const item: Item = {
     pk: bookPk(songbookId),

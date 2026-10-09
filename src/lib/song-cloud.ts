@@ -3,7 +3,7 @@ import type { Score } from "@/lib/schema";
 import type { SongDTO, SongSummary, VersionEntry } from "@/lib/song-cloud-types";
 import { getSongs, setSongs as writeLocalSongs, type SongBankEntry } from "@/lib/song-bank";
 import {
-  AUTH_ENABLED,
+  AUTH_ENABLED, COOKIE_SESSIONS, browserRequestHeaders,
   getAccessToken,
   getActiveSongbookId,
   invalidateSession,
@@ -140,7 +140,8 @@ async function apiFetch(path: string, init: RequestInit = {}): Promise<Response>
       throw new TerminalCloudError("Sign in and select a songbook before syncing.");
     }
     if (token && songbookId) {
-      authHeaders.authorization = `Bearer ${token}`;
+      if (COOKIE_SESSIONS) Object.assign(authHeaders, browserRequestHeaders());
+      else authHeaders.authorization = `Bearer ${token}`;
       if (path === "/songs" || path.startsWith("/songs/")) {
         effectivePath = `/songbooks/${encodeURIComponent(songbookId)}${path}`;
       }
@@ -160,7 +161,7 @@ async function apiFetch(path: string, init: RequestInit = {}): Promise<Response>
         ...(init.headers ?? {}),
       },
     });
-    if (res.status === 401 && authHeaders.authorization) {
+    if (res.status === 401 && AUTH_ENABLED) {
       // Token rejected server-side (revoked / bad). Flip the session to
       // expired so the UI prompts re-login; surface as terminal.
       invalidateSession();

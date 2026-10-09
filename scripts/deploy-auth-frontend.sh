@@ -34,6 +34,8 @@ OAUTH_ISSUER="${NEXT_PUBLIC_OAUTH_ISSUER:-https://api.oauth42.com}"
 
 echo "Building instance-B frontend (api=$API_URL, issuer=$OAUTH_ISSUER)"
 rm -rf out
+# Generated development route types refer to the server routes stashed below.
+rm -rf .next/dev/types
 
 # Static export can't include the server API routes (same reason the Pages
 # workflow rm -rf's them on CI). Stash them locally and ALWAYS restore.
@@ -43,15 +45,21 @@ trap 'mv "$API_STASH/api" src/app/api; rmdir "$API_STASH"' EXIT
 
 # BASE_PATH="" → served at the CloudFront root (no /NotationApp prefix).
 STATIC_EXPORT=1 BASE_PATH="" \
-  NEXT_PUBLIC_API_BASE="$API_URL" \
+  NEXT_PUBLIC_API_BASE="/auth-api" \
+  NEXT_PUBLIC_COOKIE_SESSIONS="1" \
   NEXT_PUBLIC_SUITE_HOME="$SUITE_HOME" \
   NEXT_PUBLIC_OAUTH_ISSUER="$OAUTH_ISSUER" \
   NEXT_PUBLIC_OAUTH_CLIENT_ID="$NEXT_PUBLIC_OAUTH_CLIENT_ID" \
   npx next build
 
+node scripts/harden-static.mjs out
+
+if [ "${1:-}" = "--build-only" ]; then exit 0; fi
+
 echo "Syncing to s3://$BUCKET"
 # Keep previous hashed assets so an already-open tab can finish loading them.
-aws s3 sync out "s3://$BUCKET"
+aws s3 sync out "s3://$BUCKET" --exclude "*.html"
+aws s3 cp out "s3://$BUCKET" --recursive --exclude "*" --include "*.html" --cache-control "no-cache, no-store, must-revalidate"
 
 echo "Invalidating CloudFront $DIST_ID"
 aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths "/*" >/dev/null

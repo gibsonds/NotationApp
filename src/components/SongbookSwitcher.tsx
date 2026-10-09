@@ -22,7 +22,7 @@ import { extractJoinCode, getDeviceId } from "@/lib/song-cloud";
 /** Dropdown of the user's songbooks; switching re-syncs the song list. */
 export function SongbookSwitcher({ onSwitched }: { onSwitched: () => void }) {
   const auth = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-  const [manager, setManager] = useState<"create" | "join" | "invite" | null>(null);
+  const [manager, setManager] = useState<"create" | "join" | "invite" | "members" | null>(null);
   useEffect(() => {
     if (AUTH_ENABLED && (new URLSearchParams(window.location.search).has("invite") || sessionStorage.getItem("notation-app-pending-invite"))) setManager("join");
   }, []);
@@ -51,6 +51,7 @@ export function SongbookSwitcher({ onSwitched }: { onSwitched: () => void }) {
       <button type="button" onClick={() => setManager("create")} className="px-2 py-2 text-sm text-blue-600 hover:bg-blue-50 rounded-lg">New book</button>
       <button type="button" onClick={() => setManager("join")} className="px-2 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">Join</button>
       {role === "owner" && <button type="button" onClick={() => setManager("invite")} className="px-2 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">Invite</button>}
+      {role === "owner" && <button type="button" onClick={() => setManager("members")} className="px-2 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">Access</button>}
       {manager && <SongbookManager initialMode={manager} onClose={() => { setManager(null); onSwitched(); }} />}
       {role && role !== "owner" && (
         <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">

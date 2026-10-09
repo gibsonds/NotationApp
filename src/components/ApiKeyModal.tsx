@@ -141,8 +141,8 @@ export default function ApiKeyModal({ onClose }: ApiKeyModalProps) {
         <div className="px-5 py-4 space-y-4">
           {/* Privacy info box — prominent */}
           <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5 text-[12px] text-blue-900 leading-relaxed">
-            <span className="font-semibold">Your API key is stored only in this browser.</span>{" "}
-            It is never sent to our servers.
+            <span className="font-semibold">Your API key stays in this tab until you close it or sign out.</span>{" "}
+            AI requests send your key and song content to the selected provider. Local server builds relay those requests through your local server.
           </div>
 
           {/* Stored key (if any) */}

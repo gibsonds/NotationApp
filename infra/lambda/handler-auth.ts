@@ -1,7 +1,7 @@
 /**
  * Entry point for the authenticated (NotationAuth) API instance.
  *
- * Every data route requires a valid OAuth42 Bearer JWT (see auth.ts) and a
+ * Every production data route requires a revocable HttpOnly session and a
  * songbook membership at a sufficient role:
  *   viewer → GET; editor → + PUT/POST; owner → + DELETE, members, invites.
  * The only unauthenticated routes are the /oauth broker pair, which is how
@@ -12,7 +12,7 @@
  */
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from "aws-lambda";
 import { AuthError, requireUser, type AuthedUser } from "./auth";
-import { exchangeCode, refreshToken } from "./oauth-broker";
+import { exchangeCode } from "./oauth-broker";
 import { ImportClaimedError, importDevice } from "./import";
 import {
   acceptInvite,
@@ -32,11 +32,13 @@ import {
   revokeInvite,
   VersionConflictErrorB,
 } from "./songbook-repo";
+import { assertBrowserRequest, createSession, deleteSession, sessionCookie, sessionUser } from "./sessions";
+import { RequestError, readBody, identifier, limitOperation } from "./security";
 import type { Role } from "./songbook-types";
 
 const json = (statusCode: number, body: unknown): APIGatewayProxyResultV2 => ({
   statusCode,
-  headers: { "content-type": "application/json" },
+  headers: { "content-type": "application/json", "cache-control": "no-store", "x-content-type-options": "nosniff" },
   body: JSON.stringify(body),
 });
 
@@ -60,11 +62,7 @@ async function requireRole(
 }
 
 function parseBody(event: APIGatewayProxyEventV2): Record<string, unknown> {
-  try {
-    return JSON.parse(event.body ?? "{}") as Record<string, unknown>;
-  } catch {
-    return {};
-  }
+  return readBody(event.body, event.isBase64Encoded);
 }
 
 export const handler = async (
@@ -74,6 +72,21 @@ export const handler = async (
   const p = event.pathParameters ?? {};
 
   try {
+    if (event.body) parseBody(event);
+    if (process.env.COOKIE_SESSIONS === "1" && !route.startsWith("GET ")) assertBrowserRequest(event);
+    if (route === "POST /oauth/logout") {
+      await deleteSession(event);
+      return { ...json(200, { ok: true }) as object, cookies: [sessionCookie("", 0)] };
+    }
+    if (route === "POST /oauth/session") {
+      // Short migration window for already-signed-in tabs. No tokens returned.
+      if (Date.now() > Date.parse(process.env.SESSION_MIGRATION_UNTIL ?? "1970-01-01")) throw new AuthError(401, "Please sign in again.");
+      const user = await requireUser(event.headers);
+      await limitOperation(user.sub, "sessions", 10, 3600);
+      const created = await createSession({ access_token: event.headers.authorization?.slice(7)});
+      await deleteSession(event);
+      return { ...json(200, { ok: true }) as object, cookies: [created.cookie] };
+    }
     // ── Unauthenticated: OAuth broker ─────────────────────────────────────
     if (route === "POST /oauth/exchange") {
       const b = parseBody(event);
@@ -84,39 +97,40 @@ export const handler = async (
       ) {
         return json(400, { error: "code, code_verifier, redirect_uri required" });
       }
+      if (!(process.env.APP_ORIGINS ?? "").split(",").some(origin => b.redirect_uri === `${origin}/`)) throw new AuthError(400, "Invalid redirect URI.");
       const out = await exchangeCode({
         code: b.code,
         code_verifier: b.code_verifier,
         redirect_uri: b.redirect_uri,
       });
-      return json(out.status, out.body);
+      if (out.status !== 200) return json(out.status, { error: "Sign-in could not be completed." });
+      const created = await createSession(out.body);
+      await deleteSession(event);
+      return { ...json(200, { ok: true }) as object, cookies: [created.cookie] };
     }
-    if (route === "POST /oauth/refresh") {
-      const b = parseBody(event);
-      if (typeof b.refresh_token !== "string") {
-        return json(400, { error: "refresh_token required" });
-      }
-      const out = await refreshToken({ refresh_token: b.refresh_token });
-      return json(out.status, out.body);
-    }
+    if (route === "POST /oauth/refresh") return json(410, { error: "Reload Charts to use secure sessions." });
 
     // ── Everything else requires a verified user ──────────────────────────
-    const user = await requireUser(event.headers);
+    const user = process.env.COOKIE_SESSIONS === "1" ? await sessionUser(event) : await requireUser(event.headers);
+    await limitOperation(user.sub, "requests", 300, 60);
+    if (!route.startsWith("GET ")) await limitOperation(user.sub, "writes", 90, 60);
 
     switch (route) {
       case "GET /me":
         return json(200, await bootstrapMe(user));
 
       case "POST /songbooks": {
+        await limitOperation(user.sub, "books", 10, 86400);
         const b = parseBody(event);
         const name =
           typeof b.name === "string" && b.name.trim() ? b.name.trim() : "Songbook";
-        return json(200, await createSongbook(user.sub, name, user.email));
+        if (name.length > 120) throw new RequestError(400, "Name must be at most 120 characters.");
+        return json(200, await createSongbook(user.sub, name));
       }
 
       case "GET /songbooks/{id}/members": {
         const songbookId = need(p.id);
-        await requireRole(user.sub, songbookId, "viewer");
+        await requireRole(user.sub, songbookId, "owner");
         return json(200, { members: await listMembers(songbookId) });
       }
 
@@ -135,7 +149,9 @@ export const handler = async (
         const songbookId = need(p.id);
         await requireRole(user.sub, songbookId, "owner");
         const b = parseBody(event);
-        const role = b.role === "viewer" ? "viewer" : "editor";
+        await limitOperation(user.sub, "invites", 50, 86400);
+        if (b.role !== "viewer" && b.role !== "editor") throw new RequestError(400, "Invalid invitation role.");
+        const role = b.role;
         return json(200, await createInvite(songbookId, role, user.sub));
       }
 
@@ -147,7 +163,7 @@ export const handler = async (
       }
 
       case "POST /invites/{token}/accept": {
-        const membership = await acceptInvite(need(p.token), user.sub, user.email);
+        const membership = await acceptInvite(need(p.token), user.sub);
         return membership
           ? json(200, membership)
           : json(404, { error: "invite not found or expired" });
@@ -206,6 +222,7 @@ export const handler = async (
       }
 
       case "POST /songbooks/{id}/songs/{songId}/versions": {
+        await limitOperation(user.sub, "revisions", 100, 86400);
         const songbookId = need(p.id);
         await requireRole(user.sub, songbookId, "editor");
         const b = parseBody(event);
@@ -232,6 +249,7 @@ export const handler = async (
       }
 
       case "POST /import-device": {
+        await limitOperation(user.sub, "imports", 5, 3600);
         const b = parseBody(event);
         if (typeof b.deviceId !== "string" || !b.deviceId) {
           return json(400, { error: "deviceId required" });
@@ -240,11 +258,13 @@ export const handler = async (
           return json(400, { error: "songbookId required" });
         }
         await requireRole(user.sub, b.songbookId, "editor");
+        identifier(b.deviceId);
         const result = await importDevice(b.deviceId, user.sub, b.songbookId);
         return json(200, result);
       }
     }
   } catch (err) {
+    if (err instanceof RequestError) return json(err.statusCode, { error: err.message });
     if (err instanceof AuthError) return json(err.statusCode, { error: err.message });
     if (err instanceof ForbiddenError) return json(403, { error: "forbidden" });
     if (err instanceof MissingParamError) return json(400, { error: "missing path parameter" });
@@ -254,7 +274,7 @@ export const handler = async (
     if (err instanceof ImportClaimedError) {
       return json(409, { error: "device already imported by another account" });
     }
-    console.error("handler-auth error", err);
+    console.error("handler-auth error", { name: (err as Error).name, route, requestId: event.requestContext?.requestId });
     return json(500, { error: "internal error" });
   }
 
@@ -266,18 +286,16 @@ export const handler = async (
 async function bootstrapMe(user: AuthedUser) {
   let memberships = await listMemberships(user.sub);
   if (memberships.length === 0) {
-    memberships = [await createSongbook(user.sub, "My Songs", user.email)];
+    memberships = [await createSongbook(user.sub, "My Songs")];
   }
   return {
     sub: user.sub,
-    ...(user.email ? { email: user.email } : {}),
-    ...(user.name ? { name: user.name } : {}),
+
     memberships,
   };
 }
 
 class MissingParamError extends Error {}
 function need(v: string | undefined): string {
-  if (!v) throw new MissingParamError();
-  return v;
+  return identifier(v);
 }

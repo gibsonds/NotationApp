@@ -11,7 +11,6 @@ export interface Member {
   sub: string;
   role: Role;
   addedAt: number;
-  email?: string;
 }
 
 export interface Invite {

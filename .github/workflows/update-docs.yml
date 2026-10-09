@@ -1,8 +1,8 @@
-name: Auto-update docs changelog
+name: Prepare docs changelog
 
 # After every push to main that touches user-facing code or assets, append a
 # changelog entry to docs/CHANGELOG.md so the docs site reflects what shipped.
-# The bot commits with `[skip ci]` so this workflow does not retrigger itself.
+# Publish the proposed entry for review; do not bypass protected main.
 
 on:
   push:
@@ -13,7 +13,7 @@ on:
       - "package.json"
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: update-docs
@@ -25,28 +25,22 @@ jobs:
     # Defensive: if the previous commit was already a changelog bump, skip.
     if: "!contains(github.event.head_commit.message, '[skip ci]')"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           # Need at least the previous commit so `git diff HEAD~1 HEAD` works.
           fetch-depth: 2
-          persist-credentials: true
-          token: ${{ secrets.GITHUB_TOKEN }}
+          persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Generate changelog entry
         run: node scripts/update-changelog.mjs
 
-      - name: Commit and push if changed
-        run: |
-          if git diff --quiet docs/CHANGELOG.md; then
-            echo "No changelog changes — nothing to commit."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/CHANGELOG.md
-          git commit -m "docs: changelog for ${GITHUB_SHA::7} [skip ci]"
-          git push
+      - name: Save proposed changelog
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: proposed-changelog
+          path: docs/CHANGELOG.md
+          retention-days: 14

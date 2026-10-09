@@ -1,4 +1,4 @@
-import { getAccessToken, loadMe, type Membership } from "@/lib/auth";
+import { getAccessToken, COOKIE_SESSIONS, browserRequestHeaders, loadMe, type Membership } from "@/lib/auth";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "";
 
@@ -7,7 +7,7 @@ async function request<T>(path: string, body: object): Promise<T> {
   if (!token) throw new Error("Sign in before managing songbooks.");
   const response = await fetch(`${API_BASE}${path}`, {
     method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+    headers: { "content-type": "application/json", ...(COOKIE_SESSIONS ? browserRequestHeaders() : { authorization: `Bearer ${token}` }) },
     body: JSON.stringify(body),
   });
   if (!response.ok) {
@@ -35,4 +35,17 @@ export async function joinSongbook(value: string): Promise<Membership> {
   const book = await request<Membership>(`/invites/${encodeURIComponent(token)}/accept`, {});
   await loadMe();
   return book;
+}
+
+export interface SongbookMember { sub: string; role: "owner" | "editor" | "viewer"; addedAt: number; }
+export async function listSongbookMembers(id: string): Promise<SongbookMember[]> {
+  const token = await getAccessToken();
+  const res = await fetch(`${API_BASE}/songbooks/${encodeURIComponent(id)}/members`, { headers: COOKIE_SESSIONS ? browserRequestHeaders() : { authorization: `Bearer ${token}` } });
+  if (!res.ok) throw new Error("Could not load access list.");
+  return (await res.json()).members;
+}
+export async function removeSongbookMember(id: string, sub: string): Promise<void> {
+  const token = await getAccessToken();
+  const res = await fetch(`${API_BASE}/songbooks/${encodeURIComponent(id)}/members/${encodeURIComponent(sub)}`, { method:"DELETE", headers: COOKIE_SESSIONS ? browserRequestHeaders() : { authorization: `Bearer ${token}` } });
+  if (!res.ok) throw new Error("Could not remove access.");
 }

@@ -1,7 +1,7 @@
 /**
  * Bring-your-own-key (BYOK) storage for AI provider credentials.
  *
- * Keys live ONLY in the browser via localStorage under a single JSON blob.
+ * Keys live ONLY in the current browser tab via sessionStorage under a single JSON blob.
  * They are never persisted server-side and must never be passed to analytics,
  * logging, or telemetry. If you find yourself importing this module from
  * `analytics.ts` (or anything that ships log payloads off-device), STOP — the
@@ -26,7 +26,12 @@ interface StoredKeys {
 function readStore(): StoredKeys {
   if (typeof window === "undefined") return {};
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const old = window.localStorage.getItem(STORAGE_KEY);
+    if (old) {
+      if (!window.sessionStorage.getItem(STORAGE_KEY)) window.sessionStorage.setItem(STORAGE_KEY, old);
+      window.localStorage.removeItem(STORAGE_KEY);
+    }
+    const raw = window.sessionStorage.getItem(STORAGE_KEY);
     if (!raw) return {};
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object") return {};
@@ -44,9 +49,12 @@ function writeStore(keys: StoredKeys): void {
   try {
     if (!keys.anthropic && !keys.openai) {
       window.localStorage.removeItem(STORAGE_KEY);
+      window.sessionStorage.removeItem(STORAGE_KEY);
       return;
     }
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(keys));
+    window.localStorage.removeItem(STORAGE_KEY);
+    window.sessionStorage.removeItem(STORAGE_KEY);
+    window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(keys));
   } catch {
     // Quota exceeded / storage disabled — silently no-op so callers don't crash.
   }
