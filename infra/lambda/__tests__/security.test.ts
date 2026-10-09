@@ -1,6 +1,6 @@
 import { beforeEach, afterEach, describe, it, expect, vi } from 'vitest';
 import { generateKeyPair, exportJWK, createLocalJWKSet, SignJWT } from 'jose';
-import { verifyAccessToken } from '../auth';
+import { verifyAccessToken, verifyIdToken } from '../auth';
 import * as auth from '../auth';
 import { ddb } from '../ddb';
 import { createSession, sessionCookie, sessionUser, assertBrowserRequest } from '../sessions';
@@ -29,9 +29,9 @@ it('rejects cross-site cookie requests even when an origin resembles ours',()=> 
 });
 
 it('stores no OAuth tokens, email or profile in server sessions',async()=> {
- vi.spyOn(auth,'verifyAccessToken').mockResolvedValue({payload:{sub:'opaque-user',email:'private@example.test',name:'Private',exp:9999999999}} as any);
+ vi.spyOn(auth,'verifyIdToken').mockResolvedValue({payload:{sub:'opaque-user',email:'private@example.test',name:'Private',exp:9999999999}} as any);
  const send=vi.spyOn(ddb,'send').mockResolvedValue({} as never);
- const created=await createSession({access_token:'oauth-secret',refresh_token:'refresh-secret',id_token:'id-secret'});
+ const created=await createSession({access_token:'oauth-secret',refresh_token:'refresh-secret',id_token:'id-secret'},'n'.repeat(32));
  const item=(send.mock.calls[0][0] as any).input.Item;
  expect(Object.keys(item).sort()).toEqual(['id','sub','ttl']);
  expect(JSON.stringify(item)).not.toMatch(/secret|private|Private/);
@@ -71,4 +71,15 @@ it('consumes invites atomically with membership and prevents old-link rejoin',as
  expect(tx[3].Put.ConditionExpression).toBe('attribute_not_exists(pk)');
  send.mockReset();send.mockResolvedValue({} as never);await removeMember('b','u');
  expect((send.mock.calls[0][0] as any).input.TransactItems[0].Put.Item.sk).toBe('REMOVED#u');
+});
+
+it('accepts only ID tokens bound to this client and this sign-in nonce',async()=> {
+ const keys=await generateKeyPair('RS256'); const jwk=await exportJWK(keys.publicKey); const key=createLocalJWKSet({keys:[jwk]});
+ const nonce='n'.repeat(32);
+ const good={sub:'opaque-user',iss:'https://issuer.test',aud:'charts',exp:Math.floor(Date.now()/1000)+3600,iat:Math.floor(Date.now()/1000),nonce};
+ const mint=(payload:object)=>new SignJWT({...payload}).setProtectedHeader({alg:'RS256'}).sign(keys.privateKey);
+ await expect(verifyIdToken(await mint(good),nonce,key)).resolves.toMatchObject({payload:{sub:'opaque-user'}});
+ for(const bad of [{...good,aud:'another-app'},{...good,nonce:'different'},{...good,nonce:undefined},{...good,exp:1},{...good,azp:'another-app'},{...good,aud:['charts','another-app']}]) {
+   await expect(verifyIdToken(await mint(bad),nonce,key)).rejects.toThrow();
+ }
 });

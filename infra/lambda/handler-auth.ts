@@ -32,7 +32,7 @@ import {
   revokeInvite,
   VersionConflictErrorB,
 } from "./songbook-repo";
-import { assertBrowserRequest, createSession, deleteSession, sessionCookie, sessionUser } from "./sessions";
+import { assertBrowserRequest, createSession, migrateAccessToken, deleteSession, sessionCookie, sessionUser } from "./sessions";
 import { RequestError, readBody, identifier, limitOperation } from "./security";
 import type { Role } from "./songbook-types";
 
@@ -83,7 +83,7 @@ export const handler = async (
       if (Date.now() > Date.parse(process.env.SESSION_MIGRATION_UNTIL ?? "1970-01-01")) throw new AuthError(401, "Please sign in again.");
       const user = await requireUser(event.headers);
       await limitOperation(user.sub, "sessions", 10, 3600);
-      const created = await createSession({ access_token: event.headers.authorization?.slice(7)});
+      const created = await migrateAccessToken(event.headers.authorization!.slice(7));
       await deleteSession(event);
       return { ...json(200, { ok: true }) as object, cookies: [created.cookie] };
     }
@@ -93,9 +93,9 @@ export const handler = async (
       if (
         typeof b.code !== "string" ||
         typeof b.code_verifier !== "string" ||
-        typeof b.redirect_uri !== "string"
+        typeof b.redirect_uri !== "string" || typeof b.nonce !== "string"
       ) {
-        return json(400, { error: "code, code_verifier, redirect_uri required" });
+        return json(400, { error: "code, code_verifier, redirect_uri, nonce required" });
       }
       if (!(process.env.APP_ORIGINS ?? "").split(",").some(origin => b.redirect_uri === `${origin}/`)) throw new AuthError(400, "Invalid redirect URI.");
       const out = await exchangeCode({
@@ -104,7 +104,7 @@ export const handler = async (
         redirect_uri: b.redirect_uri,
       });
       if (out.status !== 200) return json(out.status, { error: "Sign-in could not be completed." });
-      const created = await createSession(out.body);
+      const created = await createSession(out.body, b.nonce);
       await deleteSession(event);
       return { ...json(200, { ok: true }) as object, cookies: [created.cookie] };
     }
@@ -274,7 +274,13 @@ export const handler = async (
     if (err instanceof ImportClaimedError) {
       return json(409, { error: "device already imported by another account" });
     }
-    console.error("handler-auth error", { name: (err as Error).name, route, requestId: event.requestContext?.requestId });
+    const diagnostic = err as { name?: string; code?: string; claim?: string };
+    console.error("handler-auth error", {
+      name: diagnostic.name,
+      code: typeof diagnostic.code === "string" && /^ERR_[A-Z_]+$/.test(diagnostic.code) ? diagnostic.code : undefined,
+      claim: ["aud", "iss", "sub", "exp", "iat", "jti", "nbf", "typ"].includes(diagnostic.claim ?? "") ? diagnostic.claim : undefined,
+      route, requestId: event.requestContext?.requestId,
+    });
     return json(500, { error: "internal error" });
   }
 

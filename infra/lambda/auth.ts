@@ -51,6 +51,25 @@ export async function verifyAccessToken(token: string, key?: JWTVerifyGetKey) {
 }
 const joseVerify: VerifyFn = verifyAccessToken;
 
+/** OIDC login uses the ID token, whose audience is the relying-party client. */
+export async function verifyIdToken(token: string, nonce: string, key?: JWTVerifyGetKey) {
+  const issuer = process.env.OAUTH_ISSUER;
+  const audience = process.env.OAUTH_AUDIENCE;
+  if (!issuer || !audience) throw new AuthError(503, "authentication not configured");
+  if (typeof nonce !== "string" || nonce.length < 32) throw new AuthError(401, "invalid sign-in nonce");
+  if (!key && !jwks) jwks = createRemoteJWKSet(new URL(process.env.OAUTH_JWKS_URL ?? `${issuer}/.well-known/jwks.json`));
+  const result = await jwtVerify(token, key ?? jwks!, {
+    issuer, audience, algorithms: ["RS256"], clockTolerance: 60,
+    requiredClaims: ["sub", "iss", "aud", "exp", "iat", "nonce"],
+  });
+  if (!result.payload.sub || result.payload.nonce !== nonce ||
+      (result.payload.azp !== undefined && result.payload.azp !== audience) ||
+      (Array.isArray(result.payload.aud) && result.payload.aud.length > 1 && result.payload.azp !== audience)) {
+    throw new AuthError(401, "invalid sign-in token");
+  }
+  return result;
+}
+
 /** Pure decision core — exported for unit tests with a stubbed verifier. */
 export async function resolveUserFromHeaders(
   headers: Record<string, string | undefined>,
