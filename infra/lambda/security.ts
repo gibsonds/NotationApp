@@ -25,9 +25,9 @@ export async function limitOperation(subject: string, operation: string, limit: 
 export async function consumeLimit(pk: string, sk: string, limit: number, expiresAt?: number) {
   try {
     await ddb.send(new UpdateCommand({ TableName: TABLE, Key: { pk, sk },
-      UpdateExpression: 'ADD #count :one' + (expiresAt ? ' SET ttl = :ttl' : ''),
+      UpdateExpression: 'ADD #count :one' + (expiresAt ? ' SET #ttl = :ttl' : ''),
       ConditionExpression: 'attribute_not_exists(#count) OR #count < :max',
-      ExpressionAttributeNames: { '#count': 'count' },
+      ExpressionAttributeNames: { '#count': 'count', ...(expiresAt ? { '#ttl': 'ttl' } : {}) },
       ExpressionAttributeValues: { ':one': 1, ':max': limit, ...(expiresAt ? { ':ttl': expiresAt } : {}) },
     }));
   } catch (err) {
