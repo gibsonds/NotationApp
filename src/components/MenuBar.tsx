@@ -21,6 +21,7 @@ import { logEvent, scoreTypeOf } from "@/lib/analytics";
 
 // On the GitHub Pages static export, the app is served from /NotationApp/.
 // next/link auto-applies basePath, but raw <a href> and window.open() do not.
+const SUITE_HOME = process.env.NEXT_PUBLIC_SUITE_HOME;
 const DOCS_HREF = `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/docs/`;
 
 interface MenuBarProps {
@@ -499,7 +500,9 @@ export default function MenuBar({
 
       <div className="flex items-center gap-0.5 px-2 py-1 bg-[#0f0f23] border-b border-white/10 text-gray-300">
         {/* Brand */}
-        <span className="text-sm font-bold text-gray-100 mr-3 tracking-wide">\u2669 NotationApp</span>
+        {SUITE_HOME ? (
+          <a href={SUITE_HOME} className="text-sm font-bold text-gray-100 mr-3 whitespace-nowrap focus:outline-none focus:ring-2 focus:ring-blue-500 rounded" title="InferMusic home">InferMusic Charts</a>
+        ) : <span className="text-sm font-bold text-gray-100 mr-3 whitespace-nowrap">InferMusic Charts</span>}
 
         {/* Menus */}
         <MenuDropdown

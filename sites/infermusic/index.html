@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="InferMusic brings your music tools together. Build charts with AI assistance, organize songbooks, and explore the guitar fretboard.">
+  <meta name="theme-color" content="#10101c">
+  <title>InferMusic — Learn the patterns. Shape the song.</title>
+  <style>
+    :root { color-scheme:dark; font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:#10101c; color:#f6f5fa; }
+    * { box-sizing:border-box; }
+    body { margin:0; }
+    a { color:inherit; text-decoration:none; }
+    a:focus-visible { outline:3px solid #8faaff; outline-offset:5px; }
+    .shell { width:min(1100px,100% - 64px); margin:auto; }
+    header { height:96px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #303041; }
+    .brand { display:flex; gap:12px; align-items:center; font-size:22px; font-weight:650; letter-spacing:-.6px; }
+    .mark { width:32px; height:32px; color:#b8a0ff; }
+    nav { display:flex; gap:24px; font-size:14px; color:#b8b8cb; }
+    nav a { display:inline-flex; align-items:center; min-height:44px; }
+    nav a:hover,footer a:hover { color:white; }
+    .hero { padding:88px 0 68px; max-width:820px; }
+    .eyebrow { color:#b8a0ff; font-size:12px; font-weight:600; letter-spacing:2.5px; text-transform:uppercase; }
+    h1 { font-size:clamp(40px,6.5vw,72px); line-height:1.07; font-weight:600; letter-spacing:-3px; margin:22px 0 24px; }
+    h1 span { color:#b5b3cb; }
+    .intro { max-width:570px; color:#b8b8cb; font-size:18px; line-height:1.65; }
+    .tools { display:grid; grid-template-columns:1fr 1fr; gap:24px; padding-bottom:64px; }
+    article { border:1px solid #343344; background:#191925; border-radius:16px; overflow:hidden; display:flex; flex-direction:column; }
+    .preview { height:176px; background:#14141f; border-bottom:1px solid #303041; display:flex; align-items:center; justify-content:center; padding:25px; }
+    .chart-preview { font:16px/1.9 ui-monospace,SFMono-Regular,Consolas,monospace; white-space:pre; margin:0; }
+    .chords { color:#eac969; }.lyrics { color:#deddea; }.section { color:#e7a1cc; font:italic 18px/2 Georgia,serif; }
+    .fretboard { width:100%; max-width:350px; height:115px; }
+    .body { padding:28px; display:flex; flex:1; flex-direction:column; }
+    .label { font-size:11px; color:#9c9caf; font-weight:600; letter-spacing:1.7px; text-transform:uppercase; }
+    h2 { font-size:27px; font-weight:600; letter-spacing:-.8px; margin:10px 0 12px; }
+    .body p { font-size:15px; line-height:1.65; color:#b8b8cb; margin:0 0 24px; }
+    .body a { margin-top:auto; min-height:46px; display:flex; align-items:center; justify-content:center; border-radius:9px; font-size:14px; font-weight:600; }
+    .primary { background:#4162ef; color:white; }.primary:hover { background:#5173ff; }
+    .secondary { border:1px solid #49485e; background:#232331; }.secondary:hover { background:#2c2c3e; }
+    footer { border-top:1px solid #303041; padding:26px 0 36px; display:flex; justify-content:space-between; gap:24px; color:#9999ad; font-size:12px; line-height:1.6; }
+    footer p { margin:0; }
+    @media(max-width:640px) { .shell { width:calc(100% - 36px); } header { height:80px; } .brand { font-size:19px; } nav { gap:16px; } .hero { padding:55px 0 42px; } h1 { letter-spacing:-1.8px; } .intro { font-size:16px; } .tools { grid-template-columns:1fr; gap:20px; padding-bottom:40px; } .body { padding:24px; } footer { flex-direction:column; gap:8px; } }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <a class="brand" href="./" aria-label="InferMusic home"><svg class="mark" aria-hidden="true" viewBox="0 0 32 32" fill="none"><path d="M5 22V10m7 16V6m7 15V11m7 13V8" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>InferMusic</a>
+      <nav aria-label="Music tools"><a data-app="charts" href="https://charts.infermusic.ai/">Charts</a><a data-app="scales" href="https://scales.infermusic.ai/">Scales</a></nav>
+    </header>
+    <main>
+      <section class="hero" aria-labelledby="intro-title">
+        <div class="eyebrow">Tools for the music you make</div>
+        <h1 id="intro-title">Learn the patterns.<br><span>Shape the song.</span></h1>
+        <p class="intro">A place for your charts, your songbooks, and your next breakthrough on the fretboard. With AI assistance when you need a hand.</p>
+      </section>
+      <section class="tools" aria-label="Choose your music tool">
+        <article>
+          <div class="preview" aria-hidden="true"><pre class="chart-preview"><span class="section">Verse</span>
+<span class="chords">| Am           | G</span>
+<span class="lyrics">Find a little room to play</span>
+<span class="chords">| F            | C</span></pre></div>
+          <div class="body"><div class="label">Write · Arrange · Share</div><h2>InferMusic Charts</h2><p>Turn ideas into readable chord charts and notation. Ask AI to help with an edit, organize your songbooks, and print a chart for rehearsal.</p><a class="primary" data-app="charts" href="https://charts.infermusic.ai/">Open Charts <span aria-hidden="true">&nbsp;↗</span></a></div>
+        </article>
+        <article>
+          <div class="preview" aria-hidden="true"><svg class="fretboard" viewBox="0 0 350 115"><g stroke="#454457"><path d="M15 10h320M15 29h320M15 48h320M15 67h320M15 86h320M15 105h320"/><path d="M15 10v95M79 10v95M143 10v95M207 10v95M271 10v95M335 10v95"/></g><g fill="#b8a0ff"><circle cx="47" cy="10" r="8"/><circle cx="175" cy="10" r="8"/><circle cx="111" cy="29" r="8"/><circle cx="239" cy="29" r="8"/><circle cx="47" cy="48" r="8"/><circle cx="175" cy="48" r="8"/><circle cx="111" cy="67" r="8"/><circle cx="239" cy="67" r="8"/><circle cx="47" cy="86" r="8"/><circle cx="175" cy="86" r="8"/><circle cx="47" cy="105" r="8"/><circle cx="239" cy="105" r="8"/></g><g fill="#eac969"><circle cx="47" cy="10" r="8"/><circle cx="175" cy="48" r="8"/><circle cx="47" cy="105" r="8"/></g></svg></div>
+          <div class="body"><div class="label">Explore · Hear · Practice</div><h2>InferMusic Scales</h2><p>Find your way around the guitar fretboard. Explore scales and chord shapes, change keys, hear the patterns, and keep a practice diary.</p><a class="secondary" data-app="scales" href="https://scales.infermusic.ai/">Open Scales <span aria-hidden="true">&nbsp;↗</span></a></div>
+        </article>
+      </section>
+    </main>
+    <footer><p>InferMusic · Music tools, built around playing.</p><p>Charts &amp; songbooks / Guitar scales &amp; practice</p></footer>
+  </div>
+</body>
+</html>

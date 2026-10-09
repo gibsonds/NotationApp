@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "NotationApp - AI Music Notation",
+  title: "InferMusic Charts — AI-assisted charts and songbooks",
   description: "AI-native browser-based music notation. Describe music, get editable scores.",
 };
 

@@ -24,6 +24,10 @@ API_URL=$(get_output ApiUrl)
 BUCKET=$(get_output SiteBucketName)
 DIST_ID=$(get_output DistributionId)
 SITE_URL=$(get_output SiteUrl)
+SUITE_HOME="${NEXT_PUBLIC_SUITE_HOME:-}"
+if [ -z "$SUITE_HOME" ]; then
+  SUITE_HOME=$(aws cloudformation describe-stacks --stack-name InferMusic --query "Stacks[0].Outputs[?OutputKey=='HomeUrl'].OutputValue" --output text 2>/dev/null || true)
+fi
 
 : "${NEXT_PUBLIC_OAUTH_CLIENT_ID:?set NEXT_PUBLIC_OAUTH_CLIENT_ID (from the OAuth42 portal registration)}"
 OAUTH_ISSUER="${NEXT_PUBLIC_OAUTH_ISSUER:-https://api.oauth42.com}"
@@ -40,6 +44,7 @@ trap 'mv "$API_STASH/api" src/app/api; rmdir "$API_STASH"' EXIT
 # BASE_PATH="" → served at the CloudFront root (no /NotationApp prefix).
 STATIC_EXPORT=1 BASE_PATH="" \
   NEXT_PUBLIC_API_BASE="$API_URL" \
+  NEXT_PUBLIC_SUITE_HOME="$SUITE_HOME" \
   NEXT_PUBLIC_OAUTH_ISSUER="$OAUTH_ISSUER" \
   NEXT_PUBLIC_OAUTH_CLIENT_ID="$NEXT_PUBLIC_OAUTH_CLIENT_ID" \
   npx next build

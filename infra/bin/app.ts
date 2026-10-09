@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { App } from "aws-cdk-lib";
 import { NotationStack } from "../lib/notation-stack";
+import { InferMusicStack, InferMusicDnsStack } from "../lib/infermusic-stack";
 import { NotationAuthStack } from "../lib/notation-auth-stack";
 
 const app = new App();
@@ -24,4 +25,17 @@ new NotationStack(app, "NotationTest", {
 new NotationAuthStack(app, "NotationAuth", {
   env: { account: "637423285747", region: "us-east-1" },
   legacyTableName: "NotationApp",
+  certificateArn: app.node.tryGetContext("infermusicCertificateArn"),
+  hostedZoneId: app.node.tryGetContext("infermusicHostedZoneId"),
+});
+
+// Domain registration is a separate purchase. These stacks can be staged on
+// CloudFront URLs before attaching the registered name and validated certificate.
+new InferMusicDnsStack(app, "InferMusicDns", {
+  env: { account: "637423285747", region: "us-east-1" },
+});
+new InferMusicStack(app, "InferMusic", {
+  env: { account: "637423285747", region: "us-east-1" },
+  certificateArn: app.node.tryGetContext("infermusicCertificateArn"),
+  hostedZoneId: app.node.tryGetContext("infermusicHostedZoneId"),
 });

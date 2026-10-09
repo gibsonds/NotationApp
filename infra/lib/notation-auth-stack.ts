@@ -12,12 +12,17 @@ import {
   CachePolicy,
 } from "aws-cdk-lib/aws-cloudfront";
 import { S3BucketOrigin } from "aws-cdk-lib/aws-cloudfront-origins";
+import { Certificate } from "aws-cdk-lib/aws-certificatemanager";
+import { ARecord, AaaaRecord, HostedZone, RecordTarget } from "aws-cdk-lib/aws-route53";
+import { CloudFrontTarget } from "aws-cdk-lib/aws-route53-targets";
 import { Construct } from "constructs";
 
 interface NotationAuthStackProps extends StackProps {
   /** Name of the legacy table the /import-device endpoint reads from. */
   legacyTableName: string;
   resourceSuffix?: string;
+  certificateArn?: string;
+  hostedZoneId?: string;
 }
 
 /**
@@ -35,6 +40,8 @@ export class NotationAuthStack extends Stack {
   constructor(scope: Construct, id: string, props: NotationAuthStackProps) {
     super(scope, id, props);
 
+    if (!!props.certificateArn !== !!props.hostedZoneId) throw new Error("Provide both certificateArn and hostedZoneId for custom domains.");
+    const chartDomain = props.certificateArn ? "charts.infermusic.ai" : undefined;
     const suffix = props.resourceSuffix ?? "";
     const isTest = suffix !== "";
 
@@ -91,6 +98,10 @@ export class NotationAuthStack extends Stack {
     });
 
     const distribution = new Distribution(this, "SiteDistribution", {
+      ...(props.certificateArn ? {
+        certificate: Certificate.fromCertificateArn(this, "SiteCertificate", props.certificateArn),
+        domainNames: [chartDomain!],
+      } : {}),
       defaultBehavior: {
         origin: S3BucketOrigin.withOriginAccessControl(siteBucket),
         viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
@@ -106,11 +117,19 @@ export class NotationAuthStack extends Stack {
       ],
     });
 
+    if (props.hostedZoneId && chartDomain) {
+      const zone = HostedZone.fromHostedZoneAttributes(this, "InferMusicZone", { hostedZoneId: props.hostedZoneId, zoneName: "infermusic.ai" });
+      const target = RecordTarget.fromAlias(new CloudFrontTarget(distribution));
+      new ARecord(this, "ChartsAlias", { zone, recordName: chartDomain, target });
+      new AaaaRecord(this, "ChartsAliasV6", { zone, recordName: chartDomain, target });
+    }
+
     const api = new HttpApi(this, "Api", {
       apiName: `NotationAuthApi${suffix}`,
       corsPreflight: {
         allowOrigins: [
           `https://${distribution.distributionDomainName}`,
+          ...(chartDomain ? [`https://${chartDomain}`] : []),
           "http://localhost:3000",
           "http://localhost:3001",
         ],
@@ -182,7 +201,7 @@ export class NotationAuthStack extends Stack {
     new CfnOutput(this, "TableName", { value: table.tableName });
     new CfnOutput(this, "SiteBucketName", { value: siteBucket.bucketName });
     new CfnOutput(this, "SiteUrl", {
-      value: `https://${distribution.distributionDomainName}`,
+      value: `https://${chartDomain ?? distribution.distributionDomainName}`,
     });
     new CfnOutput(this, "DistributionId", { value: distribution.distributionId });
   }
