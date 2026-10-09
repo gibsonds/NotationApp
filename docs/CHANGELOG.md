@@ -3,6 +3,24 @@
 Auto-generated from commits to `main` by `.github/workflows/update-docs.yml`.
 Newest entries on top.
 
+## 2026-10-09 — 50ccb01
+
+**Set up InferMusic home and Scales hosting with staged custom domains**
+
+- Commit: [`50ccb01`](../../commit/50ccb0142359b7c0bc56d9d8bb84fa03ed300772)
+- Author: gibsonds
+- Files changed:
+  - `docs/INFERMUSIC.md`
+  - `infra/bin/app.ts`
+  - `infra/lib/infermusic-stack.ts`
+  - `infra/lib/notation-auth-stack.ts`
+  - `scripts/deploy-auth-frontend.sh`
+  - `scripts/deploy-infermusic.mjs`
+  - `scripts/prepare-infermusic-domain.mjs`
+  - `sites/infermusic/index.html`
+  - `src/app/layout.tsx`
+  - `src/components/MenuBar.tsx`
+
 ## 2026-10-09 — f54e934
 
 **Isolate authenticated songbooks and add creation and invitation controls**
