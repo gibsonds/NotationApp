@@ -1,3 +1,4 @@
+import { songbookStorageKey, songbookScopeIsCurrent } from "@/lib/songbook-storage";
 import type { Score } from "@/lib/schema";
 import type { SongDTO, SongSummary, VersionEntry } from "@/lib/song-cloud-types";
 import { getSongs, setSongs as writeLocalSongs, type SongBankEntry } from "@/lib/song-bank";
@@ -13,7 +14,7 @@ const DEVICE_ID_COOKIE = "notation_device_id";
 // 400 days is the browser cap for a persistent script-set cookie. Refreshed
 // on every getDeviceId call so an active user keeps extending the window.
 const DEVICE_ID_COOKIE_MAX_AGE = 60 * 60 * 24 * 400;
-const QUEUE_KEY = "notation-app-cloud-queue";
+const QUEUE_KEY = songbookStorageKey("notation-app-cloud-queue");
 const TIMEOUT_MS = 8000;
 const MAX_PAYLOAD = 380 * 1024; // DDB cap is 400 KB; keep headroom.
 
@@ -130,8 +131,14 @@ async function apiFetch(path: string, init: RequestInit = {}): Promise<Response>
   let effectivePath = path;
   const authHeaders: Record<string, string> = {};
   if (AUTH_ENABLED) {
-    const token = await getAccessToken();
+    // Capture the book before refreshing; a different tab may switch accounts
+    // while that request is in flight. Never send old editor data to a new book.
     const songbookId = getActiveSongbookId();
+    if (!songbookScopeIsCurrent()) throw new TerminalCloudError("Songbook changed; reload this tab.");
+    const token = await getAccessToken();
+    if (!token || !songbookId || !songbookScopeIsCurrent()) {
+      throw new TerminalCloudError("Sign in and select a songbook before syncing.");
+    }
     if (token && songbookId) {
       authHeaders.authorization = `Bearer ${token}`;
       if (path === "/songs" || path.startsWith("/songs/")) {

@@ -1,3 +1,4 @@
+import { songbookStorageKey } from "@/lib/songbook-storage";
 /**
  * Rolling IndexedDB autosave for the chord chart / notation editor.
  *
@@ -15,7 +16,7 @@
 
 import type { Score } from "./schema";
 
-const DB_NAME = "notationapp-autosave";
+const DB_NAME = songbookStorageKey("notationapp-autosave");
 const STORE = "snapshots";
 const VERSION = 1;
 const MAX_SNAPSHOTS = 50;

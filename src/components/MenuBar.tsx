@@ -21,7 +21,7 @@ import { logEvent, scoreTypeOf } from "@/lib/analytics";
 
 // On the GitHub Pages static export, the app is served from /NotationApp/.
 // next/link auto-applies basePath, but raw <a href> and window.open() do not.
-const DOCS_HREF = IS_STATIC_EXPORT ? "/NotationApp/docs/" : "/docs";
+const DOCS_HREF = `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/docs/`;
 
 interface MenuBarProps {
   zoom: number;
@@ -603,10 +603,11 @@ function AccountMenuItem() {
   if (!AUTH_ENABLED) return null;
   if (auth.status === "signed-in" && auth.claims) {
     const label = auth.claims.email ?? auth.claims.name ?? auth.claims.sub;
+    const book = auth.memberships.find(m => m.songbookId === auth.activeSongbookId);
     return (
       <span className="flex items-center gap-1.5 ml-2 text-xs text-gray-400">
         <span className="max-w-[160px] truncate" title={`Signed in as ${label}`}>
-          {label}
+          {book ? `${book.name} · ${label}` : label}
         </span>
         <button
           onClick={() => authSignOut()}

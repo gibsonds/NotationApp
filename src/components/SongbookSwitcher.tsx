@@ -16,26 +16,31 @@ import {
   setActiveSongbook,
   subscribe,
 } from "@/lib/auth";
+import SongbookManager from "@/components/SongbookManager";
 import { extractJoinCode, getDeviceId } from "@/lib/song-cloud";
 
 /** Dropdown of the user's songbooks; switching re-syncs the song list. */
 export function SongbookSwitcher({ onSwitched }: { onSwitched: () => void }) {
   const auth = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const [manager, setManager] = useState<"create" | "join" | "invite" | null>(null);
+  useEffect(() => {
+    if (AUTH_ENABLED && (new URLSearchParams(window.location.search).has("invite") || sessionStorage.getItem("notation-app-pending-invite"))) setManager("join");
+  }, []);
   if (!AUTH_ENABLED || auth.status !== "signed-in" || auth.memberships.length === 0) {
     return null;
   }
   const active = auth.activeSongbookId ?? auth.memberships[0].songbookId;
   const role = auth.memberships.find((m) => m.songbookId === active)?.role;
   return (
-    <span className="flex items-center gap-1.5">
+    <span className="flex items-center gap-1.5 flex-wrap">
       <select
         value={active}
         onChange={(e) => {
           setActiveSongbook(e.target.value);
-          onSwitched();
         }}
         className="text-sm border border-gray-300 rounded-lg px-2 py-1 text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
         title="Switch songbook"
+        aria-label="Active songbook"
       >
         {auth.memberships.map((m) => (
           <option key={m.songbookId} value={m.songbookId}>
@@ -43,6 +48,10 @@ export function SongbookSwitcher({ onSwitched }: { onSwitched: () => void }) {
           </option>
         ))}
       </select>
+      <button type="button" onClick={() => setManager("create")} className="px-2 py-2 text-sm text-blue-600 hover:bg-blue-50 rounded-lg">New book</button>
+      <button type="button" onClick={() => setManager("join")} className="px-2 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">Join</button>
+      {role === "owner" && <button type="button" onClick={() => setManager("invite")} className="px-2 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">Invite</button>}
+      {manager && <SongbookManager initialMode={manager} onClose={() => { setManager(null); onSwitched(); }} />}
       {role && role !== "owner" && (
         <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">
           {role}

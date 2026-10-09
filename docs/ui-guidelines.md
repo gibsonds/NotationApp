@@ -113,6 +113,14 @@ on blur or navigation; only an explicit empty Enter/Done deletes a token.
 Mouse focus must not rebuild text spans before click dispatch: Safari can
 lose the click when the target's DOM changes between mousedown and mouseup.
 
+## Authenticated songbooks
+
+Songbook switching reloads the page into an account-and-book-specific editor
+and cache namespace. Never change storage keys under a running editor: delayed
+saves must stay attached to the book where they started. New-book and invitation
+forms use a stacked modal, Enter to submit, Escape to close, and inline errors.
+The active book appears alongside the account and in My Songs.
+
 ## Pre-flight checklist (run BEFORE designing any new component)
 
 1. **Is there an existing component I can extend?** Grep `src/components/`

@@ -45,7 +45,8 @@ STATIC_EXPORT=1 BASE_PATH="" \
   npx next build
 
 echo "Syncing to s3://$BUCKET"
-aws s3 sync out "s3://$BUCKET" --delete
+# Keep previous hashed assets so an already-open tab can finish loading them.
+aws s3 sync out "s3://$BUCKET"
 
 echo "Invalidating CloudFront $DIST_ID"
 aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths "/*" >/dev/null

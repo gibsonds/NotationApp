@@ -1,3 +1,4 @@
+import { songbookStorageKey } from "@/lib/songbook-storage";
 import type { Score } from "@/lib/schema";
 import { archiveBank, mirrorBank, readMirror } from "@/lib/song-bank-guard";
 
@@ -21,11 +22,11 @@ export interface SongBankEntry {
   pendingSync?: boolean;
 }
 
-const STORAGE_KEY = "notation-app-songs";
+const STORAGE_KEY = songbookStorageKey("notation-app-songs");
 /** Where a corrupt/unparseable bank payload is preserved (first corruption
  *  wins, never overwritten) so it can be inspected and recovered instead of
  *  being silently replaced by the next save. */
-const CORRUPT_KEY = "notation-app-songs-corrupt";
+const CORRUPT_KEY = songbookStorageKey("notation-app-songs-corrupt");
 const SONGS_UPDATED_EVENT = "notation-songs-updated";
 
 /** Event name dispatched on the window every time the song bank in

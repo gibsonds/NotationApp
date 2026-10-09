@@ -16,6 +16,7 @@
  * own broker, which forwards it to the IdP.
  */
 
+import { songbookScopeIsCurrent } from "@/lib/songbook-storage";
 import { challengeS256, generateVerifier, randomState } from "@/lib/pkce";
 
 export const OAUTH_ISSUER = process.env.NEXT_PUBLIC_OAUTH_ISSUER ?? "";
@@ -130,6 +131,8 @@ export function redirectUri(): string {
 
 export async function beginSignIn(): Promise<void> {
   if (!AUTH_ENABLED) return;
+  const invite = new URLSearchParams(window.location.search).get("invite");
+  if (invite) sessionStorage.setItem("notation-app-pending-invite", invite);
   const verifier = generateVerifier();
   const state = randomState();
   sessionStorage.setItem(PKCE_KEY, JSON.stringify({ verifier, state }));
@@ -205,6 +208,7 @@ export function signOut(): void {
     /* ignore */
   }
   emit({ status: "signed-out", claims: null, memberships: [], activeSongbookId: null });
+  window.location.reload();
 }
 
 // ── Access token with single-flight refresh ────────────────────────────────
@@ -235,6 +239,7 @@ async function doRefresh(t: StoredTokens): Promise<string | null> {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ refresh_token: t.refresh_token }),
     });
+    if (readTokens()?.access_token !== t.access_token) return null;
     if (!res.ok) {
       markExpired(t);
       return null;
@@ -255,6 +260,7 @@ async function doRefresh(t: StoredTokens): Promise<string | null> {
       expires_at: Date.now() + (body.expires_in ?? 3600) * 1000,
       claims: t.claims,
     };
+    if (readTokens()?.access_token !== t.access_token) return null;
     writeTokens(next);
     if (snapshot.status !== "signed-in") emit({ status: "signed-in", claims: t.claims });
     return next.access_token;
@@ -288,13 +294,17 @@ export function getActiveSongbookId(): string | null {
   }
 }
 
-export function setActiveSongbook(id: string): void {
+export function setActiveSongbook(id: string, reload = true): void {
+  if (reload && !snapshot.memberships.some(m => m.songbookId === id)) {
+    throw new Error("You do not belong to that songbook.");
+  }
   try {
     localStorage.setItem(ACTIVE_BOOK_KEY, id);
   } catch {
     /* ignore */
   }
   emit({ activeSongbookId: id });
+  if (reload) window.location.reload();
 }
 
 /** GET /me — bootstraps memberships (server auto-creates a personal
@@ -312,13 +322,17 @@ export async function loadMe(): Promise<Membership[]> {
     name?: string;
     memberships: Membership[];
   };
+  const currentTokens = readTokens();
+  if (!currentTokens || currentTokens.access_token !== token) return [];
+  // /me is the verified identity; persist it for the next page's cache scope.
+  writeTokens({ ...currentTokens, claims: { sub: body.sub, email: body.email, name: body.name } });
   const memberships = body.memberships ?? [];
   const current = getActiveSongbookId();
   const active =
     (current && memberships.find((m) => m.songbookId === current)?.songbookId) ||
     memberships[0]?.songbookId ||
     null;
-  if (active && active !== current) setActiveSongbook(active);
+  if (active && active !== current) setActiveSongbook(active, false);
   emit({
     memberships,
     activeSongbookId: active,
@@ -378,4 +392,5 @@ export async function initAuth(): Promise<void> {
   if (!t) return;
   emit({ status: "signed-in", claims: t.claims });
   await loadMe();
+  if (!songbookScopeIsCurrent()) window.location.reload();
 }

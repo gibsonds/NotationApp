@@ -1,3 +1,4 @@
+import { songbookStorageKey } from "@/lib/songbook-storage";
 /**
  * Set lists (#73). A SongSet is an ordered list of song-bank entry ids
  * (chord charts or notation scores) that the user wants to play together
@@ -15,7 +16,7 @@ import {
   type SongBankEntry,
 } from "@/lib/song-bank";
 
-const STORAGE_KEY = "notation-app-song-sets";
+const STORAGE_KEY = songbookStorageKey("notation-app-song-sets");
 const SETS_UPDATED_EVENT = "notation-sets-updated";
 
 export const SongSetSchema = z.object({

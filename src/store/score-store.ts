@@ -1,3 +1,4 @@
+import { songbookStorageKey } from "@/lib/songbook-storage";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { Score, ScorePatch, NoteDuration } from "@/lib/schema";
@@ -810,7 +811,7 @@ export const useScoreStore = create<ProjectState>()(
     }),
     }),
     {
-      name: "notation-app-store",
+      name: songbookStorageKey("notation-app-store"),
       // Bump whenever UIState gains a field: migrate() is where persisted
       // uiState is reconciled with DEFAULT_UI_STATE, and zustand only runs it
       // when the version changes. Forgetting this shipped a render crash

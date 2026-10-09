@@ -32,6 +32,7 @@ import ImportSongbookDialog, { type ImportSongbookPayload } from "@/components/I
 import { autosaveToCloud, CloudSaveEvents } from "@/lib/cloud-autosave";
 import { adoptMergedScore } from "@/lib/open-song-sync";
 import { getSongs, restoreBankIfLost, updateSong } from "@/lib/song-bank";
+import { songbookScopeIsCurrent } from "@/lib/songbook-storage";
 import { AUTH_ENABLED, completeSignIn, initAuth } from "@/lib/auth";
 import type { SongDTO } from "@/lib/song-cloud-types";
 import type { Score } from "@/lib/schema";
@@ -777,6 +778,20 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (!AUTH_ENABLED) return;
+    const onStorage = (event: StorageEvent) => {
+      if ((event.key === "notation-app-auth" || event.key === "notation-app-active-songbook") && !songbookScopeIsCurrent()) {
+        window.location.reload();
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    if (new URLSearchParams(window.location.search).has("invite") || sessionStorage.getItem("notation-app-pending-invite")) {
+      setMySongsOpen(true);
+    }
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
   // OAuth42 sign-in callback (?code=&state=) and session rehydration.
   // Inert on the legacy build (AUTH_ENABLED=false there).
   useEffect(() => {
@@ -799,14 +814,7 @@ export default function Home() {
       completeSignIn(code, state)
         .then((ok) => {
           stripOAuthParams();
-          if (ok) {
-            addMessage({
-              id: uuidv4(),
-              role: "assistant",
-              content: "Signed in. Your songbook is now synced to your account.",
-              timestamp: Date.now(),
-            });
-          }
+          if (ok) window.location.reload();
         })
         .catch(() => stripOAuthParams());
       return;

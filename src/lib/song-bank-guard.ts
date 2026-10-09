@@ -1,3 +1,4 @@
+import { songbookStorageKey } from "@/lib/songbook-storage";
 /**
  * Second line of defense for the My Songs bank.
  *
@@ -24,7 +25,7 @@
 
 import type { SongBankEntry } from "@/lib/song-bank";
 
-const DB_NAME = "notationapp-songbank";
+const DB_NAME = songbookStorageKey("notationapp-songbank");
 const VERSION = 1;
 const MIRROR_STORE = "mirror";
 const BACKUP_STORE = "backups";
