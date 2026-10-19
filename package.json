@@ -15,7 +15,7 @@
     "@tonejs/midi": "^2.0.28",
     "bplist-parser": "^0.3.2",
     "next": "^16.4.0",
-    "opensheetmusicdisplay": "^1.9.7",
+    "opensheetmusicdisplay": "^2.2.0",
     "pako": "^2.1.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
