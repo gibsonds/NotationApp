@@ -14,6 +14,10 @@ const aws = (...args) => JSON.parse(run('aws', [...args, '--region', 'us-east-1'
 const outputs = stack => Object.fromEntries(aws('cloudformation', 'describe-stacks', '--stack-name', stack).Stacks[0].Outputs.map(o => [o.OutputKey, o.OutputValue]));
 const hosting = outputs('InferMusic');
 const charts = outputs('NotationAuth');
+// DNS is managed externally; stack outputs still retain the preview addresses.
+hosting.HomeUrl = 'https://app.collisionstorm.com';
+hosting.ScalesUrl = 'https://scales.collisionstorm.com';
+charts.SiteUrl = 'https://charts.collisionstorm.com';
 const stage = mkdtempSync(path.join(tmpdir(), 'infermusic-publish-'));
 const source = path.join(stage, 'source');
 // Keep this pin explicit: a deploy must not silently publish unknown upstream changes.
@@ -37,14 +41,7 @@ writeFileSync(path.join(scalesDir, 'index.html'), scales);
 writeFileSync(path.join(stage, 'release.json'), JSON.stringify({ revision, home: hosting.HomeUrl, scales: hosting.ScalesUrl, charts: charts.SiteUrl }, null, 2));
 console.log(`Prepared: ${stage}`);
 if (process.argv.includes('--publish')) {
-  // Preserve the existing API CORS configuration and add only our site origins.
-  // The scales app's device pairing and diary sync continue using its existing API.
-  const api = aws('apigatewayv2', 'get-api', '--api-id', '0f223nfaq2');
-  const cors = api.CorsConfiguration;
-  cors.AllowOrigins = [...new Set([...cors.AllowOrigins, hosting.ScalesUrl])];
-  const corsPath = path.join(stage, 'scales-cors.json');
-  writeFileSync(corsPath, JSON.stringify(cors));
-  aws('apigatewayv2', 'update-api', '--api-id', '0f223nfaq2', '--cors-configuration', `file://${corsPath}`);
+  // Frontend publishing must not mutate API CORS or authentication settings.
   for (const [name, dir] of [['home', homeDir], ['scales', scalesDir]]) {
     run('aws', ['s3', 'sync', dir, `s3://${hosting.SiteBucketName}/${name}/`, '--only-show-errors'], { stdio: 'inherit' });
   }
