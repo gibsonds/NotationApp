@@ -21,14 +21,14 @@ charts.SiteUrl = 'https://charts.collisionstorm.com';
 const stage = mkdtempSync(path.join(tmpdir(), 'infermusic-publish-'));
 const source = path.join(stage, 'source');
 // Keep this pin explicit: a deploy must not silently publish unknown upstream changes.
-const revision = '6511e01d56b66730c53c1b1a1a1d6f35ae237242';
+const revision = 'e13713e9d9b8ca7b1a14118deed80fdc8c87a92f';
 run('git', ['init', '-q', source]);
 run('git', ['-C', source, 'fetch', '--quiet', '--depth=1', 'https://github.com/gibsonds/guitar-scales.git', revision]);
 run('git', ['-C', source, 'checkout', '--quiet', '--detach', 'FETCH_HEAD']);
 const homeDir = path.join(stage, 'home');
 const scalesDir = path.join(stage, 'scales');
 mkdirSync(homeDir); mkdirSync(scalesDir);
-for (const entry of ['index.html', 'config.js', 'diary-cloud.js', 'scales', 'chords']) cpSync(path.join(source, entry), path.join(scalesDir, entry), { recursive: true });
+for (const entry of ['index.html', 'config.js', 'diary-cloud.js', 'scales', 'chords', 'vendor']) cpSync(path.join(source, entry), path.join(scalesDir, entry), { recursive: true });
 let home = readFileSync(path.join(root, 'sites/infermusic/index.html'), 'utf8');
 home = home.replaceAll('https://charts.infermusic.ai/', `${charts.SiteUrl}/`).replaceAll('https://scales.infermusic.ai/', `${hosting.ScalesUrl}/`);
 writeFileSync(path.join(homeDir, 'index.html'), home);

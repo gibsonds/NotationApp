@@ -9,12 +9,13 @@
     "lint": "eslint",
     "notation": "tsx bin/notation.ts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:static-security": "node --test scripts/*.test.mjs"
   },
   "dependencies": {
     "@tonejs/midi": "^2.0.28",
     "bplist-parser": "^0.3.2",
-    "next": "^16.4.4",
+    "next": "^16.4.5",
     "opensheetmusicdisplay": "^1.9.7",
     "pako": "^2.1.0",
     "react": "^19.3.0",
@@ -33,7 +34,7 @@
     "@types/uuid": "^10.0.0",
     "@vitest/expect": "^4.1.12",
     "eslint": "^9",
-    "eslint-config-next": "^16.4.4",
+    "eslint-config-next": "^16.4.5",
     "happy-dom": "^21.0.4",
     "parse5": "^8.0.1",
     "tailwindcss": "^4",
@@ -43,5 +44,10 @@
   },
   "optionalDependencies": {
     "lightningcss-darwin-arm64": "^1.32.0"
+  },
+  "overrides": {
+    "@typescript-eslint/typescript-estree": {
+      "minimatch": "11.0.4"
+    }
   }
 }
