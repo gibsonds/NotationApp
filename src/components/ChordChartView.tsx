@@ -135,7 +135,7 @@ function SectionBlock({
 }: {
   section: ChordChartSection;
   onLineClick: (sectionId: string, lineIdx: number, col: number) => void;
-  onLineDoubleClick: (sectionId: string, lineIdx: number) => void;
+  onLineDoubleClick: (sectionId: string, lineIdx: number, field?: "lyrics" | "chords") => void;
   onLineContextMenu: (sectionId: string, lineIdx: number, col: number, clientX: number, clientY: number) => void;
   /** Riffs anchored to this section, keyed by line index. */
   riffsByLine: Map<number, Riff[]>;
@@ -238,7 +238,7 @@ function SectionBlock({
           return (
             <Fragment key={i}>
             <div
-              className={`mb-2 relative scroll-mb-24 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${markerClasses}`}
+              className={`mb-2 relative flex items-start gap-2 scroll-mb-24 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${markerClasses}`}
               tabIndex={performMode ? undefined : 0}
               role={performMode ? undefined : "group"}
               aria-label={performMode ? undefined : `${section.label}, line ${i + 1}. Arrow keys select a column; Control plus left or right selects a chord or bar. Enter edits; Delete removes the selected token.`}
@@ -249,7 +249,19 @@ function SectionBlock({
                   onLineFocus(section.id, i);
                 }
               }}
-              onKeyDown={(e) => { if (e.target === e.currentTarget) onLineKeyDown(e, section.id, i); }}
+              onKeyDown={(e) => {
+                if (e.target !== e.currentTarget) return;
+                if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+                  e.preventDefault();
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  onLineContextMenu(section.id, i, highlightCol ?? 0, rect.left, rect.bottom);
+                } else onLineKeyDown(e, section.id, i);
+              }}
+              onContextMenu={(e) => {
+                if (performMode || e.defaultPrevented) return;
+                e.preventDefault();
+                onLineContextMenu(section.id, i, highlightCol ?? 0, e.clientX, e.clientY);
+              }}
               // Addressable by PerformView's scroll-track-active-bar
               // effect. Uses stable section id (not idx) so reorders
               // don't break the lookup. Lyric-only / blank lines also
@@ -257,6 +269,7 @@ function SectionBlock({
               // (e.g. lyrics-line-aware features) reuse the addressing.
               data-bar-line={`${section.id}-${i}`}
             >
+              <div className="min-w-0 flex-1 overflow-x-auto print:overflow-visible">
               <PrintChordLine chords={line.chords} lyrics={line.lyrics} highlightRanges={line.highlightRanges} underlineRanges={line.underlineRanges} />
               {/* Auto-scroll playhead: lights the bar-line `|` character
                   itself (1ch wide at startCol) when this bar is active.
@@ -315,6 +328,27 @@ function SectionBlock({
                   onDoubleClick={() => onLineDoubleClick(section.id, i)}
                   onContextMenu={(col, x, y) => onLineContextMenu(section.id, i, col, x, y)}
                 />
+              )}
+              </div>
+              {!performMode && (
+                <div className="flex shrink-0 print:hidden">
+                  <button
+                    type="button"
+                    aria-label={`Edit chords: ${section.label}, line ${i + 1}`}
+                    className="min-h-11 px-2 text-xs text-pink-300 hover:bg-white/10 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    onClick={() => onLineDoubleClick(section.id, i, "chords")}
+                  >Edit chords</button>
+                  <button
+                    type="button"
+                    aria-label={`Line actions: ${section.label}, line ${i + 1}`}
+                    title="Line actions"
+                    className="w-11 h-11 text-gray-400 hover:bg-white/10 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    onClick={(e) => {
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      onLineContextMenu(section.id, i, highlightCol ?? 0, rect.left, rect.bottom);
+                    }}
+                  >⋯</button>
+                </div>
               )}
             </div>
             {lineRiffs?.length ? (
@@ -503,7 +537,9 @@ function EditableLyricLine({
   const rows = Math.max(1, value.split("\n").length);
 
   return (
+    <div>
     <textarea
+      aria-label="Line text"
       ref={ref}
       value={value}
       rows={rows}
@@ -524,6 +560,12 @@ function EditableLyricLine({
       style={{ fontFamily: "inherit" }}
       spellCheck={false}
     />
+    <div className="flex items-center gap-2 whitespace-normal text-xs text-gray-400">
+      <span>Select any part of this line to replace or delete it.</span>
+      <button type="button" className="min-h-11 px-2 text-blue-300" onPointerDown={(e) => e.preventDefault()} onClick={commit}>Done</button>
+      <button type="button" className="min-h-11 px-2" onPointerDown={(e) => e.preventDefault()} onClick={cancel}>Cancel</button>
+    </div>
+    </div>
   );
 }
 
