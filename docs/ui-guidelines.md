@@ -110,6 +110,8 @@ Ctrl+left/right navigates tokens, up/down navigates lines, Tab navigates words,
 and Option/Alt+left/right moves the current token. Empty drafts are cancelled
 on blur or navigation; only an explicit empty Enter/Done deletes a token.
 
+Each editable chart line exposes visible Edit chords and Line actions buttons, not just a right-click target. Edit chords opens a selectable whole-line text field with Done/Cancel; Shift+F10 or the context-menu key opens line actions from a focused row. Keep these controls out of print and perform views.
+
 Mouse focus must not rebuild text spans before click dispatch: Safari can
 lose the click when the target's DOM changes between mousedown and mouseup.
 
