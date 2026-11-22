@@ -13,6 +13,8 @@ import { canonicalSongTitle, getSongs, saveSong } from "@/lib/song-bank";
 
 interface AutosaveRecoveryDialogProps {
   onClose: () => void;
+  /** Also dismiss the parent browser after a successful score restore. */
+  onRestore?: () => void;
   /** When set, only show snapshots whose title matches (case-insensitive
    *  exact match). Used by My Songs to scope the recovery list to one
    *  song's history. */
@@ -41,7 +43,7 @@ function formatTimestamp(ms: number): string {
  * (replaces the current score; the previous state is itself snapshot first
  * so the user can always undo a restore).
  */
-export default function AutosaveRecoveryDialog({ onClose, filterTitle, cloudSongId }: AutosaveRecoveryDialogProps) {
+export default function AutosaveRecoveryDialog({ onClose, onRestore, filterTitle, cloudSongId }: AutosaveRecoveryDialogProps) {
   const setScore = useScoreStore((s) => s.setScore);
   const currentScore = useScoreStore((s) => s.score);
   const addMessage = useScoreStore((s) => s.addMessage);
@@ -88,6 +90,7 @@ export default function AutosaveRecoveryDialog({ onClose, filterTitle, cloudSong
         timestamp: Date.now(),
       });
       onClose();
+      onRestore?.();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to restore version";
       setError(msg);
@@ -116,6 +119,7 @@ export default function AutosaveRecoveryDialog({ onClose, filterTitle, cloudSong
         timestamp: Date.now(),
       });
       onClose();
+      onRestore?.();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to restore snapshot";
       setError(msg);

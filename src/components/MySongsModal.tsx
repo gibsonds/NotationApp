@@ -772,7 +772,10 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
       // opened Songs" when PerformView unmounted on Edit and revealed
       // the modal that had been mounted behind it the whole time.
       className="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4"
-      onClick={onClose}
+      onClick={(e) => {
+        // Nested popover/backdrop clicks dismiss only their own layer.
+        if (e.target === e.currentTarget) onClose();
+      }}
     >
       <div
         className="bg-white rounded-xl shadow-2xl w-[1100px] max-w-[95vw] flex flex-col h-[92vh]"
@@ -1702,8 +1705,8 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
           onClose={() => {
             setHistoryForTitle(null);
             setHistoryForId(null);
-            onClose();
           }}
+          onRestore={onClose}
         />
       )}
     </div>
