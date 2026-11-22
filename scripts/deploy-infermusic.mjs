@@ -14,17 +14,21 @@ const aws = (...args) => JSON.parse(run('aws', [...args, '--region', 'us-east-1'
 const outputs = stack => Object.fromEntries(aws('cloudformation', 'describe-stacks', '--stack-name', stack).Stacks[0].Outputs.map(o => [o.OutputKey, o.OutputValue]));
 const hosting = outputs('InferMusic');
 const charts = outputs('NotationAuth');
+// DNS is managed externally; stack outputs still retain the preview addresses.
+hosting.HomeUrl = 'https://app.collisionstorm.com';
+hosting.ScalesUrl = 'https://scales.collisionstorm.com';
+charts.SiteUrl = 'https://charts.collisionstorm.com';
 const stage = mkdtempSync(path.join(tmpdir(), 'infermusic-publish-'));
 const source = path.join(stage, 'source');
 // Keep this pin explicit: a deploy must not silently publish unknown upstream changes.
-const revision = '6511e01d56b66730c53c1b1a1a1d6f35ae237242';
+const revision = 'e13713e9d9b8ca7b1a14118deed80fdc8c87a92f';
 run('git', ['init', '-q', source]);
 run('git', ['-C', source, 'fetch', '--quiet', '--depth=1', 'https://github.com/gibsonds/guitar-scales.git', revision]);
 run('git', ['-C', source, 'checkout', '--quiet', '--detach', 'FETCH_HEAD']);
 const homeDir = path.join(stage, 'home');
 const scalesDir = path.join(stage, 'scales');
 mkdirSync(homeDir); mkdirSync(scalesDir);
-for (const entry of ['index.html', 'config.js', 'diary-cloud.js', 'scales', 'chords']) cpSync(path.join(source, entry), path.join(scalesDir, entry), { recursive: true });
+for (const entry of ['index.html', 'config.js', 'diary-cloud.js', 'scales', 'chords', 'vendor']) cpSync(path.join(source, entry), path.join(scalesDir, entry), { recursive: true });
 let home = readFileSync(path.join(root, 'sites/infermusic/index.html'), 'utf8');
 home = home.replaceAll('https://charts.infermusic.ai/', `${charts.SiteUrl}/`).replaceAll('https://scales.infermusic.ai/', `${hosting.ScalesUrl}/`);
 writeFileSync(path.join(homeDir, 'index.html'), home);
@@ -37,14 +41,7 @@ writeFileSync(path.join(scalesDir, 'index.html'), scales);
 writeFileSync(path.join(stage, 'release.json'), JSON.stringify({ revision, home: hosting.HomeUrl, scales: hosting.ScalesUrl, charts: charts.SiteUrl }, null, 2));
 console.log(`Prepared: ${stage}`);
 if (process.argv.includes('--publish')) {
-  // Preserve the existing API CORS configuration and add only our site origins.
-  // The scales app's device pairing and diary sync continue using its existing API.
-  const api = aws('apigatewayv2', 'get-api', '--api-id', '0f223nfaq2');
-  const cors = api.CorsConfiguration;
-  cors.AllowOrigins = [...new Set([...cors.AllowOrigins, hosting.ScalesUrl])];
-  const corsPath = path.join(stage, 'scales-cors.json');
-  writeFileSync(corsPath, JSON.stringify(cors));
-  aws('apigatewayv2', 'update-api', '--api-id', '0f223nfaq2', '--cors-configuration', `file://${corsPath}`);
+  // Frontend publishing must not mutate API CORS or authentication settings.
   for (const [name, dir] of [['home', homeDir], ['scales', scalesDir]]) {
     run('aws', ['s3', 'sync', dir, `s3://${hosting.SiteBucketName}/${name}/`, '--only-show-errors'], { stdio: 'inherit' });
   }

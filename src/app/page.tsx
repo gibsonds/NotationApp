@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, useSyncExternalStore } from "react";
 import dynamic from "next/dynamic";
 import { useScoreStore } from "@/store/score-store";
 import { v4 as uuidv4 } from "uuid";
@@ -21,6 +21,7 @@ import PasteLyricsModal from "@/components/PasteLyricsModal";
 import RiffPeekHost from "@/components/RiffPeekHost";
 import RiffEditorHost from "@/components/RiffEditorHost";
 import MySongsModal from "@/components/MySongsModal";
+import SongbookInviteFlow from "@/components/SongbookInviteFlow";
 import ApiKeyModal from "@/components/ApiKeyModal";
 import JoinSongbookModal from "@/components/JoinSongbookModal";
 import PerformView from "@/components/PerformView";
@@ -33,7 +34,8 @@ import { autosaveToCloud, CloudSaveEvents } from "@/lib/cloud-autosave";
 import { adoptMergedScore } from "@/lib/open-song-sync";
 import { getSongs, restoreBankIfLost, updateSong } from "@/lib/song-bank";
 import { songbookScopeIsCurrent } from "@/lib/songbook-storage";
-import { AUTH_ENABLED, completeSignIn, initAuth } from "@/lib/auth";
+import { AUTH_ENABLED, completeSignIn, getSnapshot as getAuthSnapshot, initAuth, subscribe as subscribeAuth } from "@/lib/auth";
+import { clearPendingInvitation, readPendingInvitation } from "@/lib/pending-invitation";
 import type { SongDTO } from "@/lib/song-cloud-types";
 import type { Score } from "@/lib/schema";
 import ConflictModal from "@/components/ConflictModal";
@@ -111,6 +113,11 @@ export default function Home() {
   const [autosaveDialogOpen, setAutosaveDialogOpen] = useState(false);
   const [pasteLyricsOpen, setPasteLyricsOpen] = useState(false);
   const [mySongsOpen, setMySongsOpen] = useState(false);
+  const [inviteChecked, setInviteChecked] = useState(!AUTH_ENABLED);
+  const [inviteToken, setInviteToken] = useState("");
+  const [inviteAuthReady, setInviteAuthReady] = useState(false);
+  const [inviteError, setInviteError] = useState("");
+  const inviteAuth = useSyncExternalStore(subscribeAuth, getAuthSnapshot, getAuthSnapshot);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [apiKeysOpen, setApiKeysOpen] = useState(false);
   const [joinCode, setJoinCode] = useState<string | null>(null);
@@ -786,9 +793,8 @@ export default function Home() {
       }
     };
     window.addEventListener("storage", onStorage);
-    if (new URLSearchParams(window.location.search).has("invite") || sessionStorage.getItem("notation-app-pending-invite")) {
-      setMySongsOpen(true);
-    }
+    setInviteToken(readPendingInvitation());
+    setInviteChecked(true);
     return () => window.removeEventListener("storage", onStorage);
   }, []);
 
@@ -813,11 +819,20 @@ export default function Home() {
       completeSignIn(code, state)
         .then((ok) => {
           if (ok) window.location.reload();
+          else {
+            setInviteError("Sign-in wasn’t completed. Please try again.");
+            setInviteAuthReady(true);
+          }
         })
-        .catch(() => {});
+        .catch(() => {
+          setInviteError("Sign-in wasn’t completed. Please try again.");
+          setInviteAuthReady(true);
+        });
       return;
     }
-    void initAuth();
+    void initAuth().catch(() => {
+      setInviteError("Couldn’t check your sign-in. Please try again.");
+    }).finally(() => setInviteAuthReady(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1076,6 +1091,16 @@ export default function Home() {
       setStepEntry({ ...stepEntry, measure, beat: Math.round(beat * 1000) / 1000 });
     }, enabled: !!stepEntry },
   ], [score, selection, stepEntry, lyricMode, undo, redo, copySelection, pasteAtSelection, setSelection, setStepEntry, applyPatches, addMessage]);
+
+  function leaveInvitation() {
+    clearPendingInvitation();
+    setInviteToken("");
+    setInviteError("");
+  }
+
+  if (!inviteChecked) return <main className="min-h-dvh bg-[#f3f5fb]" aria-label="Loading Charts" aria-busy />;
+  if (inviteToken) return <SongbookInviteFlow token={inviteToken} ready={inviteAuthReady}
+    signedIn={inviteAuth.status === "signed-in"} authError={inviteError} onLeave={leaveInvitation} />;
 
   return (
     <div className="flex flex-col h-screen bg-[#f8f9fa] print-full">

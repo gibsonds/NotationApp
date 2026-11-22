@@ -1,8 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
-// Exact, temporary exception: development-only glob parser, no fix released.
-// Runtime dependencies never receive this exception. Re-review within 30 days.
-const exception = { id:'GHSA-vfj7-8cjw-p6xm', expires:'2026-11-08', reason:'braces <=3.0.3 in ESLint tooling only; no patched release. CI does not accept user-provided glob patterns.' };
+// No advisory exceptions. GHSA-vfj7-8cjw-p6xm was withdrawn on 2026-10-23.
 let failed=false;
 for(const dir of ['.','infra']) {
  const result=spawnSync('npm',['audit','--json'],{cwd:dir,encoding:'utf8'});
@@ -14,9 +12,8 @@ for(const dir of ['.','infra']) {
  const advisories=new Map();
  for(const v of Object.values(audit.vulnerabilities??{})) for(const via of v.via??[]) if(typeof via==='object') advisories.set(via.url,via);
  for(const [url,v] of advisories) {
-  const exempt=url.endsWith(exception.id)&&new Date()<new Date(exception.expires)&&runtime.status===0;
-  console.log(`${dir}: ${v.severity} ${url}${exempt?' — temporary dev-only exception until '+exception.expires:''}`);
-  if(['moderate','high','critical'].includes(v.severity)&&!exempt) failed=true;
+  console.log(`${dir}: ${v.severity} ${url}`);
+  if(['moderate','high','critical'].includes(v.severity)) failed=true;
  }
  console.log(`${dir}: ${JSON.stringify(audit.metadata?.vulnerabilities??{})}`);
 }
