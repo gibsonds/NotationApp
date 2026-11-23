@@ -127,6 +127,7 @@ export const handler = async (
       }
       case "POST /invitations": {
         const b = parseBody(event);
+        if (Object.keys(b).some(k=>!['books','requestId','recipientEmail'].includes(k))) throw new RequestError(400,'Set the role on each selected book, not on the invitation.');
         await limitOperation(user.sub, 'invites', 50, 86400);
         const recipient = b.recipientEmail === undefined ? undefined : normalizeMailbox(b.recipientEmail);
         // Validate configuration before issuing an email-bound invitation. No
@@ -143,8 +144,10 @@ export const handler = async (
       }
       case "GET /invitations/{token}":
         return json(200, await previewMultiInvite(need(p.token),user));
-      case "POST /invitations/{token}/accept":
+      case "POST /invitations/{token}/accept": {
+        if (Object.keys(parseBody(event)).length) throw new RequestError(400,'Acceptance cannot change the invitation’s books, roles or recipient.');
         return json(200, await acceptMultiInvite(need(p.token),user));
+      }
 
       case "GET /me":
         return json(200, await bootstrapMe(user));

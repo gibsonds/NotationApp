@@ -9,14 +9,14 @@ import type { Membership } from './songbook-types';
 import { normalizeMailbox } from './verified-mailbox';
 
 type Operation = NonNullable<TransactWriteCommandInput['TransactItems']>[number];
-export interface SelectedBook { songbookId: string; name: string; role: 'viewer' }
+export interface SelectedBook { songbookId: string; name: string; role: 'viewer' | 'editor' }
 interface Book extends SelectedBook { createdAt: number }
 export interface MultiInvite {
   token: string; createdBy: string; createdAt: number; expiresAt: number;
   books: Book[]; recipientEmail?: string; acceptedBy?: string;
   deliveryState?: 'attempted' | 'sent';
 }
-export interface InvitationPreview { books: (SelectedBook & { existingRole: Membership['role'] | null })[]; expiresAt: number; allMember: boolean }
+export interface InvitationPreview { books: (SelectedBook & { existingRole: Membership['role'] | null; effectiveRole: Membership['role'] })[]; expiresAt: number; allMember: boolean }
 const TTL = 48 * 3600_000;
 export const MAX_INVITE_BOOKS = 10;
 const pk = (id: string) => `SONGBOOK#${id}`;
@@ -34,11 +34,12 @@ const metaCheck = (book: Book) => check({pk: pk(book.songbookId), sk: 'META'}, '
 const ownerCheck = (book: Book, sub: string) => check({pk:userPk(sub), sk:`MEMBER#${book.songbookId}`}, '#r = :owner', {':owner':'owner'}, {'#r':'role'});
 function selection(value: unknown): SelectedBook[] {
   if (!Array.isArray(value) || !value.length || value.length > MAX_INVITE_BOOKS) throw new RequestError(400, 'Select between 1 and 10 songbooks.');
-  const books = value.map((v: unknown) => {
+  const books = value.map((v: unknown): SelectedBook => {
     if (!v || typeof v !== 'object') throw new RequestError(400, 'Invalid selection.');
     const b = v as Record<string, unknown>;
-    if (typeof b.name !== 'string' || !b.name.trim() || b.name.length > 120 || (b.role !== undefined && b.role !== 'viewer')) throw new RequestError(400, 'Only viewer invitations are supported.');
-    return { songbookId: identifier(typeof b.songbookId === 'string' ? b.songbookId : undefined), name: b.name, role: 'viewer' as const };
+    const role = b.role === undefined ? 'viewer' : b.role;
+    if (typeof b.name !== 'string' || !b.name.trim() || b.name.length > 120 || (role !== 'viewer' && role !== 'editor') || Object.keys(b).some(k=>!['songbookId','name','role'].includes(k))) throw new RequestError(400, 'Each book must specify only its ID, name and Viewer or Editor role.');
+    return { songbookId: identifier(typeof b.songbookId === 'string' ? b.songbookId : undefined), name: b.name, role };
   }).sort((a,b) => a.songbookId.localeCompare(b.songbookId));
   if (new Set(books.map(b=>b.songbookId)).size !== books.length) throw new RequestError(400, 'Select each songbook once.');
   return books;
@@ -86,6 +87,7 @@ export async function createMultiInvite(sub: string, value: unknown, requestId: 
 async function getInvite(token: string, user: AuthedUser): Promise<MultiInvite> {
   const invite = await read(inviteKey(token)) as unknown as MultiInvite | undefined;
   if (!invite || !Array.isArray(invite.books) || !invite.books.length || invite.books.length > MAX_INVITE_BOOKS || invite.expiresAt <= Date.now()) throw unavailable();
+  if (invite.books.some(b=>!b || (b.role !== 'viewer' && b.role !== 'editor') || typeof b.songbookId !== 'string' || typeof b.name !== 'string' || typeof b.createdAt !== 'number') || new Set(invite.books.map(b=>b.songbookId)).size !== invite.books.length) throw unavailable();
   if (invite.recipientEmail && (process.env.VERIFIED_EMAIL_INVITES !== '1' || !user.verifiedEmail || normalizeMailbox(user.verifiedEmail) !== invite.recipientEmail)) throw unavailable();
   if (invite.acceptedBy && invite.acceptedBy !== user.sub) throw unavailable();
   return invite;
@@ -111,9 +113,9 @@ async function inspect(invite: MultiInvite, user: AuthedUser) {
     const mirror = await read(mirrorKey);
     if (user.sub === invite.createdBy && existing?.role !== 'owner') throw changed();
     if (Boolean(existing) !== Boolean(mirror) || (existing && (existing.role !== mirror?.role || existing.addedAt !== mirror?.addedAt || !['viewer','editor','owner'].includes(existing.role)))) throw changed();
-    const membership: Membership = {songbookId:book.songbookId,name:book.name,role:existing?.role ?? 'viewer',addedAt:existing?.addedAt ?? Date.now()};
+    const membership: Membership = {songbookId:book.songbookId,name:book.name,role:existing?.role ?? book.role,addedAt:existing?.addedAt ?? Date.now()};
     memberships.push(membership);
-    preview.books.push({...book,existingRole:existing?.role ?? null});
+    preview.books.push({...book,existingRole:existing?.role ?? null,effectiveRole:membership.role});
     preview.allMember &&= !!existing;
     operations.push(metaCheck(book));
     // If the recipient is also the creator, the membership condition below already
@@ -143,7 +145,19 @@ export async function acceptMultiInvite(token: string, user: AuthedUser): Promis
   if (invite.acceptedBy) return {memberships:state.memberships};
   try {
     await ddb.send(new TransactWriteCommand({TransactItems:[
-      {Update:{TableName:TABLE,Key:inviteKey(token),UpdateExpression:'SET acceptedBy = :sub',ConditionExpression:'attribute_not_exists(acceptedBy) AND expiresAt > :now',ExpressionAttributeValues:{':sub':user.sub,':now':Date.now()}}},
+      {Update:{
+        TableName:TABLE, Key:inviteKey(token), UpdateExpression:'SET acceptedBy = :sub',
+        // The persisted book-role pairs and recipient must still match the
+        // verified snapshot used to plan every membership in this transaction.
+        ConditionExpression:'attribute_not_exists(acceptedBy) AND expiresAt > :now AND #books = :books AND createdBy = :creator AND createdAt = :created AND expiresAt = :expires AND '+
+          (invite.recipientEmail ? 'recipientEmail = :recipient' : 'attribute_not_exists(recipientEmail)'),
+        ExpressionAttributeNames:{'#books':'books'},
+        ExpressionAttributeValues:{
+          ':sub':user.sub, ':now':Date.now(), ':books':invite.books,
+          ':creator':invite.createdBy, ':created':invite.createdAt, ':expires':invite.expiresAt,
+          ...(invite.recipientEmail && {':recipient':invite.recipientEmail}),
+        },
+      }},
       ...state.operations,
     ]}));
   } catch (err) {

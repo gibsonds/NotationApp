@@ -1,3 +1,4 @@
+import {isDeepStrictEqual} from 'node:util';
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { ddb } from '../ddb';
 import { createMultiInvite, previewMultiInvite, acceptMultiInvite, claimInviteDelivery, markInviteSent } from '../multi-invites';
@@ -19,13 +20,13 @@ function matches(row:Row|undefined,op:Row):boolean {
  const v=op.ExpressionAttributeValues??{}, names=op.ExpressionAttributeNames??{};
  const clause=(s:string):boolean=>{
   s=s.trim();
-  if(s==='attribute_not_exists(pk)')return !row;
+  const absent=s.match(/^attribute_not_exists\((\w+)\)$/);if(absent)return row?.[absent[1]]===undefined;
   if(s==='attribute_exists(pk)')return !!row;
   if(s==='attribute_not_exists(acceptedBy)')return row?.acceptedBy===undefined;
   if(s==='attribute_not_exists(deliveryState)')return row?.deliveryState===undefined;
   const m=s.match(/^([#\w]+) (=|<|>) (:\w+)$/);if(!m)throw Error(`Unknown condition: ${s}`);
   const a=row?.[names[m[1]]??m[1]], b=v[m[3]];
-  return a!==undefined&&(m[2]==='='?a===b:m[2]==='<'?a<b:a>b);
+  return a!==undefined&&(m[2]==='='?isDeepStrictEqual(a,b):m[2]==='<'?a<b:a>b);
  };
  return expr.split(' OR ').some((part:string)=>part.split(' AND ').every(clause));
 }
@@ -98,7 +99,7 @@ it('fails closed for changed preview names, missing books, lost owner, mirror mi
  await acceptMultiInvite(i.token,recipient);rows.delete('USER#recipient|MEMBER#a');rows.delete('SONGBOOK#a|MEMBER#recipient');await expect(acceptMultiInvite(i.token,recipient)).rejects.toThrow('changed');expect(get('USER#recipient','MEMBER#a')).toBeUndefined();
 });
 it('bounds and validates selections and refuses creator without every ownership grant',async()=>{
- for(const books of [[],Array(11).fill(selected[0]),[selected[0],selected[0]],[{...selected[0],role:'editor'}],[{...selected[0],songbookId:'a#META'}]])await expect(createMultiInvite('owner',books,req)).rejects.toThrow();
+ for(const books of [[],Array(11).fill(selected[0]),[selected[0],selected[0]],[{...selected[0],role:'owner'}],[{...selected[0],songbookId:'a#META'}]])await expect(createMultiInvite('owner',books,req)).rejects.toThrow();
  get('USER#owner','MEMBER#b')!.role='viewer';await expect(createMultiInvite('owner',selected,req)).rejects.toThrow('changed');expect([...rows.keys()].some(k=>k.startsWith('MULTIINVITE#'))).toBe(false);
 });
 it('claims delivery once even on failure and escapes names in the one email',async()=>{
@@ -131,4 +132,36 @@ it('supports the maximum ten-book selection within DynamoDB transaction limits',
 });
 it('can accept as the creator without duplicate transaction operations and never reduces owner access',async()=>{
  const invite=await createMultiInvite('owner',selected,req);expect((await acceptMultiInvite(invite.token,{sub:'owner'})).memberships.every(m=>m.role==='owner')).toBe(true);
+});
+it('binds mixed roles to book IDs through preview, mirrors and receipt retries',async()=>{
+ const requested=[{...selected[1],role:'viewer'},{...selected[0],role:'editor'}];
+ const invite=await createMultiInvite('owner',requested,req);
+ expect(invite.books.map(b=>[b.songbookId,b.role])).toEqual([['a','editor'],['b','viewer']]);
+ expect((await previewMultiInvite(invite.token,recipient)).books.map(b=>[b.songbookId,b.effectiveRole])).toEqual([['a','editor'],['b','viewer']]);
+ const result=await acceptMultiInvite(invite.token,recipient);expect(result.memberships.map(b=>b.role)).toEqual(['editor','viewer']);
+ for(const[id,role]of [['a','editor'],['b','viewer']]){expect(get('USER#recipient',`MEMBER#${id}`)?.role).toBe(role);expect(get(`SONGBOOK#${id}`,'MEMBER#recipient')?.role).toBe(role);}
+ await expect(acceptMultiInvite(invite.token,recipient)).resolves.toEqual(result);
+});
+it.each([['viewer','editor'],['editor','viewer'],['owner','editor']])('preserves existing %s despite offered %s, exposing the actual effective role',async(existing,offered)=>{
+ member('a','recipient',existing);const invite=await createMultiInvite('owner',[{...selected[0],role:offered},selected[1]],req);
+ expect((await previewMultiInvite(invite.token,recipient)).books[0]).toMatchObject({role:offered,existingRole:existing,effectiveRole:existing});
+ expect((await acceptMultiInvite(invite.token,recipient)).memberships[0].role).toBe(existing);
+ expect(get('SONGBOOK#a','MEMBER#recipient')?.role).toBe(existing);expect(get('USER#recipient','MEMBER#a')?.addedAt).toBe(10);
+});
+it('defaults omitted roles to viewer and rejects unsupported roles and role-only request reuse',async()=>{
+ const books=selected.map(({role:_,...b})=>b);const invite=await createMultiInvite('owner',books,req);expect(invite.books.every(b=>b.role==='viewer')).toBe(true);
+ await expect(createMultiInvite('owner',[{...selected[0],role:'editor'},selected[1]],req)).rejects.toThrow('different invitation');
+ for(const role of ['owner','admin','Editor',null,{},true])await expect(createMultiInvite('owner',[{...selected[0],role}],req)).rejects.toThrow('Viewer or Editor');
+ await expect(createMultiInvite('owner',[{...selected[0],effectiveRole:'owner'}],req)).rejects.toThrow();
+});
+it('rejects stored unsupported roles and atomically detects changes to the immutable book-role list',async()=>{
+ const invite=await createMultiInvite('owner',selected,req);const stored=get(`MULTIINVITE#${invite.token}`,'META')!;
+ stored.books[0].role='owner';await expect(previewMultiInvite(invite.token,recipient)).rejects.toThrow('unavailable');stored.books[0].role='viewer';
+ beforeTransaction=()=>{get(`MULTIINVITE#${invite.token}`,'META')!.books[0].role='editor';};
+ await expect(acceptMultiInvite(invite.token,recipient)).rejects.toThrow('No access was added');expect(get('USER#recipient','MEMBER#a')).toBeUndefined();expect(get('USER#recipient','MEMBER#b')).toBeUndefined();
+});
+it('describes each offered role accurately in the email without promising to change existing access',async()=>{
+ const invite=await createMultiInvite('owner',[{...selected[0],role:'editor'},selected[1]],req);
+ const message=invitationMessage({apiKey:'mock',sender:'sender@example.test',origin:'https://charts.test'},invite);
+ expect(message.textContent).toContain('TestBook — editor for new members');expect(message.textContent).toContain('Synthetic band — viewer for new members');expect(message.textContent).toContain('Your existing access stays unchanged');expect(message.htmlContent).toContain('TestBook — editor for new members');
 });

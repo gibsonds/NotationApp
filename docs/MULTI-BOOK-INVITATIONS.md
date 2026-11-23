@@ -16,7 +16,7 @@ origins/hosts. Ctrl+C stops it. State resets when the process restarts.
 1. Click **Share songbooks**. Select TestBook and the two synthetic band books.
    Leave **Personal — do not share** unchecked.
 2. Enter **tester@example.test**, then **Review selected books**. Check the exact
-   names and viewer roles, then choose **Send one invitation**.
+   names and per-book roles (Viewer by default), then choose **Send one invitation**.
 3. Click **Done**, **Open mock mailbox**, and **Open invitation as new visitor**.
    **Continue to sign in** simulates account creation/sign-in locally. Review
    the names and choose **Join selected songbooks** once.
@@ -32,16 +32,19 @@ races/failures. The actual-engine preflight script is
 `DDB_ENDPOINT=http://127.0.0.1:<port> npm run test:invitations-local`; it refuses
 non-loopback endpoints and creates/deletes only a random synthetic local table.
 The cached ARM64 DynamoDB Local image on this Mac failed native SQLite loading
-before table creation, including explicit native-library paths. That container
-was removed. Thus actual-engine validation has **not passed**; a functioning
+before table creation, including explicit native-library paths. A separate
+checksum-verified official AWS archive (DynamoDB Local 3.3.2) also failed native
+SQLite initialization under the existing ARM64 container Java runtime; the Mac
+has no native Java runtime. Those disposable containers
+were removed. Thus actual-engine validation has **not passed**; a functioning
 DynamoDB Local runtime or authorized disposable nonproduction deployment
 preflight is still needed before release. This local demonstration is not a
 cloud integration test.
 
 ## Supported behavior
 
-- Owners explicitly select 1–10 books, then review frozen names and viewer roles
-  before issuance. No implicit inclusion of other books or song copying.
+- Owners explicitly select 1–10 books and independently choose Viewer or Editor
+  for each (Viewer by default), then review the frozen book/role pairs before issuance. No implicit inclusion of other books or song copying.
 - A private bearer link is usable by one subject. Email mode binds the grant to
   an authenticated **verified** intended mailbox and then the accepting subject.
   Private links do not establish the recipient's mailbox identity; share privately.
@@ -52,7 +55,12 @@ cloud integration test.
 - After sign-in the recipient sees the exact selected names and roles, accepts
   once, then opens the first selected book (stable book-ID order). All books
   appear in their normal picker. Existing owner/editor/viewer rights are kept;
-  an all-member recipient goes straight through without another grant.
+  an all-member recipient with matching roles goes straight through without another grant.
+  If an existing role differs from the offered role, the landing explicitly shows
+  both and requires **Open existing songbooks** so the distinction is visible.
+  An existing Viewer offered Editor stays Viewer; this invitation never changes
+  a preexisting membership. Any change to an existing member’s role needs a separate, explicitly reviewed
+  access-management action, not an implicit upgrade during acceptance.
 - Both issuance and redemption condition the transaction on the creator's
   current ownership for **every** book and unchanged book identity/name.
   Deleted/renamed books, removed rights, recipient removal tombstones and
@@ -61,7 +69,9 @@ cloud integration test.
   return current memberships without recreating removed access. Expired tokens
   fail even before TTL cleanup. A different subject cannot reuse a consumed link.
 - Issuance retries use a creator-scoped request ID and selection fingerprint.
-  Reusing it for different books/recipient is rejected. The API never logs tokens
+  Reusing it for different books, roles or recipient is rejected. Acceptance rejects
+  client-supplied book/role overrides and transactionally checks the stored immutable
+  book-role list. Unsupported roles, including Owner, are rejected. The API never logs tokens
   or addresses. Legacy single-book links retain their existing route/semantics.
 - Email transport is claimed before calling Brevo. An ambiguous outcome is
   **unconfirmed**, with no automatic retry/resend. This favors avoiding duplicate
@@ -103,3 +113,22 @@ All of these gates remain **off/unconfigured** in the checked-in deployment:
   books that do not expose a mixed personal/unreleased catalog. No grant or send
   is authorized by running this preview. Normal review, cloud preflight and
   separate release/send approvals remain outstanding.
+
+
+## Mixed-role preview checks
+
+Select two books, set one to Editor and leave the other Viewer, then review before
+issuing. The recipient landing and mock message list the offered role beside each
+book. New members receive exactly those book-level roles in both membership mirrors;
+existing members retain their actual current access, and that difference is shown.
+Editor uses the existing add/change-song and named-revision permissions. Viewer
+reads songs. Neither is Owner; neither manages members, issues invites, deletes
+songs or transfers ownership. There are no per-chart permissions.
+
+The running representative Mac-only fixture overlay remains outside this PR:
+The Give and Collision Storm are synthetic stand-ins, Personal is an unselected
+negative control, and JonSaxon is a clearly labelled fake chart. The overlay's
+local edit demonstration enforces the resulting book role against in-memory data;
+it is not the production chart editor, data or a real grant to Jon. Its test
+confirmation explicitly says no email was sent. Refresh/reset the preview after
+an update because its in-memory invitations are cleared on restart.

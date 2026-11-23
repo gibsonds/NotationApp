@@ -55,8 +55,8 @@ export async function removeSongbookMember(id: string, sub: string): Promise<voi
   if (!res.ok) throw new Error("Could not remove access.");
 }
 
-export interface SharedBook { songbookId: string; name: string; role: 'viewer' }
-export interface InvitationPreview { books: (SharedBook & {existingRole: Membership['role'] | null})[]; expiresAt: number; allMember: boolean }
+export interface SharedBook { songbookId: string; name: string; role: 'viewer' | 'editor' }
+export interface InvitationPreview { books: (SharedBook & {existingRole: Membership['role'] | null; effectiveRole: Membership['role']})[]; expiresAt: number; allMember: boolean }
 export const MULTI_BOOK_INVITES = process.env.NEXT_PUBLIC_MULTI_BOOK_INVITES === '1';
 async function invitationGet<T>(path: string): Promise<T> {
   const token = await getAccessToken();

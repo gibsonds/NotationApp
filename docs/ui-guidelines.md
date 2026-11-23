@@ -136,8 +136,11 @@ The active book appears alongside the account and in My Songs.
 ## Multiple-book invitation preview
 
 Sharing several books uses an explicit checkbox selection followed by a frozen
-review of exact names and viewer roles before a second issuance action. The
+review of exact names and per-book Viewer/Editor roles before a second issuance
+action. Every selected book defaults to Viewer. The
 recipient's landing lists every selected book before one Join; existing rights
-are labelled and preserved. Email mode is available only when the server reports
+are labelled and preserved; a differing offered role never implies an upgrade or
+downgrade. An all-member visitor reviews a role mismatch before opening existing
+books without another grant. Email mode is available only when the server reports
 configured verified-mailbox support. Private bearer links are clearly labelled.
 See `MULTI-BOOK-INVITATIONS.md` for the default-off contract and local-only preview.

@@ -1,3 +1,4 @@
+import {isDeepStrictEqual} from 'node:util';
 // LOCAL SYNTHETIC PREVIEW ONLY. No AWS client or real credentials.
 type Row=Record<string,any>;
 export const rows=new Map<string,Row>();
@@ -10,13 +11,13 @@ function matches(row:Row|undefined,op:Row):boolean {
  const v=op.ExpressionAttributeValues??{}, names=op.ExpressionAttributeNames??{};
  const clause=(s:string):boolean=>{
   s=s.trim();
-  if(s==='attribute_not_exists(pk)')return !row;
+  const absent=s.match(/^attribute_not_exists\((\w+)\)$/);if(absent)return row?.[absent[1]]===undefined;
   if(s==='attribute_exists(pk)')return !!row;
   if(s==='attribute_not_exists(acceptedBy)')return row?.acceptedBy===undefined;
   if(s==='attribute_not_exists(deliveryState)')return row?.deliveryState===undefined;
   const m=s.match(/^([#\w]+) (=|<|>) (:\w+)$/);if(!m)throw Error(`Unknown condition: ${s}`);
   const a=row?.[names[m[1]]??m[1]], b=v[m[3]];
-  return a!==undefined&&(m[2]==='='?a===b:m[2]==='<'?a<b:a>b);
+  return a!==undefined&&(m[2]==='='?isDeepStrictEqual(a,b):m[2]==='<'?a<b:a>b);
  };
  return expr.split(' OR ').some((part:string)=>part.split(' AND ').every(clause));
 }

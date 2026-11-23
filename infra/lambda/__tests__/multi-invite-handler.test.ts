@@ -21,6 +21,11 @@ it('returns an unconfirmed delivery after an ambiguous failure and never retries
  for(let i=0;i<2;i++){const r=await handler(event(body)) as any;expect(r.statusCode).toBe(200);expect(JSON.parse(r.body).delivery).toBe('unconfirmed');expect(r.body).not.toContain('private provider details');}
  expect(claim).toHaveBeenCalledTimes(2);expect(send).toHaveBeenCalledOnce();
 });
-it('does not accept a client identity override or leak mailbox binding in the response',async()=>{
- const accept=vi.spyOn(repo,'acceptMultiInvite').mockResolvedValue({memberships:[]});await handler(event({sub:'victim',verifiedEmail:'tester@example.test'},'POST /invitations/{token}/accept'));expect(accept).toHaveBeenCalledWith('mi-synthetic',{sub:'owner'});
+it('rejects client identity, book and role overrides at acceptance',async()=>{
+ const accept=vi.spyOn(repo,'acceptMultiInvite').mockResolvedValue({memberships:[]});
+ for(const body of [{sub:'victim',verifiedEmail:'tester@example.test'},{books:[{songbookId:'a',role:'owner'}]},{role:'editor'}])expect((await handler(event(body,'POST /invitations/{token}/accept')) as any).statusCode).toBe(400);
+ expect(accept).not.toHaveBeenCalled();await handler(event({},'POST /invitations/{token}/accept'));expect(accept).toHaveBeenCalledWith('mi-synthetic',{sub:'owner'});
+});
+it('rejects a global role that could be mistaken for per-book access',async()=>{
+ const create=vi.spyOn(repo,'createMultiInvite');expect((await handler(event({books:[],role:'editor'})) as any).statusCode).toBe(400);expect(create).not.toHaveBeenCalled();
 });

@@ -19,10 +19,10 @@ export async function mailConfig(): Promise<MailConfig> {
 const escape = (s:string) => s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
 export function invitationMessage(config: MailConfig, invite: MultiInvite) {
   const url = new URL('/',config.origin); url.searchParams.set('invite',invite.token);
-  const guidance = 'Open this link to continue to Charts sign-in. If you are new, use the account creation option offered on the sign-in screen, then return to this invitation. Existing users can sign in if needed. Use the email address receiving this invitation. Review the selected songbooks and choose Join once. Books you already have stay unchanged. This invitation expires after 48 hours.';
+  const guidance = 'Open this link to continue to Charts sign-in. If you are new, use the account creation option offered on the sign-in screen, then return to this invitation. Existing users can sign in if needed. Use the email address receiving this invitation. Review the selected songbooks and choose Join once. Your existing access stays unchanged, even if the invitation offers a different role. Editor can add and change songs; Viewer can read them. This invitation cannot transfer ownership or remove songs. This invitation expires after 48 hours.';
   return {subject:'Your Charts songbook invitation',
-    textContent:`You are invited to view:\n${invite.books.map(b=>`• ${b.name} — viewer`).join('\n')}\n\n${url}\n\n${guidance}`,
-    htmlContent:`<p>You are invited to view these Charts songbooks:</p><ul>${invite.books.map(b=>`<li>${escape(b.name)} — viewer</li>`).join('')}</ul><p><a href="${escape(url.toString())}">Open invitation</a></p><p>${escape(guidance)}</p>`};
+    textContent:`You are invited to these songbooks:\n${invite.books.map(b=>`• ${b.name} — ${b.role} for new members`).join('\n')}\n\n${url}\n\n${guidance}`,
+    htmlContent:`<p>You are invited to these Charts songbooks:</p><ul>${invite.books.map(b=>`<li>${escape(b.name)} — ${b.role} for new members</li>`).join('')}</ul><p><a href="${escape(url.toString())}">Open invitation</a></p><p>${escape(guidance)}</p>`};
 }
 export async function sendInvitation(config: MailConfig, invite: MultiInvite, fetcher = fetch): Promise<void> {
   if (!invite.recipientEmail) throw new RequestError(400,'A verified recipient mailbox is required for email.');

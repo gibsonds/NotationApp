@@ -12,16 +12,17 @@ type Props = {
   books?: {songbookId:string;name:string;role:string;existingRole:string|null}[];
   disableContinue?: boolean;
   onSwitchAccount?: () => void;
+  continueLabel?: string;
 };
 
-export default function InviteLanding({ phase, busy, error, onContinue, onLeave, multiple, books, disableContinue, onSwitchAccount }: Props) {
+export default function InviteLanding({ phase, busy, error, onContinue, onLeave, multiple, books, disableContinue, onSwitchAccount, continueLabel }: Props) {
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     if (phase !== "loading") heading.current?.focus();
   }, [phase]);
 
-  const action = phase === "join" ? (multiple ? "Join selected songbooks" : "Join songbook") : "Continue to sign in";
-  const progress = phase === "join" ? "Joining…" : "Opening sign-in…";
+  const action = continueLabel ?? (phase === "join" ? (multiple ? "Join selected songbooks" : "Join songbook") : "Continue to sign in");
+  const progress = continueLabel ? "Opening…" : phase === "join" ? "Joining…" : "Opening sign-in…";
   return (
     <main className="min-h-dvh bg-[#f3f5fb] px-5 py-10 text-[#14182d] sm:grid sm:place-content-center sm:px-8">
       <div className="mx-auto w-full max-w-[28rem]">
@@ -43,7 +44,8 @@ export default function InviteLanding({ phase, busy, error, onContinue, onLeave,
               <p className="mt-4 text-base leading-relaxed text-[#4b5873]">
                 {phase === "join" ? "You’re signed in. Review the invitation, then join to open the charts." : "Sign in to Charts to join. New here? Use the account creation option offered on the sign-in screen. You’ll return to this invitation."}
               </p>
-              {books && <ul aria-label="Invited songbooks" className="mt-4 divide-y">{books.map(book=><li key={book.songbookId} className="py-3 break-words">{book.name}<span className="block text-sm text-[#4b5873]">{book.existingRole ? `Already a member · ${book.existingRole} access stays unchanged` : `${book.role} access`}</span></li>)}</ul>}
+              {books && <ul aria-label="Invited songbooks" className="mt-4 divide-y">{books.map(book=><li key={book.songbookId} className="py-3 break-words">{book.name}<span className="block text-sm text-[#4b5873]">{book.existingRole ? `Already a member · ${book.existingRole} access stays unchanged` : `${book.role} access`}{book.existingRole && book.existingRole !== book.role && <span className="block mt-1">Invitation offers {book.role} for new members. Your actual {book.existingRole} access will not change.</span>}</span></li>)}</ul>}
+              {multiple && books && <p className="mt-3 text-sm text-[#4b5873]">Viewer reads songs. Editor can add and change songs and save revisions. Neither role can delete songs or manage access.</p>}
               {multiple && phase === 'join' && !books && !error && <p role="status" className="mt-4">Checking invitation…</p>}
               <button type="button" onClick={onContinue} disabled={busy || disableContinue} className="mt-7 min-h-12 w-full rounded-xl bg-[#1c54c6] px-5 py-3 font-semibold text-white transition hover:bg-[#1746a9] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#1c54c6] disabled:opacity-65">
                 {busy ? progress : action}
