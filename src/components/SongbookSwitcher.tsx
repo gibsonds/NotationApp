@@ -23,6 +23,7 @@ import { extractJoinCode, getDeviceId } from "@/lib/song-cloud";
 export function SongbookSwitcher({ onSwitched }: { onSwitched: () => void }) {
   const auth = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   const [manager, setManager] = useState<"create" | "join" | "invite" | "members" | null>(null);
+  const [switchError, setSwitchError] = useState("");
   useEffect(() => {
     if (AUTH_ENABLED && (new URLSearchParams(window.location.search).has("invite") || sessionStorage.getItem("notation-app-pending-invite"))) setManager("join");
   }, []);
@@ -36,7 +37,9 @@ export function SongbookSwitcher({ onSwitched }: { onSwitched: () => void }) {
       <select
         value={active}
         onChange={(e) => {
-          setActiveSongbook(e.target.value);
+          setSwitchError("");
+          try { setActiveSongbook(e.target.value, true, { reopenMySongs: true }); }
+          catch (err) { setSwitchError(err instanceof Error ? err.message : "Could not switch songbook."); }
         }}
         className="text-sm border border-gray-300 rounded-lg px-2 py-1 text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
         title="Switch songbook"
@@ -48,6 +51,7 @@ export function SongbookSwitcher({ onSwitched }: { onSwitched: () => void }) {
           </option>
         ))}
       </select>
+      {switchError && <span role="alert" className="text-sm text-red-600">{switchError}</span>}
       <button type="button" onClick={() => setManager("create")} className="px-2 py-2 text-sm text-blue-600 hover:bg-blue-50 rounded-lg">New book</button>
       <button type="button" onClick={() => setManager("join")} className="px-2 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">Join</button>
       {role === "owner" && <button type="button" onClick={() => setManager("invite")} className="px-2 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">Invite</button>}

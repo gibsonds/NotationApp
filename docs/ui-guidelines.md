@@ -116,7 +116,9 @@ lose the click when the target's DOM changes between mousedown and mouseup.
 ## Authenticated songbooks
 
 Songbook switching reloads the page into an account-and-book-specific editor
-and cache namespace. Never change storage keys under a running editor: delayed
+and cache namespace. Normal switches in My Songs carry a tab-local, single-use
+resume instruction: reopen the browser only after the selected account/book is
+verified on the new page. Invitation/create/sign-out flows do not set it. Never change storage keys under a running editor: delayed
 saves must stay attached to the book where they started. New-book and invitation
 forms use a stacked modal, Enter to submit, Escape to close, and inline errors.
 The active book appears alongside the account and in My Songs.
@@ -132,3 +134,15 @@ The active book appears alongside the account and in My Songs.
 6. **For lists >5 items, do users need multi-select?**
 7. **Does it look right at iPad portrait (≈810×1080)?** Open DevTools at
    that viewport before merging.
+
+## Account details
+
+The Account control beside Signed in is separate from the book label. Only an
+authenticated `/me` response supplies the displayed account ID; cached JWT claims
+are not profile proof. The opaque ID is labeled as an account ID, never an email.
+Cookie sessions currently retain only subject/expiry, and `/me` does not supply
+email or upstream sign-in method. Keep those fields explicitly unavailable.
+Adding email requires a separately reviewed provider scope/verified-claim and
+minimal server-session `/me` change; identifying Google/Apple/code additionally
+requires a documented provider-verified method claim. Do not guess from an
+address, change subject-based identity mapping, or retain/expose raw tokens.

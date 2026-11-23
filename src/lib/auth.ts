@@ -19,6 +19,7 @@
 import { clearAllApiKeys } from "@/lib/api-key-store";
 import { songbookScopeIsCurrent } from "@/lib/songbook-storage";
 import { challengeS256, generateVerifier, randomState } from "@/lib/pkce";
+import { clearSongBrowserIntent, rememberSongBrowserIntent } from "@/lib/songbook-browser-intent";
 
 export const OAUTH_ISSUER = process.env.NEXT_PUBLIC_OAUTH_ISSUER ?? "";
 export const OAUTH_CLIENT_ID = process.env.NEXT_PUBLIC_OAUTH_CLIENT_ID ?? "";
@@ -53,6 +54,8 @@ export interface AuthSnapshot {
   claims: SessionClaims | null;
   memberships: Membership[];
   activeSongbookId: string | null;
+  /** In-memory, authenticated /me identity only; never decoded or cached profile claims. */
+  verifiedAccount: { sub: string } | null;
 }
 
 interface StoredTokens {
@@ -70,7 +73,10 @@ let snapshot: AuthSnapshot = {
   claims: null,
   memberships: [],
   activeSongbookId: null,
+  verifiedAccount: null,
 };
+let sessionGeneration = 0;
+let latestMeRequest = 0;
 const listeners = new Set<() => void>();
 
 function emit(next: Partial<AuthSnapshot>): void {
@@ -79,8 +85,25 @@ function emit(next: Partial<AuthSnapshot>): void {
 }
 
 export function subscribe(cb: () => void): () => void {
+  if (listeners.size === 0 && typeof window !== "undefined") window.addEventListener("storage", onSessionStorage);
   listeners.add(cb);
-  return () => listeners.delete(cb);
+  return () => {
+    listeners.delete(cb);
+    if (listeners.size === 0 && typeof window !== "undefined") window.removeEventListener("storage", onSessionStorage);
+  };
+}
+
+function clearVerifiedAccount(): void {
+  sessionGeneration++;
+  emit({ verifiedAccount: null });
+}
+function onSessionStorage(event: StorageEvent): void {
+  if (event.key !== null && event.key !== TOKENS_KEY && event.key !== ACTIVE_BOOK_KEY) return;
+  clearSongBrowserIntent();
+  clearVerifiedAccount();
+  // The page reloads on scope changes. Same-account token refreshes can
+  // reverify display metadata without changing the page's storage namespace.
+  if (songbookScopeIsCurrent()) void loadMe().catch(() => {});
 }
 
 export function getSnapshot(): AuthSnapshot {
@@ -88,6 +111,10 @@ export function getSnapshot(): AuthSnapshot {
 }
 
 // ── Token persistence ──────────────────────────────────────────────────────
+
+function storageMarker(key: string): string | null {
+  try { return localStorage.getItem(key); } catch { return null; }
+}
 
 function readTokens(): StoredTokens | null {
   try {
@@ -134,6 +161,8 @@ export function redirectUri(): string {
 
 export async function beginSignIn(): Promise<void> {
   if (!AUTH_ENABLED) return;
+  clearSongBrowserIntent();
+  clearVerifiedAccount();
   const invite = new URLSearchParams(window.location.search).get("invite");
   if (invite) sessionStorage.setItem("notation-app-pending-invite", invite);
   const verifier = generateVerifier();
@@ -171,6 +200,8 @@ export async function completeSignIn(code: string, state: string): Promise<boole
     console.warn("[auth] state mismatch — ignoring callback");
     return false;
   }
+  clearSongBrowserIntent();
+  clearVerifiedAccount();
   const res = await fetch(`${API_BASE}/oauth/exchange`, {
     method: "POST",
     headers: { "content-type": "application/json", ...browserRequestHeaders() },
@@ -211,11 +242,14 @@ export async function completeSignIn(code: string, state: string): Promise<boole
 }
 
 export async function signOut(clearDevice = false): Promise<void> {
+  clearSongBrowserIntent();
+  clearVerifiedAccount();
   if (COOKIE_SESSIONS) {
     const res = await fetch(`${API_BASE}/oauth/logout`, { method: "POST", headers: browserRequestHeaders() });
     if (!res.ok) throw new Error("Could not end the session. Check your connection and try again.");
   }
   writeTokens(null);
+  emit({ status: "signed-out", claims: null, memberships: [], activeSongbookId: null, verifiedAccount: null });
   clearAllApiKeys();
   if (clearDevice) {
     for (const key of Object.keys(localStorage)) {
@@ -303,12 +337,20 @@ async function doRefresh(t: StoredTokens): Promise<string | null> {
 function markExpired(t: StoredTokens): void {
   // Keep claims for the "signed in as X — session expired" UI.
   writeTokens(null);
-  emit({ status: "expired", claims: t.claims });
+  clearSongBrowserIntent();
+  clearVerifiedAccount();
+  emit({ status: "expired", claims: t.claims, verifiedAccount: null });
 }
 
 /** Called by song-cloud on a 401 that carried a token: the token was
  *  revoked/invalid server-side. */
 export function invalidateSession(): void {
+  if (COOKIE_SESSIONS) {
+    clearSongBrowserIntent();
+    clearVerifiedAccount();
+    emit({ status: "expired", claims: null, memberships: [], activeSongbookId: null });
+    return;
+  }
   const t = readTokens();
   if (t) markExpired(t);
 }
@@ -324,15 +366,21 @@ export function getActiveSongbookId(): string | null {
   }
 }
 
-export function setActiveSongbook(id: string, reload = true): void {
+export function setActiveSongbook(id: string, reload = true, options: { reopenMySongs?: boolean } = {}): void {
   if (reload && !snapshot.memberships.some(m => m.songbookId === id)) {
     throw new Error("You do not belong to that songbook.");
   }
+  if (reload && id === snapshot.activeSongbookId) return;
+  if (reload) clearSongBrowserIntent();
   try {
     localStorage.setItem(ACTIVE_BOOK_KEY, id);
   } catch {
-    /* ignore */
+    if (reload) throw new Error("Songbook could not be switched. Allow browser storage and try again.");
   }
+  if (reload && options.reopenMySongs && snapshot.status === "signed-in" && snapshot.verifiedAccount) {
+    rememberSongBrowserIntent(snapshot.verifiedAccount.sub, id);
+  }
+  if (reload) clearVerifiedAccount();
   emit({ activeSongbookId: id });
   if (reload) window.location.reload();
 }
@@ -340,12 +388,21 @@ export function setActiveSongbook(id: string, reload = true): void {
 /** GET /me — bootstraps memberships (server auto-creates a personal
  *  songbook on first touch) and picks an active songbook if none is set. */
 export async function loadMe(): Promise<Membership[]> {
+  const generation = sessionGeneration;
+  const request = ++latestMeRequest;
+  const beforeToken = storageMarker(TOKENS_KEY);
   const token = await getAccessToken();
-  if (!token) return [];
+  if (!token || generation !== sessionGeneration || (COOKIE_SESSIONS && beforeToken !== storageMarker(TOKENS_KEY))) return [];
+  const credentialMarker = storageMarker(TOKENS_KEY);
+  const bookMarker = storageMarker(ACTIVE_BOOK_KEY);
   const res = await fetch(`${API_BASE}/me`, {
     headers: COOKIE_SESSIONS ? browserRequestHeaders() : { authorization: `Bearer ${token}` },
   });
+  const stillCurrent = () => generation === sessionGeneration && request === latestMeRequest &&
+    credentialMarker === storageMarker(TOKENS_KEY) && bookMarker === storageMarker(ACTIVE_BOOK_KEY);
+  if (!stillCurrent()) return [];
   if (!res.ok) {
+    clearVerifiedAccount();
     if (res.status === 401 && COOKIE_SESSIONS) { writeTokens(null); emit({ status: "signed-out", claims: null, memberships: [], activeSongbookId: null }); }
     return [];
   }
@@ -355,6 +412,7 @@ export async function loadMe(): Promise<Membership[]> {
     name?: string;
     memberships: Membership[];
   };
+  if (!stillCurrent() || typeof body.sub !== "string" || !body.sub) return [];
   const currentTokens = readTokens();
   if (!COOKIE_SESSIONS && (!currentTokens || currentTokens.access_token !== token)) return [];
   // /me is the verified identity; persist it for the next page's cache scope.
@@ -377,6 +435,7 @@ export async function loadMe(): Promise<Membership[]> {
       sub: body.sub,
 
     },
+    verifiedAccount: { sub: body.sub },
   });
   return memberships;
 }

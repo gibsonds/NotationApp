@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { AUTH_ENABLED, getSnapshot as getAuthSnapshot, subscribe as subscribeAuth } from "@/lib/auth";
+import { songbookScopeIsCurrent } from "@/lib/songbook-storage";
 import { useScoreStore } from "@/store/score-store";
 import { saveSnapshot } from "@/lib/autosave";
 import AutosaveRecoveryDialog from "@/components/AutosaveRecoveryDialog";
@@ -44,6 +46,9 @@ type SyncStatus = "idle" | CloudSyncStatus;
 const EMPTY_STRINGS: string[] = [];
 
 export default function MySongsModal({ onClose }: { onClose: () => void }) {
+  useSyncExternalStore(subscribeAuth, getAuthSnapshot, getAuthSnapshot);
+  const mounted = useRef(true);
+  const scopeCurrent = () => !AUTH_ENABLED || songbookScopeIsCurrent();
   // Analytics: log modal open on mount.
   useEffect(() => {
     logEvent({ event: "mysongs_open" });
@@ -231,7 +236,10 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
     // need this to detect whether the user has in-flight local edits
     // (open-score differs from local-entry) so we don't clobber them.
     const preLocalById = new Map(getSongs().map((e) => [e.id, e]));
-    const merged = await syncSongbook({ onStatus: setSyncStatus });
+    const merged = await syncSongbook({ onStatus: (status) => {
+      if (mounted.current && scopeCurrent()) setSyncStatus(status);
+    } });
+    if (!mounted.current || !scopeCurrent()) return;
     setSongsState(merged.slice().reverse());
 
     // Cross-device propagation: if the song currently open in the editor
@@ -249,7 +257,9 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
   };
 
   useEffect(() => {
+    mounted.current = true;
     void runSync();
+    return () => { mounted.current = false; };
   }, []);
 
   // Share links always point at the deployed Pages site so they're
@@ -762,6 +772,8 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
       </span>
     );
   })();
+
+  if (!scopeCurrent()) return <div className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center"><p role="status" className="bg-white rounded-xl p-6 text-gray-800">Switching songbook…</p></div>;
 
   return (
     <div
