@@ -1,5 +1,6 @@
 "use client";
 
+import MultiBookInviteFlow from "./MultiBookInviteFlow";
 import { useState } from "react";
 import { beginSignIn, getSnapshot, setActiveSongbook } from "@/lib/auth";
 import { joinSongbook } from "@/lib/songbook-client";
@@ -32,6 +33,7 @@ export default function SongbookInviteFlow({ token, ready, signedIn, authError, 
       setBusy(false);
     }
   }
+  if (token.startsWith("mi-")) return <MultiBookInviteFlow token={token} ready={ready} signedIn={signedIn} authError={authError} onLeave={onLeave} />;
   return <InviteLanding phase={!ready ? "loading" : signedIn ? "join" : "sign-in"} busy={busy}
     error={error || (!tried ? authError : "")}
     onContinue={advance} onLeave={onLeave} />;

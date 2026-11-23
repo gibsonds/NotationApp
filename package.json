@@ -10,7 +10,9 @@
     "notation": "tsx bin/notation.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:static-security": "node --test scripts/*.test.mjs"
+    "test:static-security": "node --test scripts/*.test.mjs",
+    "preview:invitations": "node scripts/preview-invitations.mjs",
+    "test:invitations-local": "tsx scripts/preflight-multi-invites.ts"
   },
   "dependencies": {
     "@tonejs/midi": "^2.0.28",

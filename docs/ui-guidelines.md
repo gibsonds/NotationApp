@@ -132,3 +132,12 @@ The active book appears alongside the account and in My Songs.
 6. **For lists >5 items, do users need multi-select?**
 7. **Does it look right at iPad portrait (≈810×1080)?** Open DevTools at
    that viewport before merging.
+
+## Multiple-book invitation preview
+
+Sharing several books uses an explicit checkbox selection followed by a frozen
+review of exact names and viewer roles before a second issuance action. The
+recipient's landing lists every selected book before one Join; existing rights
+are labelled and preserved. Email mode is available only when the server reports
+configured verified-mailbox support. Private bearer links are clearly labelled.
+See `MULTI-BOOK-INVITATIONS.md` for the default-off contract and local-only preview.

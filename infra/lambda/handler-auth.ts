@@ -12,6 +12,9 @@
  */
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from "aws-lambda";
 import { AuthError, requireUser, type AuthedUser } from "./auth";
+import { createMultiInvite, previewMultiInvite, acceptMultiInvite, claimInviteDelivery, markInviteSent } from './multi-invites';
+import { emailInvitesEnabled, mailConfig, sendInvitation } from './invitation-mail';
+import { normalizeMailbox } from './verified-mailbox';
 import { exchangeCode } from "./oauth-broker";
 import { ImportClaimedError, importDevice } from "./import";
 import {
@@ -115,7 +118,34 @@ export const handler = async (
     await limitOperation(user.sub, "requests", 300, 60);
     if (!route.startsWith("GET ")) await limitOperation(user.sub, "writes", 90, 60);
 
+    if (route.includes('/invitations') && process.env.MULTI_BOOK_INVITES !== '1') return json(404, {error:'not found'});
     switch (route) {
+      case "GET /invitations/capabilities": {
+        let emailDelivery = false;
+        if (emailInvitesEnabled()) { try { await mailConfig(); emailDelivery = true; } catch { /* Unavailable configuration stays disabled. */ } }
+        return json(200, {emailDelivery});
+      }
+      case "POST /invitations": {
+        const b = parseBody(event);
+        await limitOperation(user.sub, 'invites', 50, 86400);
+        const recipient = b.recipientEmail === undefined ? undefined : normalizeMailbox(b.recipientEmail);
+        // Validate configuration before issuing an email-bound invitation. No
+        // client-supplied identity, account discovery, or email verification bypass.
+        const config = recipient ? await mailConfig() : undefined;
+        const invite = await createMultiInvite(user.sub, b.books, typeof b.requestId === 'string' ? b.requestId : '', recipient);
+        let delivery = invite.deliveryState === 'sent' ? 'sent' : invite.deliveryState ? 'unconfirmed' : 'link';
+        if (config && await claimInviteDelivery(invite.token)) {
+          delivery = 'unconfirmed';
+          try { await sendInvitation(config,invite); await markInviteSent(invite.token); delivery = 'sent'; }
+          catch { /* Do not retry an ambiguous external side effect or expose diagnostics. */ }
+        } else if (config && delivery === 'link') delivery = 'unconfirmed';
+        return json(200, {token:invite.token,expiresAt:invite.expiresAt,delivery});
+      }
+      case "GET /invitations/{token}":
+        return json(200, await previewMultiInvite(need(p.token),user));
+      case "POST /invitations/{token}/accept":
+        return json(200, await acceptMultiInvite(need(p.token),user));
+
       case "GET /me":
         return json(200, await bootstrapMe(user));
 

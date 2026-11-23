@@ -15,6 +15,8 @@ import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from "jose";
 export interface AuthedUser {
   sub: string;
   email?: string;
+  /** Only the default-off, verified ID-token/session contract sets this. */
+  verifiedEmail?: string;
   name?: string;
 }
 
