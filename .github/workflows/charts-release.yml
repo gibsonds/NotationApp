@@ -4,6 +4,12 @@ name: Release Charts
 on:
   workflow_dispatch:
     inputs:
+      mode:
+        description: Read-only OIDC preflight, or explicitly publish Charts
+        required: true
+        type: choice
+        default: preflight
+        options: [preflight, deploy]
       commit:
         description: Full reviewed main commit SHA, with all required CI successful
         required: true
@@ -29,9 +35,11 @@ jobs:
       - name: Bind request to the trusted main workflow commit before checkout
         env:
           RELEASE_SHA: ${{ inputs.commit }}
+          RELEASE_MODE: ${{ inputs.mode }}
         run: |
           [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$GITHUB_REF" == refs/heads/main ]]
           [[ "$RELEASE_SHA" =~ ^[a-f0-9]{40}$ && "$RELEASE_SHA" == "$GITHUB_SHA" ]]
+          [[ "$RELEASE_MODE" == preflight || "$RELEASE_MODE" == deploy ]]
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.sha }}
@@ -75,6 +83,7 @@ jobs:
     # No package manager or dependency scripts run in this OIDC-authorized job.
     env:
       RELEASE_SHA: ${{ inputs.commit }}
+      RELEASE_MODE: ${{ inputs.mode }}
       GH_TOKEN: ${{ github.token }}
       AWS_MAX_ATTEMPTS: '1'
       AWS_RETRY_MODE: standard
@@ -83,6 +92,7 @@ jobs:
         run: |
           [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$GITHUB_REF" == refs/heads/main ]]
           [[ "$RELEASE_SHA" =~ ^[a-f0-9]{40}$ && "$RELEASE_SHA" == "$GITHUB_SHA" ]]
+          [[ "$RELEASE_MODE" == preflight || "$RELEASE_MODE" == deploy ]]
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.sha }}
@@ -103,11 +113,15 @@ jobs:
           aws-region: us-east-1
           allowed-account-ids: '637423285747'
           mask-aws-account-id: false
+      - name: Inspect exact Charts targets without AWS resource writes
+        run: python3 scripts/charts_release.py inspect --sha "$RELEASE_SHA"
       - name: Verify targets and create immutable rollback provenance
+        if: inputs.mode == 'deploy'
         run: |
           python3 scripts/charts_release.py check-ci --sha "$RELEASE_SHA"
           python3 scripts/charts_release.py snapshot --sha "$RELEASE_SHA"
       - name: Save rollback metadata before any code, route or site change
+        if: inputs.mode == 'deploy'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: charts-rollback-${{ github.run_id }}
@@ -115,13 +129,15 @@ jobs:
           if-no-files-found: error
           retention-days: 90
       - name: Publish only Charts code, missing invitation routes and frontend
+        if: inputs.mode == 'deploy'
         run: |
           python3 scripts/charts_release.py check-ci --sha "$RELEASE_SHA"
           python3 scripts/charts_release.py deploy --sha "$RELEASE_SHA"
       - name: Verify invalidation, production HTML/assets and signed-out denial
+        if: inputs.mode == 'deploy'
         run: python3 scripts/charts_release.py verify --sha "$RELEASE_SHA"
       - name: Preserve final result even if deployment or smoke stopped
-        if: always()
+        if: always() && inputs.mode == 'deploy'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: charts-result-${{ github.run_id }}

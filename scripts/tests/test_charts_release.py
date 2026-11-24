@@ -1,5 +1,5 @@
 """Release safety regressions. AWS/GitHub/network calls are mocked, never live."""
-import copy, importlib.util, json, os, shutil, subprocess, tempfile, time, unittest
+import contextlib, copy, importlib.util, io, json, os, shutil, subprocess, tempfile, time, unittest
 from pathlib import Path
 from unittest.mock import patch
 
@@ -119,6 +119,41 @@ class ReleaseTests(unittest.TestCase):
         with patch.object(r.subprocess,'run',return_value=result):
             with self.assertRaises(RuntimeError) as error: r.aws('lambda','get-function')
         self.assertNotIn('synthetic-sensitive',str(error.exception))
+
+    def test_preflight_mode_defaults_to_read_only_and_guards_deploy_steps(self):
+        workflow = (Path(__file__).parents[2]/'.github/workflows/charts-release.yml').read_text()
+        self.assertIn('default: preflight', workflow)
+        self.assertIn('options: [preflight, deploy]', workflow)
+        self.assertEqual(workflow.count('"$RELEASE_MODE" == preflight || "$RELEASE_MODE" == deploy'), 2)
+        for step in workflow.split('      - name:')[1:]:
+            if any(command in step for command in ('charts_release.py snapshot', 'charts_release.py deploy', 'charts_release.py verify')):
+                self.assertIn("if: inputs.mode == 'deploy'", step)
+        self.assertIn("if: always() && inputs.mode == 'deploy'", workflow)
+
+    def test_preflight_checks_exact_candidate_and_targets_without_aws_writes(self):
+        responses = self.live_responses()
+        calls=[]
+        def aws(service, op, *args, **kw):
+            calls.append((service,op))
+            self.assertIn((service,op), responses, 'read-only preflight attempted unexpected AWS operation')
+            return copy.deepcopy(responses[(service,op)])
+        output=io.StringIO()
+        with patch.object(r,'assert_candidate') as candidate, patch.object(r,'aws',side_effect=aws), contextlib.redirect_stdout(output):
+            r.inspect_release(self.bundle,self.state,SHA)
+        candidate.assert_called_once_with(SHA)
+        self.assertEqual(set(calls),set(responses))
+        self.assertFalse(self.state.exists())
+        result=json.loads(output.getvalue())
+        self.assertFalse(result['productionChanged'])
+        self.assertEqual(result['status'],'read-only-preflight-passed')
+        self.assertEqual(result['missingInvitationRoutes'],r.ROUTES)
+        self.assertNotIn('Environment',result)
+        self.assertNotIn('Role',result)
+        (self.bundle/'out/index.html').write_text('tampered')
+        with patch.object(r,'assert_candidate'),patch.object(r,'aws') as call:
+            with self.assertRaisesRegex(RuntimeError,'manifest mismatch'):
+                r.inspect_release(self.bundle,self.state,SHA)
+            call.assert_not_called()
 
     def test_manifest_includes_nested_manifest_and_rejects_tampering_or_symlinks(self):
         self.assertIn('out/manifest.json', r.validate_bundle(self.bundle, SHA)['files'])

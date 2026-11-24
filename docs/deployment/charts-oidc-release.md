@@ -46,6 +46,11 @@ a replacement policy. Preserve all existing statements. Each allows only
 apigateway.amazonaws.com, source account 637423285747, exact API xg47257esd,
 $default stage and the listed method/path. Parameter paths use literal `{token}`,
 matching AWS CDK HttpLambdaIntegration's route-template permission convention.
+The JSON includes an additional `AWS:SourceAccount` condition. The console form
+may expose only Source ARN; the exact ARN already binds account637423285747,
+region, API, stage, method and path, so that exact ARN is acceptable without the
+additional account condition. Do not substitute a broader wildcard ARN. The
+helper accepts either form when all four exact route templates are covered.
 Do not give AddPermission to the release role. The helper fails before code or
 site changes if this coverage is absent or ambiguous.
 
@@ -53,9 +58,18 @@ site changes if this coverage is absent or ambiguous.
 
 1. Merge through the repository's normal protections and wait for the final main
    commit's test, dependency-audit, security-tests, analyze and CodeQL checks.
-2. In Actions → Release Charts → Run workflow, select main, paste its full commit
-   SHA, and enter `charts.collisionstorm.com`. No AWS login on the Mac is needed.
-3. Read the run result and exact-commit live verification. A failed or uncertain
+2. In Actions → Release Charts → Run workflow, select main, keep the default
+   **preflight** mode, paste its full commit SHA, and enter
+   `charts.collisionstorm.com`. No AWS login on the Mac is needed.
+3. Confirm `read-only-preflight-passed`. This first controlled OIDC test validates
+   the artifact, exact-main CI and every existing target using read-only AWS
+   operations. It prints only filtered target metadata. It does not publish a
+   Lambda version, create rollback state, upload rollback artifacts, update
+   code/routes/site, invalidate CloudFront or perform production smoke requests.
+4. Only for an authorized production release, dispatch again with **deploy**
+   selected explicitly and the current fully checked main SHA. Feature enablement
+   and any invitation delivery remain separate reviewed steps.
+5. Read the run result and exact-commit live verification. A failed or uncertain
    operation needs inspection; do not blindly re-run a production write.
 
 The build job has no OIDC permission. It installs the lockfiles on Node 22, runs
@@ -65,6 +79,10 @@ static frontend. No CDK synth/deploy or unrelated site release runs. The release
 job installs no packages and runs no dependency scripts. It downloads only that
 same run's artifact, checks file hashes, rejects symlinks, rechecks current main
 and exact-head CI, and assumes the exact scoped role for at most 30 minutes.
+Both jobs allow only the preflight/deploy mode values before checking out code.
+Every rollback snapshot/upload and application-write/production-smoke step is
+gated on explicit deploy mode. The default preflight uses the same production
+role but exercises no AWS resource write permissions.
 Check names are bound to the observed GitHub Actions app ID15368 and CodeQL
 app ID57789; new or renamed checks need a reviewed helper change.
 
@@ -123,7 +141,7 @@ Do not print a GetFunction response or signed URL while preparing a rollback.
 Local unit tests use only synthetic files and mocked AWS/GitHub/network calls.
 They exercise exact-head/provider checks, tampering/symlinks, feature assertions,
 route policy templates, version reuse/publication, concurrent source changes,
-write ordering and no route/config/data deletion. Run:
+write ordering, read-only preflight mode and no route/config/data deletion. Run:
 
 ```sh
 python3 -m unittest discover -s scripts/tests -p 'test_charts_release.py'

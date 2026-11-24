@@ -231,6 +231,20 @@ def inspect_live(features):
     return function, routes, missing
 
 
+def inspect_release(bundle, state, sha):
+    """Read-only first-run OIDC preflight: never snapshot/publish/write."""
+    assert_candidate(sha)
+    artifact = validate_bundle(bundle, sha)
+    function, routes, missing = inspect_live(artifact['features'])
+    print(json.dumps({'status': 'read-only-preflight-passed', 'productionChanged': False,
+                      'commit': sha, 'account': ACCOUNT, 'region': REGION,
+                      'functionArn': function['FunctionArn'], 'codeSha256': function['CodeSha256'],
+                      'api': API, 'integration': INTEGRATION, 'bucket': BUCKET,
+                      'distribution': DISTRIBUTION, 'origin': ORIGIN,
+                      'features': artifact['features'], 'existingRouteCount': len(routes),
+                      'missingInvitationRoutes': missing}, indent=2))
+
+
 def snapshot(bundle, state, sha):
     artifact = validate_bundle(bundle, sha)
     function, routes, missing = inspect_live(artifact['features'])
@@ -319,7 +333,7 @@ def verify(bundle, state, sha):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('command', choices=['check-ci', 'manifest', 'validate', 'snapshot', 'deploy', 'verify'])
+    parser.add_argument('command', choices=['check-ci', 'manifest', 'validate', 'inspect', 'snapshot', 'deploy', 'verify'])
     parser.add_argument('--sha', required=True)
     parser.add_argument('--bundle', type=Path, default=Path('release-bundle'))
     parser.add_argument('--state', type=Path, default=Path('release-state'))
@@ -333,7 +347,7 @@ def main():
     else:
         if args.command in {'snapshot', 'deploy'}:
             assert_candidate(args.sha)
-        {'snapshot': snapshot, 'deploy': deploy, 'verify': verify}[args.command](args.bundle, args.state, args.sha)
+        {'inspect': inspect_release, 'snapshot': snapshot, 'deploy': deploy, 'verify': verify}[args.command](args.bundle, args.state, args.sha)
 
 if __name__ == '__main__':
     try:
