@@ -40,6 +40,9 @@ jobs:
 
       - run: npm ci
 
+      # Root TypeScript checks include the invitation preflight's infra imports.
+      - run: npm ci --prefix infra
+
       # Strip the API routes — Next.js refuses `output: 'export'` if route
       # handlers exist, and they wouldn't run on a static host anyway.
       - name: Remove API routes for static build
