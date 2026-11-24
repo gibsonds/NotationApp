@@ -31,15 +31,24 @@ adapter is not a full DynamoDB emulator. Unit tests additionally cover transacti
 races/failures. The actual-engine preflight script is
 `DDB_ENDPOINT=http://127.0.0.1:<port> npm run test:invitations-local`; it refuses
 non-loopback endpoints and creates/deletes only a random synthetic local table.
-The cached ARM64 DynamoDB Local image on this Mac failed native SQLite loading
-before table creation, including explicit native-library paths. A separate
-checksum-verified official AWS archive (DynamoDB Local 3.3.2) also failed native
-SQLite initialization under the existing ARM64 container Java runtime; the Mac
-has no native Java runtime. Those disposable containers
-were removed. Thus actual-engine validation has **not passed**; a functioning
-DynamoDB Local runtime or authorized disposable nonproduction deployment
-preflight is still needed before release. This local demonstration is not a
-cloud integration test.
+Actual-engine validation now passes against checksum-verified official DynamoDB
+Local 3.3.2. The earlier native SQLite failure was resolved by explicitly naming
+the bundled ARM64 library, rather than relying on its default filename:
+
+```
+-Dorg.sqlite.lib.path=/opt/ddb/DynamoDBLocal_lib
+-Dorg.sqlite.lib.name=libsqlite4java-linux-aarch64.so
+```
+
+The archive was mounted read-only into the existing container Java runtime;
+DynamoDB ran in memory on a loopback-only random port with dummy credentials.
+The script created/deleted only its random local table. It validated actual
+transaction expressions, new mixed and all-Editor grants in both membership
+mirrors, existing Viewer preservation, wrong-mailbox rejection, expiration,
+receipt retries, delivery claims, creator acceptance, and a removal-tombstone
+transaction failure that left neither membership nor acceptance receipt written.
+This clears the local database-engine blocker, but does not validate live OAuth,
+Brevo delivery, deployed infrastructure, or the real book/recipient scope.
 
 ## Supported behavior
 

@@ -28,12 +28,39 @@ async function main(){
   assert.deepEqual(await engine.acceptMultiInvite(invite.token,user),joined);
   assert.equal(await engine.claimInviteDelivery(invite.token),true);assert.equal(await engine.claimInviteDelivery(invite.token),false);await engine.markInviteSent(invite.token);
   const owner=await engine.createMultiInvite('owner',books,randomUUID());assert.equal((await engine.acceptMultiInvite(owner.token,{sub:'owner'})).memberships.every(b=>b.role==='owner'),true);
+  // Real-engine checks for new Editor grants, not only preservation of an
+  // already-Editor membership. Each token still binds to its own recipient.
+  for (const [label,roles] of [['mixed',['editor','viewer']],['editors',['editor','editor']]] as const) {
+   const selected=books.map((b,i)=>({...b,role:roles[i]}));
+   const grant=await engine.createMultiInvite('owner',selected,randomUUID());
+   const result=await engine.acceptMultiInvite(grant.token,{sub:label});
+   assert.deepEqual(result.memberships.map(b=>b.role),[...roles]);
+   for(const [i,b] of selected.entries()) {
+    assert.equal((await read(`USER#${label}`,`MEMBER#${b.songbookId}`))?.role,roles[i]);
+    assert.equal((await read(`SONGBOOK#${b.songbookId}`,`MEMBER#${label}`))?.role,roles[i]);
+   }
+   assert.deepEqual(await engine.acceptMultiInvite(grant.token,{sub:label}),result);
+  }
+  await member('a','existing-viewer','viewer');
+  const offered=await engine.createMultiInvite('owner',books.map(b=>({...b,role:'editor' as const})),randomUUID());
+  assert.equal((await engine.previewMultiInvite(offered.token,{sub:'existing-viewer'})).books[0].effectiveRole,'viewer');
+  assert.deepEqual((await engine.acceptMultiInvite(offered.token,{sub:'existing-viewer'})).memberships.map(b=>b.role),['viewer','editor']);
+  // The removal tombstone is checked inside the transaction: even the first
+  // book's planned membership must remain absent when the second check fails.
+  const blocked=await engine.createMultiInvite('owner',books,randomUUID());
+  await put({pk:'SONGBOOK#b',sk:'REMOVED#blocked',removedAt:blocked.createdAt+1});
+  await assert.rejects(engine.acceptMultiInvite(blocked.token,{sub:'blocked'}));
+  assert.equal(await read('USER#blocked','MEMBER#a'),undefined);assert.equal(await read('USER#blocked','MEMBER#b'),undefined);
+  assert.equal((await read(`MULTIINVITE#${blocked.token}`,'META'))?.acceptedBy,undefined);
+  const expired=await engine.createMultiInvite('owner',books,randomUUID());
+  await db.send(new UpdateCommand({TableName:table,Key:{pk:`MULTIINVITE#${expired.token}`,sk:'META'},UpdateExpression:'SET expiresAt = :expired',ExpressionAttributeValues:{':expired':1}}));
+  await assert.rejects(engine.acceptMultiInvite(expired.token,{sub:'expired'}));
   const failing=await engine.createMultiInvite('owner',books,randomUUID());
   await db.send(new UpdateCommand({TableName:table,Key:{pk:'USER#owner',sk:'MEMBER#b'},UpdateExpression:'SET #r = :r',ExpressionAttributeNames:{'#r':'role'},ExpressionAttributeValues:{':r':'viewer'}}));
   await assert.rejects(engine.acceptMultiInvite(failing.token,{sub:'new-user'}));assert.equal(await read('USER#new-user','MEMBER#a'),undefined);assert.equal(await read('USER#new-user','MEMBER#b'),undefined);
   await db.send(new DeleteCommand({TableName:table,Key:{pk:'USER#recipient',sk:'MEMBER#a'}}));await db.send(new DeleteCommand({TableName:table,Key:{pk:'SONGBOOK#a',sk:'MEMBER#recipient'}}));
   await assert.rejects(engine.acceptMultiInvite(invite.token,user));assert.equal(await read('USER#recipient','MEMBER#a'),undefined);
-  console.log('DynamoDB Local passed: actual transaction expressions, selected multi-book grant, editor preservation, mailbox rejection, receipt retry, delivery claim, creator acceptance and all-or-none permission failure.');
+  console.log('DynamoDB Local passed: actual transaction expressions, new mixed and all-Editor grants/mirrors, existing Viewer preservation, wrong mailbox, expiry, receipt retry, delivery claim, creator acceptance and all-or-none transaction failure.');
  } finally {await raw.send(new DeleteTableCommand({TableName:table}));raw.destroy();}
 }
 void main().catch((err:unknown)=>{const e=err as {name?:string;message?:string};console.error('Synthetic local invitation preflight failed; no cloud endpoint was used.',e.name,e.message?.replace(/mi-[a-f0-9-]+/g,'[redacted]').replace(/[A-Za-z0-9._+-]+@[A-Za-z0-9.-]+/g,'[mailbox]'));process.exitCode=1;});
