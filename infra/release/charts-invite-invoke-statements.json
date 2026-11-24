@@ -1,0 +1,70 @@
+[
+  {
+    "Sid": "ChartsInviteCreate",
+    "Effect": "Allow",
+    "Principal": {
+      "Service": "apigateway.amazonaws.com"
+    },
+    "Action": "lambda:InvokeFunction",
+    "Resource": "arn:aws:lambda:us-east-1:637423285747:function:NotationAuth-Handler886CB40B-VONw1UHVaz0k",
+    "Condition": {
+      "StringEquals": {
+        "AWS:SourceAccount": "637423285747"
+      },
+      "ArnLike": {
+        "AWS:SourceArn": "arn:aws:execute-api:us-east-1:637423285747:xg47257esd/$default/POST/invitations"
+      }
+    }
+  },
+  {
+    "Sid": "ChartsInviteCapabilities",
+    "Effect": "Allow",
+    "Principal": {
+      "Service": "apigateway.amazonaws.com"
+    },
+    "Action": "lambda:InvokeFunction",
+    "Resource": "arn:aws:lambda:us-east-1:637423285747:function:NotationAuth-Handler886CB40B-VONw1UHVaz0k",
+    "Condition": {
+      "StringEquals": {
+        "AWS:SourceAccount": "637423285747"
+      },
+      "ArnLike": {
+        "AWS:SourceArn": "arn:aws:execute-api:us-east-1:637423285747:xg47257esd/$default/GET/invitations/capabilities"
+      }
+    }
+  },
+  {
+    "Sid": "ChartsInvitePreview",
+    "Effect": "Allow",
+    "Principal": {
+      "Service": "apigateway.amazonaws.com"
+    },
+    "Action": "lambda:InvokeFunction",
+    "Resource": "arn:aws:lambda:us-east-1:637423285747:function:NotationAuth-Handler886CB40B-VONw1UHVaz0k",
+    "Condition": {
+      "StringEquals": {
+        "AWS:SourceAccount": "637423285747"
+      },
+      "ArnLike": {
+        "AWS:SourceArn": "arn:aws:execute-api:us-east-1:637423285747:xg47257esd/$default/GET/invitations/{token}"
+      }
+    }
+  },
+  {
+    "Sid": "ChartsInviteAccept",
+    "Effect": "Allow",
+    "Principal": {
+      "Service": "apigateway.amazonaws.com"
+    },
+    "Action": "lambda:InvokeFunction",
+    "Resource": "arn:aws:lambda:us-east-1:637423285747:function:NotationAuth-Handler886CB40B-VONw1UHVaz0k",
+    "Condition": {
+      "StringEquals": {
+        "AWS:SourceAccount": "637423285747"
+      },
+      "ArnLike": {
+        "AWS:SourceArn": "arn:aws:execute-api:us-east-1:637423285747:xg47257esd/$default/POST/invitations/{token}/accept"
+      }
+    }
+  }
+]
