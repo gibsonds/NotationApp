@@ -1,14 +1,15 @@
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { beforeEach,afterEach,expect,it,vi } from 'vitest';
-const mock=vi.hoisted(()=>({state:{status:'signed-in',claims:{sub:'owner'},activeSongbookId:'a',memberships:[{songbookId:'a',name:'TestBook',role:'owner'},{songbookId:'b',name:'Synthetic band',role:'owner'},{songbookId:'private',name:'Personal unshared',role:'owner'}]},listeners:new Set<()=>void>(),create:vi.fn(),preview:vi.fn(),accept:vi.fn(),begin:vi.fn(),open:vi.fn(),out:vi.fn(),me:vi.fn()}));
+const mock=vi.hoisted(()=>({state:{status:'signed-in',claims:{sub:'owner'},activeSongbookId:'a',memberships:[{songbookId:'a',name:'TestBook',role:'owner'},{songbookId:'b',name:'Synthetic band',role:'owner'},{songbookId:'private',name:'Personal unshared',role:'owner'}]},listeners:new Set<()=>void>(),create:vi.fn(),preview:vi.fn(),accept:vi.fn(),begin:vi.fn(),open:vi.fn(),out:vi.fn(),me:vi.fn(),capabilities:vi.fn()}));
 vi.mock('@/lib/auth',()=>({getSnapshot:()=>mock.state,subscribe:(fn:()=>void)=>{mock.listeners.add(fn);return()=>mock.listeners.delete(fn);},beginSignIn:mock.begin,setActiveSongbook:mock.open,signOut:mock.out,loadMe:mock.me}));
-vi.mock('@/lib/songbook-client',()=>({createBookInvitation:mock.create,invitationCapabilities:async()=>({emailDelivery:true}),previewInvitation:mock.preview,acceptBookInvitation:mock.accept}));
+vi.mock('@/lib/songbook-client',()=>({createBookInvitation:mock.create,invitationCapabilities:mock.capabilities,previewInvitation:mock.preview,acceptBookInvitation:mock.accept}));
 import Composer from '../MultiBookInviteComposer';
 import Flow from '../MultiBookInviteFlow';
+const clipboardDescriptor=Object.getOwnPropertyDescriptor(navigator,'clipboard');
 let host:HTMLDivElement,root:ReturnType<typeof createRoot>;
-beforeEach(()=>{vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true);host=document.createElement('div');document.body.append(host);root=createRoot(host);mock.state={status:'signed-in',claims:{sub:'owner'},activeSongbookId:'a',memberships:[{songbookId:'a',name:'TestBook',role:'owner'},{songbookId:'b',name:'Synthetic band',role:'owner'},{songbookId:'private',name:'Personal unshared',role:'owner'}]};mock.preview.mockReset();mock.create.mockReset();mock.accept.mockReset();mock.begin.mockReset();mock.open.mockReset();mock.out.mockReset();mock.me.mockReset();mock.me.mockImplementation(async()=>mock.state.memberships);});
-afterEach(async()=>{await act(async()=>root.unmount());host.remove();vi.unstubAllGlobals();});
+beforeEach(()=>{vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true);host=document.createElement('div');document.body.append(host);root=createRoot(host);mock.state={status:'signed-in',claims:{sub:'owner'},activeSongbookId:'a',memberships:[{songbookId:'a',name:'TestBook',role:'owner'},{songbookId:'b',name:'Synthetic band',role:'owner'},{songbookId:'private',name:'Personal unshared',role:'owner'}]};mock.capabilities.mockReset();mock.capabilities.mockResolvedValue({emailDelivery:true});mock.preview.mockReset();mock.create.mockReset();mock.accept.mockReset();mock.begin.mockReset();mock.open.mockReset();mock.out.mockReset();mock.me.mockReset();mock.me.mockImplementation(async()=>mock.state.memberships);});
+afterEach(async()=>{await act(async()=>root.unmount());host.remove();vi.restoreAllMocks();if(clipboardDescriptor)Object.defineProperty(navigator,'clipboard',clipboardDescriptor);else Reflect.deleteProperty(navigator,'clipboard');vi.unstubAllGlobals();});
 const button=(text:string)=>[...host.querySelectorAll('button')].find(b=>b.textContent===text)!;
 it('previews exactly selected names/viewer roles before one issuance; omitted personal book is absent',async()=>{
  mock.create.mockResolvedValue({token:'mi-demo',delivery:'sent'});
@@ -68,4 +69,33 @@ it('shows a role mismatch even for an all-member visitor, then opens without an 
 });
 it('reselecting a book resets its role to Viewer instead of retaining an earlier Editor choice',async()=>{
  await act(async()=>root.render(<Composer onClose={()=>{}}/>));const check=host.querySelector<HTMLInputElement>('input[type=checkbox]')!;await act(async()=>check.click());const role=host.querySelector<HTMLSelectElement>('select[aria-label="Access for TestBook"]')!;await act(async()=>{role.value='editor';role.dispatchEvent(new Event('change',{bubbles:true}));});await act(async()=>check.click());await act(async()=>check.click());expect(role.value).toBe('viewer');
+});
+
+it('makes private-link sharing available when automatic email is disconnected and copies only on request',async()=>{
+ mock.capabilities.mockResolvedValue({emailDelivery:false});mock.create.mockResolvedValue({token:'mi-synthetic-copy',delivery:'link'});
+ const writeText=vi.fn().mockResolvedValue(undefined);Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText}});
+ await act(async()=>root.render(<Composer onClose={()=>{}}/>));expect(host.textContent).toContain('Automatic email is not connected.');expect(host.textContent).toContain('Create a private link');
+ expect(host.querySelector<HTMLInputElement>('input[type=email]')!.disabled).toBe(true);expect(button('Copy link')).toBeUndefined();
+ await act(async()=>host.querySelector<HTMLInputElement>('input[type=checkbox]')!.click());await act(async()=>button('Review selected books').click());await act(async()=>button('Create private link').click());
+ const link=host.querySelector<HTMLInputElement>('input[aria-label="Invitation link"]')!;expect(link.value).toContain('invite=mi-synthetic-copy');expect(writeText).not.toHaveBeenCalled();expect(mock.create).toHaveBeenCalledOnce();
+ await act(async()=>button('Copy link').click());expect(writeText).toHaveBeenCalledExactlyOnceWith(link.value);expect(button('Copied')).toBeDefined();expect(host.textContent).toContain('Link copied.');expect(button('Done')).toBeDefined();expect(mock.create).toHaveBeenCalledOnce();expect(mock.accept).not.toHaveBeenCalled();
+ // Submitting from the readonly link must not issue another invitation.
+ await act(async()=>host.querySelector('form')!.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));expect(mock.create).toHaveBeenCalledOnce();
+});
+it('honestly falls back to manual link selection when clipboard access is rejected',async()=>{
+ mock.capabilities.mockResolvedValue({emailDelivery:false});mock.create.mockResolvedValue({token:'mi-synthetic-fallback',delivery:'link'});
+ const writeText=vi.fn().mockRejectedValue(Error('synthetic private diagnostic'));Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText}});
+ await act(async()=>root.render(<Composer onClose={()=>{}}/>));await act(async()=>host.querySelector<HTMLInputElement>('input[type=checkbox]')!.click());await act(async()=>button('Review selected books').click());await act(async()=>button('Create private link').click());await act(async()=>button('Copy link').click());
+ const link=host.querySelector<HTMLInputElement>('input[aria-label="Invitation link"]')!;expect(document.activeElement).toBe(link);expect(link.selectionStart).toBe(0);expect(link.selectionEnd).toBe(link.value.length);expect(host.textContent).toContain('Copy wasn’t available. The link is selected');expect(host.textContent).not.toContain('synthetic private diagnostic');expect(host.textContent).not.toContain('Link copied.');expect(button('Copy link')).toBeDefined();expect(mock.create).toHaveBeenCalledOnce();expect(mock.accept).not.toHaveBeenCalled();
+});
+it('waits for clipboard confirmation before reporting success',async()=>{
+ mock.create.mockResolvedValue({token:'mi-synthetic-pending',delivery:'link'});let finish!:()=>void;
+ const writeText=vi.fn().mockReturnValue(new Promise<void>(resolve=>{finish=resolve;}));Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText}});
+ await act(async()=>root.render(<Composer onClose={()=>{}}/>));await act(async()=>host.querySelector<HTMLInputElement>('input[type=checkbox]')!.click());await act(async()=>button('Review selected books').click());await act(async()=>button('Create private link').click());await act(async()=>button('Copy link').click());
+ expect(button('Copying…').disabled).toBe(true);expect(host.textContent).not.toContain('Link copied.');expect(writeText).toHaveBeenCalledOnce();await act(async()=>finish());expect(host.textContent).toContain('Link copied.');expect(mock.create).toHaveBeenCalledOnce();
+});
+it('closes and refuses to copy a result after the signed-in actor changes',async()=>{
+ mock.create.mockResolvedValue({token:'mi-synthetic-stale',delivery:'link'});const writeText=vi.fn();Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText}});const close=vi.fn();
+ await act(async()=>root.render(<Composer onClose={close}/>));await act(async()=>host.querySelector<HTMLInputElement>('input[type=checkbox]')!.click());await act(async()=>button('Review selected books').click());await act(async()=>button('Create private link').click());
+ await act(async()=>{mock.state={...mock.state,claims:{sub:'another-actor'}};mock.listeners.forEach(fn=>fn());});expect(close).toHaveBeenCalled();await act(async()=>button('Copy link').click());expect(writeText).not.toHaveBeenCalled();expect(mock.create).toHaveBeenCalledOnce();
 });

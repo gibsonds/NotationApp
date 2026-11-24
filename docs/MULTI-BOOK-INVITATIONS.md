@@ -1,9 +1,14 @@
-# Multi-book invitations (draft, default off)
+# Multi-book invitations
 
-This work is separate from PR #215 (My Songs/account display). It has not been
-released. The live catalog, Jon's identity and his intended book set have not
-been inspected or changed. Synthetic names in the preview are not evidence
-that a corresponding live, appropriately scoped book exists.
+Private invitations share an explicitly selected set of owned songbooks. Their
+contents remain in place; sharing does not copy or reorganize songs. Synthetic
+preview names are not evidence that a corresponding live songbook exists.
+
+The current release configuration enables private links and keeps verified-email
+delivery off. The matching backend feature flag must be enabled in the separately
+reviewed production configuration before the release preflight can pass. Email
+delivery remains unavailable until its credential and verified-mailbox integration
+are configured and tested. No recipient lookup or sign-in method is guessed.
 
 ## Try the local preview on this Mac
 
@@ -89,11 +94,12 @@ Brevo delivery, deployed infrastructure, or the real book/recipient scope.
 
 ## Email contract and exact release prerequisites
 
-All of these gates remain **off/unconfigured** in the checked-in deployment:
+The release configuration and actual backend settings must agree:
 
 - Lambda `MULTI_BOOK_INVITES=1` and frontend build
   `NEXT_PUBLIC_MULTI_BOOK_INVITES=1` enable the new flow. Existing UI stays on
-  the legacy single-book workflow by default. New API routes require authentication.
+  the legacy single-book workflow unless enabled. The current release opts into
+  private multi-book links. New API routes require authentication.
 - `VERIFIED_EMAIL_INVITES=1` opts into retaining a normalized mailbox from the
   existing verified ID token, **only** with boolean `email_verified: true`.
   Signature, issuer, audience, expiry and nonce validation remain mandatory.

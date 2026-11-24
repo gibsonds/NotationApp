@@ -2,7 +2,7 @@
 
 The manual workflow uses GitHub OIDC for Charts release tooling. It is independent
 of the My Songs and multi-book invitation changes in PRs #215 and #216 and keeps
-invitation features off. The workflow does not apply IAM, change provider settings
+email delivery off. The workflow does not apply IAM, change provider settings
 or secrets, grant songbook access, or send invitations.
 
 The repository also has a separate GitHub Pages workflow that automatically
@@ -124,12 +124,14 @@ verifies the existing integration metadata, API stage auto-deploy, public API
 origin and default S3 origin; it never changes those settings. A changed target,
 runtime, handler, cookie/origin config or feature assertion stops the release.
 
-`charts-release-config.json` asserts both invitation features **false**. The
-build explicitly passes both corresponding public flags as0; the helper verifies
-matching existing backend gates and never changes configuration. Email delivery,
-verified-email claims/scopes/provider settings, recipient identity and the actual
-books/roles require their own reviewed configuration and end-to-end preflight.
-This automation alone does not make Jon's invitation ready to send.
+`charts-release-config.json` enables private multi-book links and keeps verified
+email delivery false. The build passes those corresponding public flags as1 and
+0. The matching backend `MULTI_BOOK_INVITES=1` setting is a separately reviewed
+activation step; the helper verifies agreement and never changes configuration.
+Private links require no mail credential and can be shared directly with the
+intended recipient. Automatic email delivery and verified-mailbox claims/scopes
+still require their separate configuration and end-to-end preflight. A release
+does not issue or accept any invitation by itself.
 
 ## Rollback and partial failure
 

@@ -119,6 +119,8 @@ export async function createSongbook(
 export async function listMemberships(sub: string): Promise<Membership[]> {
   const items = await queryAll({
     TableName: TABLE,
+    // New grants and revocations must be visible to the immediate /me refresh.
+    ConsistentRead: true,
     KeyConditionExpression: "pk = :pk AND begins_with(sk, :sk)",
     ExpressionAttributeValues: { ":pk": userPk(sub), ":sk": "MEMBER#" },
   });

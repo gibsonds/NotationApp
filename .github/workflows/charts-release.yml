@@ -113,7 +113,6 @@ jobs:
           role-session-name: ChartsRelease-${{ github.run_id }}
           role-duration-seconds: 1800
           aws-region: us-east-1
-          allowed-account-ids: '637423285747'
           mask-aws-account-id: false
       - name: Inspect exact Charts targets without AWS resource writes
         run: python3 scripts/charts_release.py inspect --sha "$RELEASE_SHA"
