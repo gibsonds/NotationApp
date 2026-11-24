@@ -21,7 +21,7 @@ charts.SiteUrl = 'https://charts.collisionstorm.com';
 const stage = mkdtempSync(path.join(tmpdir(), 'infermusic-publish-'));
 const source = path.join(stage, 'source');
 // Keep this pin explicit: a deploy must not silently publish unknown upstream changes.
-const revision = '1bd1a994d2356ea251a73e1b0f98140c3523dbb7';
+const revision = 'c747bc0497f16eb139ad33d6004b9613c87afa9a';
 run('git', ['init', '-q', source]);
 run('git', ['-C', source, 'fetch', '--quiet', '--depth=1', 'https://github.com/gibsonds/guitar-scales.git', revision]);
 run('git', ['-C', source, 'checkout', '--quiet', '--detach', 'FETCH_HEAD']);

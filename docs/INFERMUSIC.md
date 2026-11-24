@@ -62,7 +62,7 @@ No aliases are attached until both the certificate and zone are supplied. The ex
 - `node scripts/deploy-infermusic.mjs --publish` publishes those files, adds the actual scales origin to existing API CORS settings, and invalidates both CloudFront caches.
 - `NEXT_PUBLIC_OAUTH_CLIENT_ID=<public id> AWS_DEFAULT_REGION=us-east-1 bash scripts/deploy-auth-frontend.sh` publishes Charts and adds a home link from the InferMusic stack output.
 
-The scales build is pinned to `gibsonds/guitar-scales@1bd1a994d2356ea251a73e1b0f98140c3523dbb7`, which adds cancellable scale playback and recovery from failed or stalled audio startup. Publishing copies its scale/chord data and app files and applies only the InferMusic title, footer, and navigation. Update the pin deliberately when promoting an upstream release.
+The scales build is pinned to `gibsonds/guitar-scales@c747bc0497f16eb139ad33d6004b9613c87afa9a`, which self-hosts the audio library for the production security policy and adds cancellable playback with recovery from failed or stalled audio startup. Publishing copies its scale/chord data and app files and applies only the InferMusic title, footer, and navigation. Update the pin deliberately when promoting an upstream release.
 
 ## Existing browser data
 
