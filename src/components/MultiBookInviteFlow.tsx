@@ -4,17 +4,25 @@ import { beginSignIn, getSnapshot, subscribe, setActiveSongbook, signOut, loadMe
 import { previewInvitation, acceptBookInvitation, type InvitationPreview } from '@/lib/songbook-client';
 import InviteLanding from './InviteLanding';
 
-type Props={token:string;ready:boolean;signedIn:boolean;authError?:string;onLeave:()=>void};
-export default function MultiBookInviteFlow({token,ready,signedIn,authError,onLeave}:Props) {
+type Props={token:string;ready:boolean;signedIn:boolean;authError?:string;onLeave:()=>void;onOpenBook?:()=>void};
+export default function MultiBookInviteFlow({token,ready,signedIn,authError,onLeave,onOpenBook}:Props) {
   const auth=useSyncExternalStore(subscribe,getSnapshot,getSnapshot);
-  return <InvitationSession key={`${token}:${auth.claims?.sub}:${signedIn}`} token={token} ready={ready} signedIn={signedIn} authError={authError} onLeave={onLeave} sub={auth.claims?.sub}/>;
+  return <InvitationSession key={`${token}:${auth.claims?.sub}:${signedIn}`} token={token} ready={ready} signedIn={signedIn} authError={authError} onLeave={onLeave} onOpenBook={onOpenBook} sub={auth.claims?.sub}/>;
 }
-function InvitationSession({token,ready,signedIn,authError,onLeave,sub}:Props&{sub?:string}) {
+function InvitationSession({token,ready,signedIn,authError,onLeave,onOpenBook,sub}:Props&{sub?:string}) {
   const [preview,setPreview]=useState<InvitationPreview|null>(null);
   const [error,setError]=useState('');
   const [busy,setBusy]=useState(false);
   const current=signedIn?preview:null;
-  const openExisting=useEffectEvent((value:InvitationPreview)=>{onLeave();setActiveSongbook(value.books[0].songbookId);});
+  function openBook(id:string) {
+    const alreadyActive=getSnapshot().activeSongbookId===id;
+    // Selection can fail (for example blocked storage). Keep the invitation
+    // available until the verified destination has been selected successfully.
+    setActiveSongbook(id,true,{reopenMySongs:true});
+    onLeave();
+    if(alreadyActive)onOpenBook?.();
+  }
+  const openExisting=useEffectEvent((value:InvitationPreview)=>openBook(value.books[0].songbookId));
   useEffect(()=>{let canceled=false;
     if(ready&&signedIn&&sub) void previewInvitation(token).then(value=>{
       if(canceled||getSnapshot().claims?.sub!==sub)return;
@@ -32,7 +40,7 @@ function InvitationSession({token,ready,signedIn,authError,onLeave,sub}:Props&{s
       const books=current.allMember ? (await loadMe()).filter(b=>current.books.some(i=>i.songbookId===b.songbookId)).sort((a,b)=>a.songbookId.localeCompare(b.songbookId)) : await acceptBookInvitation(token);
       if(getSnapshot().claims?.sub!==sub)return;
       if(books.length!==current.books.length||!current.books.every(i=>books.some(b=>b.songbookId===i.songbookId))||!books.every(b=>getSnapshot().memberships.some(m=>m.songbookId===b.songbookId)))throw new Error('Charts couldn’t refresh the selected songbooks. Reload to check your access.');
-      onLeave();setActiveSongbook(books[0].songbookId);
+      openBook(books[0].songbookId);
     }catch(e){setError(e instanceof Error?e.message:'Could not continue.');}finally{setBusy(false);}
   }
   return <InviteLanding phase={!ready?'loading':signedIn?'join':'sign-in'} busy={busy} error={error||authError} onContinue={advance} onLeave={onLeave}
