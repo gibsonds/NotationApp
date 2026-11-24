@@ -6,11 +6,15 @@ import { scoreToMidi } from "@/lib/midi";
 function attachmentName(title: string, extension: "musicxml" | "mid"): string {
   // Keep a bounded basename, never path segments or control characters. The
   // ASCII fallback is quoted safely; filename* preserves international titles.
-  const stem = title
+  const bounded = title
     .replace(/[\p{Cc}\/\\]/gu, "_")
-    .replace(/^[.\s]+|[.\s]+$/g, "")
     .slice(0, 120)
-    .toWellFormed() || "score";
+    .toWellFormed();
+  let first = 0;
+  let last = bounded.length;
+  while (first < last && (bounded[first] === "." || bounded[first].trim() === "")) first++;
+  while (last > first && (bounded[last - 1] === "." || bounded[last - 1].trim() === "")) last--;
+  const stem = bounded.slice(first, last) || "score";
   const fallback = stem.replace(/[^A-Za-z0-9 ._-]/g, "_");
   const encoded = encodeURIComponent(`${stem}.${extension}`).replace(
     /[!'()*]/g,

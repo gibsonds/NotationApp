@@ -71,6 +71,13 @@ describe("score export responses", () => {
     );
   });
 
+  it("trims filename edges within the bounded title", async () => {
+    const response = await POST(exportRequest("musicxml", " . Warmup . "));
+    expect(response.headers.get("content-disposition")).toBe(
+      'attachment; filename="Warmup.musicxml"; filename*=UTF-8\'\'Warmup.musicxml'
+    );
+  });
+
   it("keeps MIDI bytes and type while applying safe attachment headers", async () => {
     const response = await POST(exportRequest("midi"));
     expect(response.status).toBe(200);
