@@ -3,6 +3,22 @@ import { ScoreSchema } from "@/lib/schema";
 import { scoreToMusicXML } from "@/lib/musicxml";
 import { scoreToMidi } from "@/lib/midi";
 
+function attachmentName(title: string, extension: "musicxml" | "mid"): string {
+  // Keep a bounded basename, never path segments or control characters. The
+  // ASCII fallback is quoted safely; filename* preserves international titles.
+  const stem = title
+    .replace(/[\p{Cc}\/\\]/gu, "_")
+    .replace(/^[.\s]+|[.\s]+$/g, "")
+    .slice(0, 120)
+    .toWellFormed() || "score";
+  const fallback = stem.replace(/[^A-Za-z0-9 ._-]/g, "_");
+  const encoded = encodeURIComponent(`${stem}.${extension}`).replace(
+    /[!'()*]/g,
+    (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`
+  );
+  return `attachment; filename="${fallback}.${extension}"; filename*=UTF-8''${encoded}`;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -28,8 +44,10 @@ export async function POST(req: NextRequest) {
         const xml = scoreToMusicXML(scoreResult.data);
         return new NextResponse(xml, {
           headers: {
-            "Content-Type": "application/xml",
-            "Content-Disposition": `attachment; filename="${scoreResult.data.title || "score"}.musicxml"`,
+            // This endpoint exports a file, not an active XML document to render.
+            "Content-Type": "application/octet-stream",
+            "Content-Disposition": attachmentName(scoreResult.data.title, "musicxml"),
+            "X-Content-Type-Options": "nosniff",
           },
         });
       }
@@ -39,7 +57,8 @@ export async function POST(req: NextRequest) {
         return new NextResponse(midiBytes.buffer as ArrayBuffer, {
           headers: {
             "Content-Type": "audio/midi",
-            "Content-Disposition": `attachment; filename="${scoreResult.data.title || "score"}.mid"`,
+            "Content-Disposition": attachmentName(scoreResult.data.title, "mid"),
+            "X-Content-Type-Options": "nosniff",
           },
         });
       }
@@ -54,10 +73,10 @@ export async function POST(req: NextRequest) {
           { status: 400 }
         );
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("Score export error:", err);
     return NextResponse.json(
-      { error: err.message || "Internal server error" },
+      { error: err instanceof Error ? err.message : "Internal server error" },
       { status: 500 }
     );
   }
