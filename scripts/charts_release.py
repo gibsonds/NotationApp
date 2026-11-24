@@ -260,6 +260,10 @@ def inspect_live(features):
     require(identity['Account'] == ACCOUNT and identity['Arn'].startswith(f'arn:aws:sts::{ACCOUNT}:assumed-role/NotationChartsRelease/'), 'Wrong deployment identity')
     function = aws('lambda', 'get-function-configuration', '--function-name', FUNCTION)
     require(function['FunctionArn'] == FUNCTION_ARN and function['Runtime'] == 'nodejs22.x' and function['Handler'] == 'index.handler', 'Unexpected Lambda target/runtime/handler')
+    require(function.get('Version') == '$LATEST' and function.get('State') == 'Active' and
+            function.get('LastUpdateStatus') == 'Successful' and
+            isinstance(function.get('RevisionId'), str) and function['RevisionId'],
+            'Live Lambda must be active with a successful update and known $LATEST revision')
     variables = function.get('Environment', {}).get('Variables', {})
     require(variables.get('COOKIE_SESSIONS') == '1' and ORIGIN in variables.get('APP_ORIGINS', '').split(','), 'Cookie/origin configuration mismatch')
     require((variables.get('MULTI_BOOK_INVITES') == '1') == features['multiBookInvites'] and (variables.get('VERIFIED_EMAIL_INVITES') == '1') == features['verifiedEmail'], 'Feature configuration differs; review separately, do not modify it here')
@@ -316,10 +320,26 @@ def snapshot(bundle, state, sha):
             aws('s3api', 'get-object', '--bucket', BUCKET, '--key', key, '--version-id', item['VersionId'], str(target))
     require((state/'html-before/index.html').is_file(), 'No website rollback HTML')
     # Publish a version inside Lambda, never copy the live ZIP/config into this
-    # public repository's artifacts. This does not change $LATEST or any alias.
+    # public repository's artifacts. Code/operational settings stay unchanged,
+    # but publishing can rotate $LATEST's concurrency revision. Re-establish
+    # that baseline only after verifying the live state against the backup.
     backup = backup_version(function, sha)
-    write_json(state/'snapshot.json', {'commit': sha, 'configurationHash': configuration_hash(function), 'revisionId': function['RevisionId'], 'codeSha256': function['CodeSha256'], 'backupVersionArn': backup['FunctionArn'], 'backupVersion': backup['Version'], 'routesBefore': routes, 'missingRoutes': missing, 'siteVersions': current, 'createdAt': int(time.time())})
-    print('Targets validated; immutable Lambda version and versioned site rollback provenance saved. Live code/config unchanged.')
+    latest, latest_routes, latest_missing = inspect_live(artifact['features'])
+    require(latest['CodeSha256'] == function['CodeSha256'] == backup['CodeSha256'] and
+            configuration_hash(latest) == configuration_hash(function) == configuration_hash(backup),
+            'Live backend code or operational configuration changed during snapshot; review before retry')
+    # The version's Description is intentionally overridden for provenance;
+    # compare these additional static fields only between the two live reads.
+    require(all(latest.get(key) == function.get(key) for key in ('Description', 'PackageType')),
+            'Live backend static settings changed during snapshot; review before retry')
+    require(sorted(latest_routes, key=lambda r: r['RouteKey']) == sorted(routes, key=lambda r: r['RouteKey']) and
+            latest_missing == missing, 'Live routes changed during snapshot; review before retry')
+    latest_versions = aws('s3api', 'list-object-versions', '--bucket', BUCKET).get('Versions', [])
+    require({v['Key']: v['VersionId'] for v in current} ==
+            {v['Key']: v['VersionId'] for v in latest_versions if v.get('IsLatest')},
+            'Live frontend changed during snapshot; review before retry')
+    write_json(state/'snapshot.json', {'commit': sha, 'configurationHash': configuration_hash(latest), 'revisionId': latest['RevisionId'], 'codeSha256': latest['CodeSha256'], 'backupVersionArn': backup['FunctionArn'], 'backupVersion': backup['Version'], 'routesBefore': latest_routes, 'missingRoutes': latest_missing, 'siteVersions': current, 'createdAt': int(time.time())})
+    print('Targets revalidated; immutable Lambda version and versioned site rollback provenance saved. Live code/operational settings unchanged.')
 
 
 def deploy(bundle, state, sha):

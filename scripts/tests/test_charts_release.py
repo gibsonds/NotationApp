@@ -13,7 +13,8 @@ FEATURES = {'multiBookInvites': False, 'verifiedEmail': False}
 def function(version=None):
     value = {'FunctionArn': r.FUNCTION_ARN, 'Runtime': 'nodejs22.x', 'Handler': 'index.handler',
              'Role': 'execution-role', 'RevisionId': 'revision', 'CodeSha256': 'old-code',
-             'Environment': {'Variables': {'COOKIE_SESSIONS': '1', 'APP_ORIGINS': r.ORIGIN}}, 'Version': '$LATEST'}
+             'Environment': {'Variables': {'COOKIE_SESSIONS': '1', 'APP_ORIGINS': r.ORIGIN}}, 'Version': '$LATEST',
+             'State': 'Active', 'LastUpdateStatus': 'Successful'}
     if version:
         value.update(FunctionArn=r.FUNCTION_ARN+':'+version, Version=version)
     return value
@@ -94,6 +95,11 @@ class ReleaseTests(unittest.TestCase):
             (('lambda','get-function-configuration'),['FunctionArn'],'wrong'),
             (('lambda','get-function-configuration'),['Runtime'],'nodejs20.x'),
             (('lambda','get-function-configuration'),['Handler'],'other.handler'),
+            (('lambda','get-function-configuration'),['Version'],'1'),
+            (('lambda','get-function-configuration'),['State'],'Pending'),
+            (('lambda','get-function-configuration'),['LastUpdateStatus'],'InProgress'),
+            (('lambda','get-function-configuration'),['LastUpdateStatus'],'Failed'),
+            (('lambda','get-function-configuration'),['RevisionId'],''),
             (('lambda','get-function-configuration'),['Environment','Variables','COOKIE_SESSIONS'],'0'),
             (('lambda','get-function-configuration'),['Environment','Variables','APP_ORIGINS'],'https://other.test'),
             (('lambda','get-function-configuration'),['Environment','Variables','MULTI_BOOK_INVITES'],'1'),
@@ -318,6 +324,124 @@ class ReleaseTests(unittest.TestCase):
         with patch.object(r, 'aws', side_effect=[{'Versions':[]}, wrong]):
             with self.assertRaisesRegex(RuntimeError, 'backup verification'):
                 r.backup_version(function(), SHA)
+
+    def snapshot_fixture(self, latest=None, reuse=False, routes_after=None, site_after=None):
+        """Exercise both complete inspections and actual backup selection offline."""
+        original = function()
+        latest = copy.deepcopy(latest or original)
+        backup = function('4')
+        backup['RevisionId'] = 'numbered-version-revision'
+        site = [{'IsLatest':True, 'Key':'index.html', 'VersionId':'original-site'}]
+        responses = self.live_responses()
+        reads = {'function':0, 'routes':0, 'site':0}
+        calls = []
+        def aws(service, operation, *args, **kw):
+            calls.append((service, operation, args))
+            if operation == 'get-function-configuration':
+                reads['function'] += 1
+                return copy.deepcopy(original if reads['function'] == 1 else latest)
+            if operation == 'get-routes':
+                reads['routes'] += 1
+                return {'Items':copy.deepcopy([] if reads['routes'] == 1 or routes_after is None else routes_after)}
+            if operation == 'list-versions-by-function':
+                return {'Versions':[original, backup] if reuse else [original]}
+            if operation == 'publish-version':
+                return copy.deepcopy(backup)
+            if operation == 'list-object-versions':
+                reads['site'] += 1
+                return {'Versions':copy.deepcopy(site if reads['site'] == 1 or site_after is None else site_after)}
+            if operation == 'get-object':
+                Path(args[-1]).write_text('synthetic original HTML')
+                return {}
+            self.assertIn((service, operation), responses, 'unexpected AWS operation')
+            return copy.deepcopy(responses[(service, operation)])
+        return aws, calls, site
+
+    def test_snapshot_saves_post_publication_latest_revision_and_deploy_uses_it(self):
+        latest = function(); latest['RevisionId'] = 'post-publication-revision'
+        aws, calls, site = self.snapshot_fixture(latest=latest)
+        with patch.object(r, 'aws', side_effect=aws), patch('builtins.print'):
+            r.snapshot(self.bundle, self.state, SHA)
+        saved = json.loads((self.state/'snapshot.json').read_text())
+        self.assertEqual(saved['revisionId'], latest['RevisionId'])
+        self.assertNotEqual(saved['revisionId'], 'numbered-version-revision')
+        self.assertEqual(saved['codeSha256'], function()['CodeSha256'])
+        self.assertEqual(saved['configurationHash'], r.configuration_hash(function()))
+        self.assertEqual([op for _,op,_ in calls].count('publish-version'), 1)
+        self.assertEqual([op for _,op,_ in calls].count('get-function-configuration'), 2)
+        self.assertEqual([op for _,op,_ in calls].count('list-object-versions'), 2)
+
+        deployed = copy.deepcopy(latest)
+        deployed['CodeSha256'] = r.base64.b64encode(r.hashlib.sha256(b'new-code').digest()).decode()
+        routes = [{'RouteKey':key,'Target':'integrations/'+r.INTEGRATION,'AuthorizationType':'NONE'} for key in r.ROUTES]
+        updates = []
+        def deploy_aws(service, operation, *args, **kw):
+            if operation == 'get-function-configuration': return function('4') if '--qualifier' in args else deployed
+            if operation == 'list-object-versions': return {'Versions':site}
+            if operation == 'update-function-code': updates.append(args); return {}
+            if operation == 'get-routes': return {'Items':routes}
+            if operation == 'create-invalidation': return {'Invalidation':{'Id':'synthetic'}}
+            return {}
+        with patch.object(r,'inspect_live',return_value=(latest,[],r.ROUTES)), patch.object(r,'aws',side_effect=deploy_aws), patch('builtins.print'):
+            r.deploy(self.bundle,self.state,SHA)
+        self.assertEqual(len(updates),1)
+        self.assertEqual(updates[0][updates[0].index('--revision-id')+1],latest['RevisionId'])
+
+        # A subsequent external revision change must still fail before any write.
+        changed = copy.deepcopy(latest); changed['RevisionId'] = 'later-external-revision'
+        with patch.object(r,'inspect_live',return_value=(changed,[],r.ROUTES)), patch.object(r,'aws') as call:
+            with self.assertRaisesRegex(RuntimeError,'changed after snapshot'):
+                r.deploy(self.bundle,self.state,SHA)
+            call.assert_not_called()
+
+    def test_snapshot_reuses_backup_and_still_revalidates_live_state(self):
+        aws, calls, _ = self.snapshot_fixture(reuse=True)
+        with patch.object(r,'aws',side_effect=aws), patch('builtins.print'):
+            r.snapshot(self.bundle,self.state,SHA)
+        self.assertFalse(any(operation=='publish-version' for _,operation,_ in calls))
+        self.assertEqual(sum(operation=='get-function-configuration' for _,operation,_ in calls),2)
+        self.assertEqual(json.loads((self.state/'snapshot.json').read_text())['revisionId'],function()['RevisionId'])
+
+    def test_snapshot_rejects_code_configuration_static_or_route_drift_after_backup(self):
+        for case in ['code','configuration','description','package','routes','site','pending','failed']:
+            with self.subTest(case=case):
+                latest = function(); latest['RevisionId']='post-backup-revision'
+                routes = None; site = None
+                if case=='code': latest['CodeSha256']='different-code'
+                elif case=='configuration': latest['MemorySize']=256
+                elif case=='description': latest['Description']='concurrent change'
+                elif case=='package': latest['PackageType']='Image'
+                elif case=='routes': routes=[{'RouteKey':'GET /other','Target':'integrations/'+r.INTEGRATION}]
+                elif case=='site': site=[{'IsLatest':True,'Key':'index.html','VersionId':'new-site'}]
+                elif case=='pending': latest['LastUpdateStatus']='InProgress'
+                elif case=='failed': latest['LastUpdateStatus']='Failed'
+                aws, calls, _ = self.snapshot_fixture(latest=latest,routes_after=routes,site_after=site)
+                state = self.state/case
+                with patch.object(r,'aws',side_effect=aws), patch('builtins.print'):
+                    with self.assertRaises(RuntimeError): r.snapshot(self.bundle,state,SHA)
+                self.assertFalse((state/'snapshot.json').exists())
+                self.assertFalse(any(operation in {'update-function-code','create-route','put-object','create-invalidation'} for _,operation,_ in calls))
+
+    def test_snapshot_rejects_changed_missing_route_plan_even_with_same_route_records(self):
+        aws, calls, _ = self.snapshot_fixture()
+        with patch.object(r,'aws',side_effect=aws), patch.object(r,'route_plan',side_effect=[r.ROUTES,r.ROUTES[:-1]]):
+            with self.assertRaisesRegex(RuntimeError,'routes changed during snapshot'):
+                r.snapshot(self.bundle,self.state,SHA)
+        self.assertFalse((self.state/'snapshot.json').exists())
+
+    def test_snapshot_post_backup_read_denial_leaves_no_usable_snapshot(self):
+        aws, calls, _ = self.snapshot_fixture()
+        reads = 0
+        def denied(service, operation, *args, **kw):
+            nonlocal reads
+            if operation=='get-function-configuration':
+                reads += 1
+                if reads==2: raise RuntimeError('synthetic read denied')
+            return aws(service,operation,*args,**kw)
+        with patch.object(r,'aws',side_effect=denied):
+            with self.assertRaisesRegex(RuntimeError,'read denied'):
+                r.snapshot(self.bundle,self.state,SHA)
+        self.assertFalse((self.state/'snapshot.json').exists())
 
     def save_state(self, live=None):
         live = live or function()
