@@ -1,0 +1,74 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReleaseOnlyExistingChartsLambda",
+      "Effect": "Allow",
+      "Action": [
+        "lambda:GetFunction",
+        "lambda:GetFunctionConfiguration",
+        "lambda:GetPolicy",
+        "lambda:UpdateFunctionCode",
+        "lambda:PublishVersion",
+        "lambda:ListVersionsByFunction"
+      ],
+      "Resource": "arn:aws:lambda:us-east-1:637423285747:function:NotationAuth-Handler886CB40B-VONw1UHVaz0k"
+    },
+    {
+      "Sid": "ReadOnlyExistingChartsVersions",
+      "Effect": "Allow",
+      "Action": [
+        "lambda:GetFunction",
+        "lambda:GetFunctionConfiguration"
+      ],
+      "Resource": "arn:aws:lambda:us-east-1:637423285747:function:NotationAuth-Handler886CB40B-VONw1UHVaz0k:*"
+    },
+    {
+      "Sid": "InspectOnlyChartsApi",
+      "Effect": "Allow",
+      "Action": "apigateway:GET",
+      "Resource": [
+        "arn:aws:apigateway:us-east-1::/apis/xg47257esd",
+        "arn:aws:apigateway:us-east-1::/apis/xg47257esd/integrations",
+        "arn:aws:apigateway:us-east-1::/apis/xg47257esd/routes",
+        "arn:aws:apigateway:us-east-1::/apis/xg47257esd/stages"
+      ]
+    },
+    {
+      "Sid": "AddMissingChartsRoutes",
+      "Effect": "Allow",
+      "Action": "apigateway:POST",
+      "Resource": "arn:aws:apigateway:us-east-1::/apis/xg47257esd/routes"
+    },
+    {
+      "Sid": "InspectChartsSiteVersions",
+      "Effect": "Allow",
+      "Action": [
+        "s3:ListBucket",
+        "s3:ListBucketVersions",
+        "s3:GetBucketVersioning"
+      ],
+      "Resource": "arn:aws:s3:::notationauth-sitebucket397a1860-m0gyarsr1okt"
+    },
+    {
+      "Sid": "BackupAndPublishChartsFiles",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:GetObjectVersion",
+        "s3:PutObject"
+      ],
+      "Resource": "arn:aws:s3:::notationauth-sitebucket397a1860-m0gyarsr1okt/*"
+    },
+    {
+      "Sid": "InspectAndInvalidateChartsOnly",
+      "Effect": "Allow",
+      "Action": [
+        "cloudfront:GetDistributionConfig",
+        "cloudfront:CreateInvalidation",
+        "cloudfront:GetInvalidation"
+      ],
+      "Resource": "arn:aws:cloudfront::637423285747:distribution/E1OQKQ4KGT4DXV"
+    }
+  ]
+}

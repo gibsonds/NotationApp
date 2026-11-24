@@ -1,0 +1,146 @@
+name: Release Charts
+
+# Manual, exact-main release. This workflow never merges or changes configuration.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Read-only OIDC preflight, or explicitly publish Charts
+        required: true
+        type: choice
+        default: preflight
+        options: [preflight, deploy]
+      commit:
+        description: Full reviewed main commit SHA, with all required CI successful
+        required: true
+        type: string
+      target:
+        description: Type charts.collisionstorm.com to confirm the only destination
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: charts-production-release
+  cancel-in-progress: false
+jobs:
+  build:
+    if: github.ref == 'refs/heads/main' && inputs.target == 'charts.collisionstorm.com'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      checks: read
+    steps:
+      - name: Bind request to the trusted main workflow commit before checkout
+        env:
+          RELEASE_SHA: ${{ inputs.commit }}
+          RELEASE_MODE: ${{ inputs.mode }}
+        run: |
+          [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$GITHUB_REF" == refs/heads/main ]]
+          [[ "$RELEASE_SHA" =~ ^[a-f0-9]{40}$ && "$RELEASE_SHA" == "$GITHUB_SHA" ]]
+          [[ "$RELEASE_MODE" == preflight || "$RELEASE_MODE" == deploy ]]
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Require current main and successful exact-head checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ inputs.commit }}
+        run: python3 scripts/charts_release.py check-ci --sha "$RELEASE_SHA"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm ci --prefix infra
+      - run: python3 -m unittest discover -s scripts/tests -p 'test_charts_release.py'
+      - run: npx tsc --noEmit
+      - run: npm test
+      - run: npm run test:static-security
+      - run: node scripts/security-audit.mjs
+      - run: npm run build --prefix infra
+      - name: Build authenticated Charts artifact without AWS credentials
+        env:
+          RELEASE_SHA: ${{ inputs.commit }}
+        run: scripts/build-charts-release.sh "$RELEASE_SHA"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: charts-build-${{ inputs.commit }}
+          path: release-bundle/
+          if-no-files-found: error
+          retention-days: 14
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      checks: read
+      actions: read
+      id-token: write
+    # No package manager or dependency scripts run in this OIDC-authorized job.
+    env:
+      RELEASE_SHA: ${{ inputs.commit }}
+      RELEASE_MODE: ${{ inputs.mode }}
+      GH_TOKEN: ${{ github.token }}
+      AWS_MAX_ATTEMPTS: '1'
+      AWS_RETRY_MODE: standard
+    steps:
+      - name: Bind release to the trusted main workflow commit before checkout
+        run: |
+          [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$GITHUB_REF" == refs/heads/main ]]
+          [[ "$RELEASE_SHA" =~ ^[a-f0-9]{40}$ && "$RELEASE_SHA" == "$GITHUB_SHA" ]]
+          [[ "$RELEASE_MODE" == preflight || "$RELEASE_MODE" == deploy ]]
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: charts-build-${{ inputs.commit }}
+          path: release-bundle
+      - name: Recheck exact main, CI and artifact before OIDC
+        run: |
+          python3 scripts/charts_release.py check-ci --sha "$RELEASE_SHA"
+          python3 scripts/charts_release.py validate --sha "$RELEASE_SHA"
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+        with:
+          role-to-assume: arn:aws:iam::637423285747:role/NotationChartsRelease
+          role-session-name: ChartsRelease-${{ github.run_id }}
+          role-duration-seconds: 1800
+          aws-region: us-east-1
+          allowed-account-ids: '637423285747'
+          mask-aws-account-id: false
+      - name: Inspect exact Charts targets without AWS resource writes
+        run: python3 scripts/charts_release.py inspect --sha "$RELEASE_SHA"
+      - name: Verify targets and create immutable rollback provenance
+        if: inputs.mode == 'deploy'
+        run: |
+          python3 scripts/charts_release.py check-ci --sha "$RELEASE_SHA"
+          python3 scripts/charts_release.py snapshot --sha "$RELEASE_SHA"
+      - name: Save rollback metadata before any code, route or site change
+        if: inputs.mode == 'deploy'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: charts-rollback-${{ github.run_id }}
+          path: release-state/
+          if-no-files-found: error
+          retention-days: 90
+      - name: Publish only Charts code, missing invitation routes and frontend
+        if: inputs.mode == 'deploy'
+        run: |
+          python3 scripts/charts_release.py check-ci --sha "$RELEASE_SHA"
+          python3 scripts/charts_release.py deploy --sha "$RELEASE_SHA"
+      - name: Verify invalidation, production HTML/assets and signed-out denial
+        if: inputs.mode == 'deploy'
+        run: python3 scripts/charts_release.py verify --sha "$RELEASE_SHA"
+      - name: Preserve final result even if deployment or smoke stopped
+        if: always() && inputs.mode == 'deploy'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: charts-result-${{ github.run_id }}
+          path: release-state/
+          if-no-files-found: ignore
+          retention-days: 90
