@@ -1,9 +1,9 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { NextRequest } from "next/server";
-import { POST } from "@/app/api/score/export/route";
-import { ScoreSchema } from "../schema";
-import { scoreToMidi } from "../midi";
+import { POST } from "../route";
+import { ScoreSchema } from "@/lib/schema";
+import { scoreToMidi } from "@/lib/midi";
 
 const score = ScoreSchema.parse({
   id: "export-fixture",
