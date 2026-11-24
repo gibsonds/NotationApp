@@ -139,3 +139,59 @@ it("keeps a legacy invitation available when browser storage blocks selecting th
     window.history.replaceState(null, "", originalUrl);
   }
 });
+
+it.each(["book", "account"])("does not let a pending legacy acceptance replace a newer %s choice", async change => {
+  vi.resetModules();
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubEnv("NEXT_PUBLIC_OAUTH_ISSUER", "https://fake-idp.test");
+  vi.stubEnv("NEXT_PUBLIC_OAUTH_CLIENT_ID", "preview-only");
+  vi.stubEnv("NEXT_PUBLIC_API_BASE", "https://fake-charts-api.test");
+  vi.stubEnv("NEXT_PUBLIC_COOKIE_SESSIONS", "1");
+  const { default: Flow } = await import("../SongbookInviteFlow");
+  const auth = await import("@/lib/auth");
+  const { takeSongBrowserIntent } = await import("@/lib/songbook-browser-intent");
+  const { readPendingInvitation, clearPendingInvitation } = await import("@/lib/pending-invitation");
+  const own = {songbookId:"demo-home",name:"My Songs",role:"owner"};
+  const other = {songbookId:"demo-other",name:"Other book",role:"owner"};
+  const shared = {songbookId:"demo-shared",name:"Shared book",role:"editor"};
+  let subject = "test-user", meCalls = 0;
+  let finish!:(value:Response)=>void;
+  const fetcher = vi.fn(async (url:string) => {
+    if (url.endsWith("/me")) { meCalls++; return Response.json({sub:subject,memberships:[own,other]}); }
+    if (url.endsWith("/invites/demo-delayed/accept")) return new Promise<Response>(resolve => { finish=resolve; });
+    throw new Error("Unexpected network request during test");
+  });
+  vi.stubGlobal("fetch",fetcher);
+  await auth.loadMe();
+  const reload = vi.spyOn(window.location,"reload").mockImplementation(() => {});
+  const originalUrl = window.location.href;
+  const mount = document.createElement("div");
+  document.body.appendChild(mount);
+  const root = createRoot(mount);
+  const leave = vi.fn(clearPendingInvitation), showList = vi.fn();
+  try {
+    window.history.replaceState(null,"","/?invite=demo-delayed");
+    expect(readPendingInvitation()).toBe("demo-delayed");
+    await act(async () => root.render(<Flow token="demo-delayed" ready signedIn onLeave={leave} onOpenBook={showList} />));
+    await act(async () => mount.querySelector<HTMLButtonElement>("section button")!.click());
+    expect(fetcher.mock.calls.filter(([url]) => url.endsWith("/accept"))).toHaveLength(1);
+    expect(takeSongBrowserIntent()).toBeNull();
+    if (change === "book") auth.setActiveSongbook(other.songbookId,true);
+    else { subject="different-user"; await auth.loadMe(); }
+    const chosenBook=auth.getActiveSongbookId(), beforeMeCalls=meCalls, beforeReloads=reload.mock.calls.length;
+    await act(async () => finish(Response.json(shared)));
+    expect(mount.textContent).toContain("Your session changed. Review the invitation again.");
+    expect(auth.getActiveSongbookId()).toBe(chosenBook);
+    expect(auth.getSnapshot().claims?.sub).toBe(subject);
+    expect(meCalls).toBe(beforeMeCalls);
+    expect(reload).toHaveBeenCalledTimes(beforeReloads);
+    expect(readPendingInvitation()).toBe("demo-delayed");
+    expect(takeSongBrowserIntent()).toBeNull();
+    expect(leave).not.toHaveBeenCalled();
+    expect(showList).not.toHaveBeenCalled();
+  } finally {
+    await act(async () => root.unmount());
+    mount.remove();
+    window.history.replaceState(null,"",originalUrl);
+  }
+});

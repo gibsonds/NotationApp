@@ -20,7 +20,7 @@ async function request<T>(path: string, body: object): Promise<T> {
   }
   const value = await response.json() as T;
   const current = getSnapshot();
-  if (path.startsWith('/invitations') && (initial.claims?.sub !== current.claims?.sub || initial.activeSongbookId !== current.activeSongbookId || initial.status !== current.status)) throw new Error('Your session changed. Review the invitation again.');
+  if ((path.startsWith('/invitations') || path.startsWith('/invites/')) && (initial.claims?.sub !== current.claims?.sub || initial.activeSongbookId !== current.activeSongbookId || initial.status !== current.status)) throw new Error('Your session changed. Review the invitation again.');
   return value;
 }
 

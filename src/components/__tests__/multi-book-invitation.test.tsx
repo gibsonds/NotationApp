@@ -1,14 +1,14 @@
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { beforeEach,afterEach,expect,it,vi } from 'vitest';
-const mock=vi.hoisted(()=>({state:{status:'signed-in',claims:{sub:'owner'},activeSongbookId:'a',memberships:[{songbookId:'a',name:'TestBook',role:'owner'},{songbookId:'b',name:'Synthetic band',role:'owner'},{songbookId:'private',name:'Personal unshared',role:'owner'}]},listeners:new Set<()=>void>(),create:vi.fn(),preview:vi.fn(),accept:vi.fn(),begin:vi.fn(),open:vi.fn(),out:vi.fn(),me:vi.fn(),capabilities:vi.fn()}));
+const mock=vi.hoisted(()=>({state:{status:'signed-in',claims:{sub:'owner'},verifiedAccount:{sub:'owner'} as {sub:string}|null,activeSongbookId:'a',memberships:[{songbookId:'a',name:'TestBook',role:'owner'},{songbookId:'b',name:'Synthetic band',role:'owner'},{songbookId:'private',name:'Personal unshared',role:'owner'}]},listeners:new Set<()=>void>(),create:vi.fn(),preview:vi.fn(),accept:vi.fn(),begin:vi.fn(),open:vi.fn(),out:vi.fn(),me:vi.fn(),capabilities:vi.fn()}));
 vi.mock('@/lib/auth',()=>({getSnapshot:()=>mock.state,subscribe:(fn:()=>void)=>{mock.listeners.add(fn);return()=>mock.listeners.delete(fn);},beginSignIn:mock.begin,setActiveSongbook:mock.open,signOut:mock.out,loadMe:mock.me}));
 vi.mock('@/lib/songbook-client',()=>({createBookInvitation:mock.create,invitationCapabilities:mock.capabilities,previewInvitation:mock.preview,acceptBookInvitation:mock.accept}));
 import Composer from '../MultiBookInviteComposer';
 import Flow from '../MultiBookInviteFlow';
 const clipboardDescriptor=Object.getOwnPropertyDescriptor(navigator,'clipboard');
 let host:HTMLDivElement,root:ReturnType<typeof createRoot>;
-beforeEach(()=>{vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true);host=document.createElement('div');document.body.append(host);root=createRoot(host);mock.state={status:'signed-in',claims:{sub:'owner'},activeSongbookId:'a',memberships:[{songbookId:'a',name:'TestBook',role:'owner'},{songbookId:'b',name:'Synthetic band',role:'owner'},{songbookId:'private',name:'Personal unshared',role:'owner'}]};mock.capabilities.mockReset();mock.capabilities.mockResolvedValue({emailDelivery:true});mock.preview.mockReset();mock.create.mockReset();mock.accept.mockReset();mock.begin.mockReset();mock.open.mockReset();mock.out.mockReset();mock.me.mockReset();mock.me.mockImplementation(async()=>mock.state.memberships);});
+beforeEach(()=>{vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true);host=document.createElement('div');document.body.append(host);root=createRoot(host);mock.state={status:'signed-in',claims:{sub:'owner'},verifiedAccount:{sub:'owner'} as {sub:string}|null,activeSongbookId:'a',memberships:[{songbookId:'a',name:'TestBook',role:'owner'},{songbookId:'b',name:'Synthetic band',role:'owner'},{songbookId:'private',name:'Personal unshared',role:'owner'}]};mock.capabilities.mockReset();mock.capabilities.mockResolvedValue({emailDelivery:true});mock.preview.mockReset();mock.create.mockReset();mock.accept.mockReset();mock.begin.mockReset();mock.open.mockReset();mock.out.mockReset();mock.me.mockReset();mock.me.mockImplementation(async()=>mock.state.memberships);});
 afterEach(async()=>{await act(async()=>root.unmount());host.remove();vi.restoreAllMocks();if(clipboardDescriptor)Object.defineProperty(navigator,'clipboard',clipboardDescriptor);else Reflect.deleteProperty(navigator,'clipboard');vi.unstubAllGlobals();});
 const button=(text:string)=>[...host.querySelectorAll('button')].find(b=>b.textContent===text)!;
 it('previews exactly selected names/viewer roles before one issuance; omitted personal book is absent',async()=>{
@@ -33,17 +33,49 @@ it('requires explicit Join once for new/subset members and preserves existing ac
  await act(async()=>root.render(<Flow token="mi-test" ready signedIn onLeave={leave}/>));expect(mock.accept).not.toHaveBeenCalled();expect(host.textContent).toContain('editor access stays unchanged');await act(async()=>button('Join selected songbooks').click());expect(mock.accept).toHaveBeenCalledOnce();expect(leave).toHaveBeenCalledOnce();expect(mock.open).toHaveBeenCalledWith('a',true,{reopenMySongs:true});
 });
 it('opens the list directly for a verified already-active member without redundant acceptance',async()=>{
+ mock.state.memberships[0].role='viewer';
  mock.preview.mockResolvedValue({books:[{songbookId:'a',name:'TestBook',role:'viewer',existingRole:'viewer'}],allMember:true});const leave=vi.fn(),showList=vi.fn();await act(async()=>root.render(<Flow token="mi-test" ready signedIn onLeave={leave} onOpenBook={showList}/>));expect(mock.accept).not.toHaveBeenCalled();expect(leave).toHaveBeenCalledOnce();expect(mock.open).toHaveBeenCalledWith('a',true,{reopenMySongs:true});expect(showList).toHaveBeenCalledOnce();expect(mock.open.mock.invocationCallOrder[0]).toBeLessThan(leave.mock.invocationCallOrder[0]);
 });
 it('waits for the verified all-member preview before opening any song list',async()=>{
+ mock.state.memberships[0].role='viewer';
  let finish!:(value:unknown)=>void;mock.preview.mockReturnValue(new Promise(resolve=>{finish=resolve;}));const leave=vi.fn(),showList=vi.fn();
  await act(async()=>root.render(<Flow token="mi-test" ready signedIn onLeave={leave} onOpenBook={showList}/>));expect(mock.open).not.toHaveBeenCalled();expect(showList).not.toHaveBeenCalled();expect(leave).not.toHaveBeenCalled();
  await act(async()=>finish({books:[{songbookId:'a',name:'TestBook',role:'viewer',existingRole:'viewer'}],allMember:true}));expect(showList).toHaveBeenCalledOnce();expect(mock.accept).not.toHaveBeenCalled();
 });
 it('retains a verified invitation when book selection fails and can retry opening it',async()=>{
+ mock.state.memberships[0].role='viewer';
  mock.preview.mockResolvedValue({books:[{songbookId:'a',name:'TestBook',role:'viewer',existingRole:'viewer'}],allMember:true});mock.open.mockImplementationOnce(()=>{throw Error('Allow browser storage and try again.');});const leave=vi.fn(),showList=vi.fn();
  await act(async()=>root.render(<Flow token="mi-test" ready signedIn onLeave={leave} onOpenBook={showList}/>));expect(host.textContent).toContain('Allow browser storage');expect(leave).not.toHaveBeenCalled();expect(showList).not.toHaveBeenCalled();
  await act(async()=>button('Open existing songbooks').click());expect(mock.open).toHaveBeenCalledTimes(2);expect(leave).toHaveBeenCalledOnce();expect(showList).toHaveBeenCalledOnce();expect(mock.accept).not.toHaveBeenCalled();
+});
+it('refreshes an already-active member downgrade before opening its list',async()=>{
+ mock.state.memberships[0].role='editor';mock.preview.mockResolvedValue({books:[{songbookId:'a',name:'TestBook',role:'viewer',existingRole:'viewer'}],allMember:true});let finish!:(value:unknown)=>void;mock.me.mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));const leave=vi.fn(),showList=vi.fn(()=>expect(mock.state.memberships[0].role).toBe('viewer'));
+ await act(async()=>root.render(<Flow token="mi-test" ready signedIn onLeave={leave} onOpenBook={showList}/>));expect(mock.me).toHaveBeenCalledOnce();expect(mock.open).not.toHaveBeenCalled();expect(showList).not.toHaveBeenCalled();
+ await act(async()=>{mock.state={...mock.state,memberships:[{songbookId:'a',name:'TestBook',role:'viewer'}]};finish(mock.state.memberships);});expect(mock.open).toHaveBeenCalledOnce();expect(showList).toHaveBeenCalledOnce();expect(mock.accept).not.toHaveBeenCalled();
+});
+it('shows fresh actual access for review if membership changed since the all-member preview',async()=>{
+ mock.state.memberships[0].role='editor';mock.preview.mockResolvedValue({books:[{songbookId:'a',name:'TestBook',role:'editor',existingRole:'editor'}],allMember:true});mock.me.mockImplementation(async()=>{mock.state={...mock.state,memberships:[{songbookId:'a',name:'TestBook',role:'viewer'}]};return mock.state.memberships;});const leave=vi.fn(),showList=vi.fn();
+ await act(async()=>root.render(<Flow token="mi-test" ready signedIn onLeave={leave} onOpenBook={showList}/>));expect(host.textContent).toContain('Your actual viewer access will not change.');expect(mock.open).not.toHaveBeenCalled();expect(leave).not.toHaveBeenCalled();expect(showList).not.toHaveBeenCalled();
+ await act(async()=>button('Open existing songbooks').click());expect(mock.accept).not.toHaveBeenCalled();expect(mock.open).toHaveBeenCalledOnce();expect(showList).toHaveBeenCalledOnce();expect(mock.state.memberships[0].role).toBe('viewer');
+});
+it('retains an all-member invitation if membership refresh fails, then permits a verified retry',async()=>{
+ mock.state.memberships[0].role='viewer';mock.preview.mockResolvedValue({books:[{songbookId:'a',name:'TestBook',role:'viewer',existingRole:'viewer'}],allMember:true});mock.me.mockRejectedValueOnce(Error('Refresh unavailable'));const leave=vi.fn(),showList=vi.fn();
+ await act(async()=>root.render(<Flow token="mi-test" ready signedIn onLeave={leave} onOpenBook={showList}/>));expect(host.textContent).toContain('Refresh unavailable');expect(mock.open).not.toHaveBeenCalled();expect(leave).not.toHaveBeenCalled();expect(showList).not.toHaveBeenCalled();
+ await act(async()=>button('Open existing songbooks').click());expect(mock.me).toHaveBeenCalledTimes(2);expect(leave).toHaveBeenCalledOnce();expect(showList).toHaveBeenCalledOnce();expect(mock.accept).not.toHaveBeenCalled();
+});
+it('refuses to open when refresh returns no selected memberships even if cached access remains',async()=>{
+ mock.state.memberships[0].role='viewer';mock.preview.mockResolvedValue({books:[{songbookId:'a',name:'TestBook',role:'viewer',existingRole:'viewer'}],allMember:true});mock.me.mockResolvedValue([]);const leave=vi.fn(),showList=vi.fn();
+ await act(async()=>root.render(<Flow token="mi-test" ready signedIn onLeave={leave} onOpenBook={showList}/>));expect(host.textContent).toContain('couldn’t refresh the selected songbooks');expect(mock.open).not.toHaveBeenCalled();expect(leave).not.toHaveBeenCalled();expect(showList).not.toHaveBeenCalled();expect(mock.accept).not.toHaveBeenCalled();
+});
+it('does not adopt an all-member result after its verified session expires',async()=>{
+ mock.preview.mockResolvedValue({books:[{songbookId:'a',name:'TestBook',role:'viewer',existingRole:'viewer'}],allMember:true});mock.me.mockImplementation(async()=>{mock.state={...mock.state,status:'expired',verifiedAccount:null};return mock.state.memberships;});const leave=vi.fn(),showList=vi.fn();
+ await act(async()=>root.render(<Flow token="mi-test" ready signedIn onLeave={leave} onOpenBook={showList}/>));expect(host.textContent).toContain('Your session changed');expect(mock.open).not.toHaveBeenCalled();expect(leave).not.toHaveBeenCalled();expect(showList).not.toHaveBeenCalled();
+});
+it('ignores an old all-member refresh after another account becomes current',async()=>{
+ let finish!:(value:unknown)=>void;mock.preview.mockResolvedValue({books:[{songbookId:'a',name:'TestBook',role:'viewer',existingRole:'viewer'}],allMember:true});mock.me.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));const leave=vi.fn(),showList=vi.fn();
+ await act(async()=>root.render(<Flow token="mi-test" ready signedIn onLeave={leave} onOpenBook={showList}/>));
+ await act(async()=>{mock.state={...mock.state,claims:{sub:'different'},verifiedAccount:{sub:'different'}};mock.preview.mockRejectedValue(Error('Invitation unavailable'));mock.listeners.forEach(fn=>fn());});
+ await act(async()=>finish([{songbookId:'a',name:'TestBook',role:'viewer'}]));expect(mock.open).not.toHaveBeenCalled();expect(leave).not.toHaveBeenCalled();expect(showList).not.toHaveBeenCalled();expect(mock.accept).not.toHaveBeenCalled();
 });
 it('joins mixed-role shared books once and selects the invited ID rather than an owned namesake',async()=>{
  const own={songbookId:'owned-home',name:'My Songs',role:'owner'};mock.state={...mock.state,activeSongbookId:own.songbookId,memberships:[own]};
