@@ -194,6 +194,12 @@ export class NotationAuthStack extends Stack {
       methods: [HttpMethod.DELETE],
       integration,
     });
+    // Feature is default-off in Lambda; no scopes, secrets or IAM grants are
+    // changed here. Preview environments must opt in explicitly.
+    api.addRoutes({ path: "/invitations", methods: [HttpMethod.POST], integration });
+    api.addRoutes({ path: "/invitations/capabilities", methods: [HttpMethod.GET], integration });
+    api.addRoutes({ path: "/invitations/{token}", methods: [HttpMethod.GET], integration });
+    api.addRoutes({ path: "/invitations/{token}/accept", methods: [HttpMethod.POST], integration });
     api.addRoutes({
       path: "/invites/{token}/accept",
       methods: [HttpMethod.POST],

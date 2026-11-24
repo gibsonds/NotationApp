@@ -1,5 +1,7 @@
 "use client";
 
+import MultiBookInviteComposer from "./MultiBookInviteComposer";
+import { MULTI_BOOK_INVITES, invitationToken } from "@/lib/songbook-client";
 import { useEffect, useState } from "react";
 import { getSnapshot, setActiveSongbook } from "@/lib/auth";
 import { createSongbook, createSongbookInvite, joinSongbook, listSongbookMembers, removeSongbookMember, type SongbookMember } from "@/lib/songbook-client";
@@ -36,6 +38,11 @@ export default function SongbookManager({ initialMode, onClose }: { initialMode:
         const created = await createSongbook(value);
         setActiveSongbook(created.songbookId);
       } else if (mode === "join") {
+        const token = invitationToken(value);
+        if (token.startsWith('mi-')) {
+          const url = new URL('/',window.location.origin);url.searchParams.set('invite',token);
+          window.location.assign(url.toString());return;
+        }
         const joined = await joinSongbook(value);
         sessionStorage.removeItem("notation-app-pending-invite");
         const url = new URL(window.location.href); url.searchParams.delete("invite");
@@ -50,6 +57,8 @@ export default function SongbookManager({ initialMode, onClose }: { initialMode:
     } catch (err) { setError(err instanceof Error ? err.message : "Could not update songbook."); }
     finally { setBusy(false); }
   }
+
+  if (initialMode === "invite" && MULTI_BOOK_INVITES) return <MultiBookInviteComposer onClose={onClose} />;
 
   return (
     <div className="fixed inset-0 z-[110] bg-black/40 flex items-start justify-center pt-[12vh]" onClick={() => { if (!busy) onClose(); }}>

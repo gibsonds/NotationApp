@@ -1116,7 +1116,7 @@ export default function Home() {
 
   if (!inviteChecked) return <main className="min-h-dvh bg-[#f3f5fb]" aria-label="Loading Charts" aria-busy />;
   if (inviteToken) return <SongbookInviteFlow token={inviteToken} ready={inviteAuthReady}
-    signedIn={inviteAuth.status === "signed-in"} authError={inviteError} onLeave={leaveInvitation} />;
+    signedIn={inviteAuth.status === "signed-in"} authError={inviteError} onLeave={leaveInvitation} onOpenBook={() => setMySongsOpen(true)} />;
 
   return (
     <div className="flex flex-col h-screen bg-[#f8f9fa] print-full">

@@ -146,6 +146,18 @@ The active book appears alongside the account and in My Songs.
 7. **Does it look right at iPad portrait (≈810×1080)?** Open DevTools at
    that viewport before merging.
 
+## Multiple-book invitation preview
+
+Sharing several books uses an explicit checkbox selection followed by a frozen
+review of exact names and per-book Viewer/Editor roles before a second issuance
+action. Every selected book defaults to Viewer. The
+recipient's landing lists every selected book before one Join; existing rights
+are labelled and preserved; a differing offered role never implies an upgrade or
+downgrade. An all-member visitor reviews a role mismatch before opening existing
+books without another grant. Email mode is available only when the server reports
+configured verified-mailbox support. Private bearer links are clearly labelled.
+See `MULTI-BOOK-INVITATIONS.md` for the feature-gated contract and local-only preview.
+
 ## Account details
 
 The Account control beside Signed in is separate from the book label. Only an

@@ -1,9 +1,11 @@
 /** Revocable sessions retain only a hashed random credential, opaque subject and expiry.
- * OAuth access/refresh/ID tokens are discarded after verifying sign-in. */
+ * Optional verified mailbox retention is default-off. OAuth access/refresh/ID
+ * tokens are discarded after verifying sign-in. */
 import { createHash, randomBytes } from 'node:crypto';
 import { DeleteCommand, GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
 import type { APIGatewayProxyEventV2 } from 'aws-lambda';
 import { ddb } from './ddb';
+import { verifiedMailboxClaim, normalizeMailbox } from './verified-mailbox';
 import { AuthError, verifyAccessToken, verifyIdToken, type AuthedUser } from './auth';
 
 const COOKIE = '__Host-notation-session';
@@ -27,16 +29,16 @@ export function assertBrowserRequest(event: APIGatewayProxyEventV2) {
 export async function createSession(tokens: Record<string, unknown>, nonce: string) {
   if (typeof tokens.id_token !== 'string') throw new AuthError(401, 'missing sign-in token');
   const { payload } = await verifyIdToken(tokens.id_token, nonce);
-  return storeSession(payload.sub!);
+  return storeSession(payload.sub!, verifiedMailboxClaim(payload));
 }
 export async function migrateAccessToken(token: string) {
   const { payload } = await verifyAccessToken(token);
   return storeSession(payload.sub!);
 }
-async function storeSession(sub: string) {
+async function storeSession(sub: string, verifiedEmail?: string) {
   const id = randomBytes(32).toString('base64url');
   const ttl = Math.floor(Date.now() / 1000) + MAX_AGE;
-  await ddb.send(new PutCommand({ TableName: sessionTable(), Item: { id: hash(id), sub, ttl } }));
+  await ddb.send(new PutCommand({ TableName: sessionTable(), Item: { id: hash(id), sub, ttl, ...(verifiedEmail && { verifiedEmail }) } }));
   return { cookie: sessionCookie(id), sub };
 }
 export async function deleteSession(event: APIGatewayProxyEventV2) {
@@ -49,5 +51,5 @@ export async function sessionUser(event: APIGatewayProxyEventV2): Promise<Authed
   const result = await ddb.send(new GetCommand({ TableName: sessionTable(), Key: {id:hash(id)}, ConsistentRead: true }));
   const session = result.Item;
   if (!session || typeof session.sub !== 'string' || session.ttl <= Date.now()/1000) throw new AuthError(401, 'session expired');
-  return {sub:session.sub};
+  return {sub:session.sub, ...(process.env.VERIFIED_EMAIL_INVITES === '1' && typeof session.verifiedEmail === 'string' ? {verifiedEmail:normalizeMailbox(session.verifiedEmail)} : {})};
 }

@@ -26,6 +26,11 @@ import { readPendingInvitation } from "@/lib/pending-invitation";
 export const OAUTH_ISSUER = process.env.NEXT_PUBLIC_OAUTH_ISSUER ?? "";
 export const OAUTH_CLIENT_ID = process.env.NEXT_PUBLIC_OAUTH_CLIENT_ID ?? "";
 export const AUTH_ENABLED = !!(OAUTH_ISSUER && OAUTH_CLIENT_ID);
+// Explicit build-time opt-in only. Register/review the provider's email scope
+// and matching backend verified-mailbox contract before enabling either flag.
+const VERIFIED_EMAIL_SCOPE_ENABLED =
+  process.env.NEXT_PUBLIC_MULTI_BOOK_INVITES === "1" &&
+  process.env.NEXT_PUBLIC_VERIFIED_EMAIL_INVITES === "1";
 
 export const COOKIE_SESSIONS = process.env.NEXT_PUBLIC_COOKIE_SESSIONS === "1";
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "";
@@ -183,7 +188,7 @@ export async function beginSignIn(): Promise<void> {
     // No offline_access: OAuth42 rejects it as an unregistered scope
     // ("Scope 'offline_access' is not allowed") — refresh tokens are
     // governed by the app's Refresh Token grant type instead.
-    scope: "openid",
+    scope: VERIFIED_EMAIL_SCOPE_ENABLED ? "openid email" : "openid",
     state,
     nonce,
     code_challenge: await challengeS256(verifier),
