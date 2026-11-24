@@ -31,6 +31,7 @@ jobs:
     permissions:
       contents: read
       checks: read
+      security-events: read
     steps:
       - name: Bind request to the trusted main workflow commit before checkout
         env:
@@ -78,6 +79,7 @@ jobs:
     permissions:
       contents: read
       checks: read
+      security-events: read
       actions: read
       id-token: write
     # No package manager or dependency scripts run in this OIDC-authorized job.

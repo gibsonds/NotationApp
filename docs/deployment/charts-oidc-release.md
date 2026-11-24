@@ -1,9 +1,14 @@
 # Charts release without a Mac AWS login
 
-This standalone change adds release tooling without changing application source
-or enabling invitations. It is independent of the My Songs and multi-book
-invitation changes in PRs #215 and #216. The workflow does not apply IAM, change
-provider settings or secrets, grant songbook access, or send invitations.
+The manual workflow uses GitHub OIDC for Charts release tooling. It is independent
+of the My Songs and multi-book invitation changes in PRs #215 and #216 and keeps
+invitation features off. The workflow does not apply IAM, change provider settings
+or secrets, grant songbook access, or send invitations.
+
+The repository also has a separate GitHub Pages workflow that automatically
+publishes on a main-branch merge. That existing trigger is independent of the
+Charts workflow and its preflight/deploy mode; account for it before approving a
+merge. Charts preflight itself makes no application deployment.
 
 ## One-time setup to review separately
 
@@ -55,7 +60,8 @@ site changes if this coverage is absent or ambiguous.
 ## Release procedure after reviewed merge
 
 1. Merge through the repository's normal protections and wait for the final main
-   commit's test, dependency-audit, security-tests, analyze and CodeQL checks.
+   commit's test, dependency-audit, security-tests and analyze checks, plus its
+   processed CodeQL analysis and the proof described below.
 2. In Actions → Release Charts → Run workflow, select main, keep the default
    **preflight** mode, paste its full commit SHA, and enter
    `charts.collisionstorm.com`. No AWS login on the Mac is needed.
@@ -81,8 +87,34 @@ Both jobs allow only the preflight/deploy mode values before checking out code.
 Every rollback snapshot/upload and application-write/production-smoke step is
 gated on explicit deploy mode. The default preflight uses the same production
 role but exercises no AWS resource write permissions.
-Check names are bound to the observed GitHub Actions app ID15368 and CodeQL
-app ID57789; new or renamed checks need a reviewed helper change.
+Main check names are bound to GitHub Actions app ID15368. GitHub publishes the
+CodeQL severity check on pull requests, while main-branch results live in the
+Security tab. Requiring that PR-only check directly on the main merge cannot
+establish a release proof. The helper instead retains all of these requirements:
+
+- The candidate is the current exact main SHA with completed successful main
+  checks, including analyze. A second main-ref read catches changes during proof.
+- It is an ordinary two-parent PR merge. Its complete Git tree equals the last
+  parent's tree, and that last parent has the latest completed successful CodeQL
+  severity check from app ID57789. Protected main supplies the PR merge boundary;
+  the helper does not add a bypass or approve a PR. Squash/rebase commits and
+  merge results differing from their checked PR head stop for separate review.
+- The latest processed exact-SHA/ref CodeQL analysis has the expected tool,
+  category and analysis key `.github/workflows/codeql.yml:analyze`, positive known
+  rule coverage, no errors or warnings, and **zero results**. This is deliberately
+  stricter than accepting only new changed-line findings from a PR.
+- Fully paginated open branch alerts have current exact-SHA/ref/status evidence.
+  Medium, high, critical, unknown-severity, stale or malformed evidence fails
+  closed. API denial, missing analysis or incomplete pagination also stops.
+
+Both workflow jobs add only `security-events: read` for the GitHub-maintained
+analyses/alerts APIs; contents/checks access remains read-only, and AWS permissions
+are unchanged. Main analyze success alone does not clear security findings.
+Existing baseline alerts must be fixed and rescanned; this gate does not suppress
+or dismiss them. New check names, tool/category changes or other merge methods
+need a reviewed helper change. GitHub documents the
+[branch versus PR result distinction](https://docs.github.com/en/rest/code-scanning/code-scanning#upload-an-analysis-as-sarif-data)
+and [analysis API fields and read permission](https://docs.github.com/en/rest/code-scanning/code-scanning#list-code-scanning-analyses-for-a-repository).
 
 Targets are fixed: account637423285747/us-east-1, existing
 NotationAuth-Handler886CB40B-VONw1UHVaz0k, APIxg47257esd and its verified integration
@@ -139,7 +171,9 @@ Do not print a GetFunction response or signed URL while preparing a rollback.
 Local unit tests use only synthetic files and mocked AWS/GitHub/network calls.
 They exercise exact-head/provider checks, tampering/symlinks, feature assertions,
 route policy templates, version reuse/publication, concurrent source changes,
-write ordering, read-only preflight mode and no route/config/data deletion. Run:
+write ordering, read-only preflight mode and no route/config/data deletion. Proof
+regressions also cover stale/wrong analyses, baseline severity alerts, failed PR
+severity checks, changed merge trees, denied APIs and incomplete evidence. Run:
 
 ```sh
 python3 -m unittest discover -s scripts/tests -p 'test_charts_release.py'

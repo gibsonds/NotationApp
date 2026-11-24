@@ -192,22 +192,117 @@ class ReleaseTests(unittest.TestCase):
         exact['Statement'][2]['Condition']['ArnLike']['AWS:SourceArn'] = exact['Statement'][2]['Condition']['ArnLike']['AWS:SourceArn'].replace('{token}', 'example-token')
         self.assertFalse(r.policy_covers_routes(exact))
 
-    def test_checks_pin_provider_and_latest_completed_exact_commit(self):
+    def proof_fixture(self):
         env = {'GITHUB_REPOSITORY':r.REPOSITORY, 'GITHUB_REF':'refs/heads/main', 'GITHUB_EVENT_NAME':'workflow_dispatch', 'GITHUB_SHA':SHA}
-        checks = [{'name': name, 'id':i, 'head_sha':SHA, 'app':{'id':57789 if name=='CodeQL' else 15368}, 'status':'completed', 'conclusion':'success'} for i,name in enumerate(sorted(r.REQUIRED_CHECKS))]
+        prefix = 'repos/'+r.REPOSITORY
+        head, tree = 'c'*40, 'd'*40
+        checks = [{'name':name,'id':i+1,'head_sha':SHA,'app':{'id':15368},'status':'completed','conclusion':'success'} for i,name in enumerate(sorted(r.REQUIRED_CHECKS))]
+        responses = {
+            prefix+'/git/ref/heads/main':{'object':{'sha':SHA}},
+            prefix+'/commits/'+SHA+'/check-runs':{'check_runs':checks},
+            prefix+'/git/commits/'+SHA:{'sha':SHA,'tree':{'sha':tree},'parents':[{'sha':'b'*40},{'sha':head}]},
+            prefix+'/git/commits/'+head:{'sha':head,'tree':{'sha':tree}},
+            prefix+'/commits/'+head+'/check-runs':{'check_runs':[{'name':'CodeQL','id':100,'head_sha':head,'app':{'id':57789},'status':'completed','conclusion':'success'}]},
+            prefix+'/code-scanning/analyses':[{'id':1,'ref':'refs/heads/main','commit_sha':SHA,'category':r.CODEQL_CATEGORY,'analysis_key':r.CODEQL_CATEGORY,'tool':{'name':'CodeQL'},'error':'','warning':'','rules_count':103,'results_count':0}],
+            prefix+'/code-scanning/alerts':[],
+        }
         def github(path):
-            return {'object': {'sha':SHA}} if '/git/ref/' in path else {'check_runs':checks}
-        with patch.dict(os.environ, env), patch.object(r, 'github', side_effect=github):
+            endpoint=path.split('?')[0]
+            self.assertIn(endpoint,responses,'unexpected GitHub request')
+            if '/code-scanning/' in path:
+                self.assertIn('ref=refs%2Fheads%2Fmain',path)
+            if endpoint.endswith('/alerts'):
+                self.assertIn('state=open',path)
+            return responses[endpoint]
+        return env,responses,github
+
+    def test_checks_pin_provider_and_latest_completed_exact_commit(self):
+        env,responses,github=self.proof_fixture()
+        checks=responses['repos/'+r.REPOSITORY+'/commits/'+SHA+'/check-runs']['check_runs']
+        with patch.dict(os.environ,env),patch.object(r,'github',side_effect=github):
             r.assert_candidate(SHA)
-            checks.append({**checks[0], 'id':999, 'conclusion':'failure'})
-            with self.assertRaisesRegex(RuntimeError, 'CI'):
-                r.assert_candidate(SHA)
-            checks.pop(); checks[0]['app']['id'] = 42
-            with self.assertRaisesRegex(RuntimeError, 'CI'):
-                r.assert_candidate(SHA)
-        with patch.dict(os.environ, {**env, 'GITHUB_REF':'refs/heads/other'}):
-            with self.assertRaisesRegex(RuntimeError, 'only on main'):
-                r.assert_candidate(SHA)
+            checks.append({**checks[0],'id':999,'conclusion':'failure'})
+            with self.assertRaisesRegex(RuntimeError,'CI'): r.assert_candidate(SHA)
+            checks.pop();checks[0]['app']['id']=42
+            with self.assertRaisesRegex(RuntimeError,'CI'): r.assert_candidate(SHA)
+        with patch.dict(os.environ,{**env,'GITHUB_REF':'refs/heads/other'}):
+            with self.assertRaisesRegex(RuntimeError,'only on main'): r.assert_candidate(SHA)
+
+    def test_codeql_analysis_requires_exact_processed_clean_main_evidence(self):
+        changes=[('commit_sha','f'*40),('ref','refs/pull/1/merge'),('category','other'),
+                 ('analysis_key','other'),('tool',{'name':'Other'}),('error','failed'),
+                 ('warning','partial analysis'),('rules_count',0),('rules_count',None),
+                 ('results_count',3),('results_count',None),('id',None)]
+        for key,value in changes:
+            with self.subTest(key=key):
+                env,responses,github=self.proof_fixture()
+                responses['repos/'+r.REPOSITORY+'/code-scanning/analyses'][0][key]=value
+                with patch.dict(os.environ,env),patch.object(r,'github',side_effect=github):
+                    with self.assertRaises(RuntimeError): r.assert_candidate(SHA)
+        env,responses,github=self.proof_fixture()
+        analyses=responses['repos/'+r.REPOSITORY+'/code-scanning/analyses']
+        analyses.append({**analyses[0],'id':2,'results_count':1})
+        with patch.dict(os.environ,env),patch.object(r,'github',side_effect=github):
+            with self.assertRaisesRegex(RuntimeError,'findings'): r.assert_candidate(SHA)
+
+    def test_pr_severity_proof_requires_normal_merge_identical_tree_and_success(self):
+        prefix='repos/'+r.REPOSITORY
+        for case in ['one-parent','tree-changed','wrong-app','wrong-head','failure','newer-failure']:
+            with self.subTest(case=case):
+                env,responses,github=self.proof_fixture()
+                candidate=responses[prefix+'/git/commits/'+SHA]
+                head=candidate['parents'][-1]['sha']
+                checks=responses[prefix+'/commits/'+head+'/check-runs']['check_runs']
+                if case=='one-parent': candidate['parents'].pop(0)
+                elif case=='tree-changed': responses[prefix+'/git/commits/'+head]['tree']['sha']='e'*40
+                elif case=='wrong-app': checks[0]['app']['id']=15368
+                elif case=='wrong-head': checks[0]['head_sha']='f'*40
+                elif case=='failure': checks[0]['conclusion']='failure'
+                else: checks.append({**checks[0],'id':999,'status':'in_progress','conclusion':None})
+                with patch.dict(os.environ,env),patch.object(r,'github',side_effect=github):
+                    with self.assertRaises(RuntimeError): r.assert_candidate(SHA)
+
+    def test_branch_baseline_alerts_fail_medium_or_unknown_and_stale_status(self):
+        for case in ['medium','high','critical','unknown',None,'stale-ref','stale-sha','unknown-state']:
+            with self.subTest(case=case):
+                env,responses,github=self.proof_fixture()
+                alert={'state':'open','rule':{'security_severity_level':case},'most_recent_instance':{'state':'open','ref':'refs/heads/main','commit_sha':SHA}}
+                if case=='stale-ref': alert['rule']['security_severity_level']='low';alert['most_recent_instance']['ref']='refs/heads/other'
+                if case=='stale-sha': alert['rule']['security_severity_level']='low';alert['most_recent_instance']['commit_sha']='f'*40
+                if case=='unknown-state': alert['rule']['security_severity_level']='low';alert['most_recent_instance']['state']=None
+                responses['repos/'+r.REPOSITORY+'/code-scanning/alerts']=[alert]
+                with patch.dict(os.environ,env),patch.object(r,'github',side_effect=github):
+                    with self.assertRaises(RuntimeError): r.assert_candidate(SHA)
+
+    def test_github_evidence_denial_malformed_or_truncated_fails_closed(self):
+        from urllib.error import HTTPError
+        error=HTTPError('https://api.github.com/synthetic',403,'denied',{},None)
+        self.addCleanup(error.close)
+        env,responses,github=self.proof_fixture()
+        def denied(path):
+            if '/code-scanning/' in path: raise error
+            return github(path)
+        with patch.dict(os.environ,env),patch.object(r,'github',side_effect=denied),patch.object(r,'aws') as aws:
+            with self.assertRaises(HTTPError): r.assert_candidate(SHA)
+            aws.assert_not_called()
+        with patch.object(r,'github',return_value={'unexpected':[]}):
+            with self.assertRaisesRegex(RuntimeError,'unexpected shape'): r.github_pages('synthetic')
+        with patch.object(r,'github',return_value=[{}]*100):
+            with self.assertRaisesRegex(RuntimeError,'pagination limit'): r.github_pages('synthetic')
+        with patch.object(r,'github',side_effect=[[{}]*100,None]):
+            with self.assertRaisesRegex(RuntimeError,'unexpected shape'): r.github_pages('synthetic')
+
+    def test_main_change_during_proof_is_rejected(self):
+        env,responses,github=self.proof_fixture()
+        reads=0
+        def advanced(path):
+            nonlocal reads
+            if '/git/ref/' in path:
+                reads+=1
+                if reads==2: return {'object':{'sha':'f'*40}}
+            return github(path)
+        with patch.dict(os.environ,env),patch.object(r,'github',side_effect=advanced):
+            with self.assertRaisesRegex(RuntimeError,'advanced while'): r.assert_candidate(SHA)
 
     def test_backup_reuses_matching_version_without_publishing(self):
         with patch.object(r, 'aws', return_value={'Versions':[function(), function('4')]}) as call:

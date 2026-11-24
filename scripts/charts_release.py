@@ -20,7 +20,9 @@ DISTRIBUTION = 'E1OQKQ4KGT4DXV'
 ORIGIN = 'https://charts.collisionstorm.com'
 ROUTES = ['POST /invitations', 'GET /invitations/capabilities',
           'GET /invitations/{token}', 'POST /invitations/{token}/accept']
-REQUIRED_CHECKS = {'test', 'dependency-audit', 'security-tests', 'analyze', 'CodeQL'}
+REQUIRED_CHECKS = {'test', 'dependency-audit', 'security-tests', 'analyze'}
+CODEQL_CATEGORY = '.github/workflows/codeql.yml:analyze'
+MAIN_REF = 'refs/heads/main'
 
 
 def require(condition, message):
@@ -58,6 +60,69 @@ def github(path):
         return json.load(response)
 
 
+def github_pages(path, key=None):
+    """Bounded, complete evidence only; never accept a truncated result set."""
+    result = []
+    for page in range(1, 11):
+        value = github(path + ('&' if '?' in path else '?') + f'per_page=100&page={page}')
+        batch = value.get(key) if key and isinstance(value, dict) else value if not key else None
+        require(isinstance(batch, list), 'GitHub evidence has an unexpected shape')
+        result += batch
+        if len(batch) < 100:
+            return result
+    raise RuntimeError('GitHub evidence pagination limit reached; review before release')
+
+
+def require_checks(sha, names, app_id):
+    checks = github_pages(f'repos/{REPOSITORY}/commits/{sha}/check-runs', 'check_runs')
+    latest = {}
+    for check in checks:
+        if check.get('head_sha') == sha and check.get('name') in names and check.get('app', {}).get('id') == app_id:
+            if check['id'] > latest.get(check['name'], {}).get('id', -1):
+                latest[check['name']] = check
+    require(all(latest.get(name, {}).get('status') == 'completed' and latest[name].get('conclusion') == 'success' for name in names),
+            'Required exact-head CI is missing, pending or failed')
+
+
+def require_codeql_proof(sha):
+    # The GitHub severity check is PR-only. Preserve it through the normal
+    # two-parent merge's last parent, and prove its complete source tree matches.
+    candidate = github(f'repos/{REPOSITORY}/git/commits/{sha}')
+    parents = candidate.get('parents', [])
+    require(candidate.get('sha') == sha and len(parents) == 2,
+            'Release proof requires a normal two-parent PR merge; squash/rebase need separate review')
+    head = parents[-1]['sha']
+    require(re.fullmatch('[a-f0-9]{40}', head), 'Unknown merged PR head identity')
+    head_commit = github(f'repos/{REPOSITORY}/git/commits/{head}')
+    tree = candidate.get('tree', {}).get('sha')
+    require(head_commit.get('sha') == head and isinstance(tree, str) and re.fullmatch('[a-f0-9]{40}', tree) and
+            tree == head_commit.get('tree', {}).get('sha'), 'Merged PR head tree differs from release; review and refresh PR checks')
+    require_checks(head, {'CodeQL'}, 57789)
+
+    analyses = github_pages(f'repos/{REPOSITORY}/code-scanning/analyses?ref=refs%2Fheads%2Fmain')
+    matching = [a for a in analyses if a.get('commit_sha') == sha and a.get('ref') == MAIN_REF and
+                a.get('tool', {}).get('name') == 'CodeQL' and a.get('category') == CODEQL_CATEGORY and
+                a.get('analysis_key') == CODEQL_CATEGORY]
+    require(matching, 'Processed exact-main CodeQL analysis is missing or stale')
+    analysis = max(matching, key=lambda a: a['id'])
+    require(type(analysis.get('id')) is int and analysis['id'] > 0 and
+            analysis.get('error') == '' and analysis.get('warning') == '' and
+            type(analysis.get('rules_count')) is int and analysis['rules_count'] > 0 and
+            type(analysis.get('results_count')) is int and analysis['results_count'] == 0,
+            'Exact-main CodeQL analysis has findings, warnings, errors or unknown rule coverage')
+
+    # PR checks cover changed lines, so also inspect the full branch baseline.
+    alerts = github_pages(f'repos/{REPOSITORY}/code-scanning/alerts?ref=refs%2Fheads%2Fmain&state=open')
+    for alert in alerts:
+        instance = alert.get('most_recent_instance', {})
+        severity = alert.get('rule', {}).get('security_severity_level')
+        require(alert.get('state') == 'open' and instance.get('state') == 'open' and
+                instance.get('ref') == MAIN_REF and instance.get('commit_sha') == sha and
+                severity in {'low', 'medium', 'high', 'critical'},
+                'Open branch alert has stale or unknown security status')
+        require(severity == 'low', 'Open branch security alert is medium or higher')
+
+
 def assert_candidate(sha):
     require(re.fullmatch('[a-f0-9]{40}', sha), 'A full lowercase commit SHA is required')
     require(os.environ.get('GITHUB_REPOSITORY') == REPOSITORY, 'Wrong repository')
@@ -66,20 +131,10 @@ def assert_candidate(sha):
     require(os.environ.get('GITHUB_SHA') == sha, 'Dispatch/check-out SHA differs from requested SHA')
     require(github(f'repos/{REPOSITORY}/git/ref/heads/main')['object']['sha'] == sha,
             'main advanced; review and dispatch the new exact commit')
-    checks = []
-    for page in range(1, 11):
-        batch = github(f'repos/{REPOSITORY}/commits/{sha}/check-runs?per_page=100&page={page}')['check_runs']
-        checks += batch
-        if len(batch) < 100:
-            break
-    latest = {}
-    for check in checks:
-        expected_app = 57789 if check['name'] == 'CodeQL' else 15368
-        if check.get('head_sha') == sha and check['name'] in REQUIRED_CHECKS and check.get('app', {}).get('id') == expected_app:
-            if check['id'] > latest.get(check['name'], {}).get('id', -1):
-                latest[check['name']] = check
-    require(all(latest.get(name, {}).get('status') == 'completed' and latest[name].get('conclusion') == 'success' for name in REQUIRED_CHECKS),
-            'Required exact-head CI is missing, pending or failed')
+    require_checks(sha, REQUIRED_CHECKS, 15368)
+    require_codeql_proof(sha)
+    require(github(f'repos/{REPOSITORY}/git/ref/heads/main')['object']['sha'] == sha,
+            'main advanced while checking release evidence')
 
 
 def files_in(root):
