@@ -1,12 +1,12 @@
 /** One navigation only; no credentials, song contents or display names. */
 const KEY = "notation-app-resume-song-browser";
 const MAX_AGE_MS = 30_000;
-export interface SongBrowserIntent { sub: string; book: string; createdAt: number }
+export interface SongBrowserIntent { sub: string; book: string | null; createdAt: number }
 
 export function clearSongBrowserIntent(): void {
   try { sessionStorage.removeItem(KEY); } catch { /* unavailable storage */ }
 }
-export function rememberSongBrowserIntent(sub: string, book: string): void {
+export function rememberSongBrowserIntent(sub: string, book: string | null): void {
   clearSongBrowserIntent();
   try { sessionStorage.setItem(KEY, JSON.stringify({ sub, book, createdAt: Date.now() })); } catch { /* switching still works */ }
 }
@@ -17,7 +17,7 @@ export function takeSongBrowserIntent(): SongBrowserIntent | null {
     const raw = sessionStorage.getItem(KEY);
     clearSongBrowserIntent();
     const value = JSON.parse(raw ?? "null");
-    if (typeof value?.sub !== "string" || typeof value.book !== "string" ||
+    if (typeof value?.sub !== "string" || (typeof value.book !== "string" && value.book !== null) ||
       typeof value.createdAt !== "number" || value.createdAt > Date.now() ||
       Date.now() - value.createdAt > MAX_AGE_MS) return null;
     return value;

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-const books = [{ songbookId: "a", name: "Band", role: "owner" }, { songbookId: "b", name: "TestBook", role: "viewer" }];
+const books = [{ songbookId: "a", name: "My Songs", role: "owner" }, { songbookId: "b", name: "TestBook", role: "viewer" }];
 function response(sub = "alice", memberships = books) { return Response.json({ sub, memberships, email: "untrusted@gmail.com", method: "google" }); }
 async function auth() { return import("../auth"); }
 beforeEach(() => {

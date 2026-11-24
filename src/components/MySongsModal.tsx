@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { AUTH_ENABLED, getSnapshot as getAuthSnapshot, subscribe as subscribeAuth } from "@/lib/auth";
 import { songbookScopeIsCurrent } from "@/lib/songbook-storage";
 import { useScoreStore } from "@/store/score-store";
@@ -37,6 +37,7 @@ import {
 import { logEvent, scoreTypeOf } from "@/lib/analytics";
 import { adoptSyncedOpenSong } from "@/lib/open-song-sync";
 import { LegacyImportBanner, SongbookSwitcher } from "@/components/SongbookSwitcher";
+import SongbookSelectionState from "@/components/SongbookSelectionState";
 
 type SyncStatus = "idle" | CloudSyncStatus;
 
@@ -46,9 +47,11 @@ type SyncStatus = "idle" | CloudSyncStatus;
 const EMPTY_STRINGS: string[] = [];
 
 export default function MySongsModal({ onClose }: { onClose: () => void }) {
-  useSyncExternalStore(subscribeAuth, getAuthSnapshot, getAuthSnapshot);
+  const auth = useSyncExternalStore(subscribeAuth, getAuthSnapshot, getAuthSnapshot);
+  const hasSelectedBook = !AUTH_ENABLED || (auth.status === "signed-in" && !!auth.verifiedAccount &&
+    auth.memberships.some(book => book.songbookId === auth.activeSongbookId));
   const mounted = useRef(true);
-  const scopeCurrent = () => !AUTH_ENABLED || songbookScopeIsCurrent();
+  const scopeCurrent = useCallback(() => !AUTH_ENABLED || songbookScopeIsCurrent(), []);
   // Analytics: log modal open on mount.
   useEffect(() => {
     logEvent({ event: "mysongs_open" });
@@ -231,15 +234,25 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
 
   const refreshLocal = () => setSongsState(getSongs().slice().reverse());
 
-  const runSync = async (): Promise<void> => {
+  const runSync = useCallback(async (): Promise<void> => {
+    const requestSub = auth.verifiedAccount?.sub;
+    const requestBook = auth.activeSongbookId;
+    const selectionIsCurrent = () => {
+      if (!AUTH_ENABLED) return true;
+      const current = getAuthSnapshot();
+      return current.status === "signed-in" && !!current.verifiedAccount &&
+        current.verifiedAccount.sub === requestSub && current.activeSongbookId === requestBook &&
+        current.memberships.some(book => book.songbookId === requestBook);
+    };
+    if (!hasSelectedBook || !scopeCurrent() || !selectionIsCurrent()) return;
     // Snapshot the LOCAL entry before sync overwrites localStorage. We
     // need this to detect whether the user has in-flight local edits
     // (open-score differs from local-entry) so we don't clobber them.
     const preLocalById = new Map(getSongs().map((e) => [e.id, e]));
     const merged = await syncSongbook({ onStatus: (status) => {
-      if (mounted.current && scopeCurrent()) setSyncStatus(status);
+      if (mounted.current && scopeCurrent() && selectionIsCurrent()) setSyncStatus(status);
     } });
-    if (!mounted.current || !scopeCurrent()) return;
+    if (!mounted.current || !scopeCurrent() || !selectionIsCurrent()) return;
     setSongsState(merged.slice().reverse());
 
     // Cross-device propagation: if the song currently open in the editor
@@ -254,13 +267,13 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
     // and judging by them replaced the just-loaded song with the old
     // one's cloud copy — the "app loaded the wrong song" bug.
     adoptSyncedOpenSong(merged, preLocalById);
-  };
+  }, [auth.activeSongbookId, auth.verifiedAccount?.sub, hasSelectedBook, scopeCurrent]);
 
   useEffect(() => {
-    mounted.current = true;
-    void runSync();
+    mounted.current = hasSelectedBook;
+    if (hasSelectedBook) void runSync();
     return () => { mounted.current = false; };
-  }, []);
+  }, [hasSelectedBook, runSync]);
 
   // Share links always point at the deployed Pages site so they're
   // resolvable from any device. (Using window.location would emit
@@ -773,7 +786,10 @@ export default function MySongsModal({ onClose }: { onClose: () => void }) {
     );
   })();
 
-  if (!scopeCurrent()) return <div className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center"><p role="status" className="bg-white rounded-xl p-6 text-gray-800">Switching songbook…</p></div>;
+  if (!scopeCurrent()) return <div className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center"><div className="bg-white rounded-xl p-6 text-gray-800 space-y-3"><p role="status">Updating songbook…</p>
+    <button type="button" onClick={() => window.location.reload()} className="min-h-11 px-4 py-2 text-sm text-blue-700 hover:bg-blue-50 rounded-lg">Reload Charts</button></div></div>;
+  if (!hasSelectedBook) return <SongbookSelectionState onClose={onClose} signedIn={auth.status === "signed-in"}
+    verified={!!auth.verifiedAccount} hasBooks={auth.memberships.length > 0} />;
 
   return (
     <div

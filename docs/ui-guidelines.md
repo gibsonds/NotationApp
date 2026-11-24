@@ -116,10 +116,21 @@ lose the click when the target's DOM changes between mousedown and mouseup.
 ## Authenticated songbooks
 
 Songbook switching reloads the page into an account-and-book-specific editor
-and cache namespace. Normal switches in My Songs carry a tab-local, single-use
-resume instruction: reopen the browser only after the selected account/book is
-verified on the new page. Invitation/create/sign-out flows do not set it. Never change storage keys under a running editor: delayed
-saves must stay attached to the book where they started. New-book and invitation
+and cache namespace. Explicit book choices are remembered separately for each
+verified `/me` subject, kept across ordinary sign-out and removed by Clear device.
+Without a choice, a unique owned book named exactly My Songs is a navigation
+fallback only; it establishes no personal-book marker or permission. A sole
+membership can open directly; otherwise offer an explicit picker, never UUID order.
+Duplicate book names include their verified roles in the picker.
+
+Normal switches and successful ordinary sign-in carry a tab-local, single-use
+resume instruction: reopen My Songs (or its empty picker) only after the same
+account/book is verified on the new page. Pending invitations take precedence;
+create/sign-out flows do not set it. No song rows or sync start without a verified
+active membership. Keep My Songs directly reachable beside the top-level menus.
+Never change storage keys under a running editor: delayed saves must stay
+attached to the book where they started. A metadata persistence failure stops
+cloud work until the document can be reloaded and verified. New-book and invitation
 forms use a stacked modal, Enter to submit, Escape to close, and inline errors.
 The active book appears alongside the account and in My Songs.
 

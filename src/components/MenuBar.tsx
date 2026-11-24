@@ -534,6 +534,9 @@ export default function MenuBar({
 
         <CloudSaveIndicator />
 
+        {onMySongs && <button type="button" onClick={() => { closeMenu(); onMySongs(); }} aria-label="Open My Songs and songbooks"
+          className="min-h-11 px-3 text-xs font-medium text-gray-200 hover:bg-white/10 rounded focus:outline-none focus:ring-2 focus:ring-blue-500">My Songs</button>}
+
         <AccountStatus />
 
         {/* Spacer — mode + annotate toggles live in the upper-right

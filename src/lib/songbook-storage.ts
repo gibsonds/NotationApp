@@ -17,11 +17,18 @@ function currentScope(): string {
 }
 
 const pageScope = currentScope();
+let scopeValid = true;
+
+/** Keep the existing namespace pinned, but stop cloud work if verified identity
+ * metadata cannot be persisted safely. A fresh document can verify it again. */
+export function invalidateSongbookScope(): void {
+  scopeValid = false;
+}
 
 export function songbookStorageKey(key: string): string {
   return pageScope ? `${key}:${pageScope}` : key;
 }
 
 export function songbookScopeIsCurrent(): boolean {
-  return pageScope === currentScope();
+  return scopeValid && pageScope === currentScope();
 }

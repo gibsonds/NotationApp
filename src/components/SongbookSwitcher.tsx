@@ -30,12 +30,13 @@ export function SongbookSwitcher({ onSwitched }: { onSwitched: () => void }) {
   if (!AUTH_ENABLED || auth.status !== "signed-in" || auth.memberships.length === 0) {
     return null;
   }
-  const active = auth.activeSongbookId ?? auth.memberships[0].songbookId;
+  const active = auth.activeSongbookId ?? "";
   const role = auth.memberships.find((m) => m.songbookId === active)?.role;
   return (
     <span className="flex items-center gap-1.5 flex-wrap">
       <select
         value={active}
+        disabled={!auth.verifiedAccount}
         onChange={(e) => {
           setSwitchError("");
           try { setActiveSongbook(e.target.value, true, { reopenMySongs: true }); }
@@ -45,18 +46,19 @@ export function SongbookSwitcher({ onSwitched }: { onSwitched: () => void }) {
         title="Switch songbook"
         aria-label="Active songbook"
       >
+        <option value="" disabled>Choose a songbook…</option>
         {auth.memberships.map((m) => (
           <option key={m.songbookId} value={m.songbookId}>
-            {m.name}
+            {m.name}{auth.memberships.filter(book => book.name === m.name).length > 1 ? ` — ${{ owner: "Owner", editor: "Editor", viewer: "Viewer" }[m.role]}` : ""}
           </option>
         ))}
       </select>
       {switchError && <span role="alert" className="text-sm text-red-600">{switchError}</span>}
-      <button type="button" onClick={() => setManager("create")} className="px-2 py-2 text-sm text-blue-600 hover:bg-blue-50 rounded-lg">New book</button>
-      <button type="button" onClick={() => setManager("join")} className="px-2 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">Join</button>
-      {role === "owner" && <button type="button" onClick={() => setManager("invite")} className="px-2 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">Invite</button>}
-      {role === "owner" && <button type="button" onClick={() => setManager("members")} className="px-2 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">Access</button>}
-      {manager && <SongbookManager initialMode={manager} onClose={() => { setManager(null); onSwitched(); }} />}
+      <button type="button" disabled={!auth.verifiedAccount} onClick={() => setManager("create")} className="px-2 py-2 text-sm text-blue-600 hover:bg-blue-50 rounded-lg disabled:opacity-50">New book</button>
+      <button type="button" disabled={!auth.verifiedAccount} onClick={() => setManager("join")} className="px-2 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg disabled:opacity-50">Join</button>
+      {auth.verifiedAccount && role === "owner" && <button type="button" onClick={() => setManager("invite")} className="px-2 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">Invite</button>}
+      {auth.verifiedAccount && role === "owner" && <button type="button" onClick={() => setManager("members")} className="px-2 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">Access</button>}
+      {manager && auth.verifiedAccount && <SongbookManager initialMode={manager} onClose={() => { setManager(null); onSwitched(); }} />}
       {role && role !== "owner" && (
         <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">
           {role}

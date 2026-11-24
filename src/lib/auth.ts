@@ -17,9 +17,11 @@
  */
 
 import { clearAllApiKeys } from "@/lib/api-key-store";
-import { songbookScopeIsCurrent } from "@/lib/songbook-storage";
+import { invalidateSongbookScope, songbookScopeIsCurrent } from "@/lib/songbook-storage";
 import { challengeS256, generateVerifier, randomState } from "@/lib/pkce";
 import { clearSongBrowserIntent, rememberSongBrowserIntent } from "@/lib/songbook-browser-intent";
+import { chooseSongbook, songbookPreferenceKey } from "@/lib/songbook-preference";
+import { readPendingInvitation } from "@/lib/pending-invitation";
 
 export const OAUTH_ISSUER = process.env.NEXT_PUBLIC_OAUTH_ISSUER ?? "";
 export const OAUTH_CLIENT_ID = process.env.NEXT_PUBLIC_OAUTH_CLIENT_ID ?? "";
@@ -125,11 +127,16 @@ function readTokens(): StoredTokens | null {
   }
 }
 
-function writeTokens(t: StoredTokens | null): void {
+function writeTokens(t: StoredTokens | null, required = false): void {
   try {
     if (t) localStorage.setItem(TOKENS_KEY, JSON.stringify(t));
     else localStorage.removeItem(TOKENS_KEY);
   } catch {
+    if (required) {
+      invalidateSongbookScope();
+      clearVerifiedAccount();
+      throw new Error("Account could not be saved on this device. Allow browser storage and try again.");
+    }
     /* quota/blocked — session becomes memory-only, re-login after reload */
   }
 }
@@ -218,6 +225,7 @@ export async function completeSignIn(code: string, state: string): Promise<boole
   }
   if (COOKIE_SESSIONS) {
     const memberships = await loadMe();
+    if (memberships.length) rememberSignedInBrowser();
     return memberships.length > 0;
   }
   const body = (await res.json()) as {
@@ -235,10 +243,17 @@ export async function completeSignIn(code: string, state: string): Promise<boole
     ...(body.refresh_token ? { refresh_token: body.refresh_token } : {}),
     expires_at: Date.now() + (body.expires_in ?? 3600) * 1000,
     claims,
-  });
+  }, true);
   emit({ status: "signed-in", claims });
-  await loadMe();
-  return true;
+  const memberships = await loadMe();
+  if (memberships.length) rememberSignedInBrowser();
+  return memberships.length > 0;
+}
+
+function rememberSignedInBrowser(): void {
+  if (snapshot.status === "signed-in" && snapshot.verifiedAccount && !readPendingInvitation()) {
+    rememberSongBrowserIntent(snapshot.verifiedAccount.sub, snapshot.activeSongbookId);
+  }
 }
 
 export async function signOut(clearDevice = false): Promise<void> {
@@ -370,13 +385,29 @@ export function setActiveSongbook(id: string, reload = true, options: { reopenMy
   if (reload && !snapshot.memberships.some(m => m.songbookId === id)) {
     throw new Error("You do not belong to that songbook.");
   }
-  if (reload && id === snapshot.activeSongbookId) return;
+  if (reload && (snapshot.status !== "signed-in" || !snapshot.verifiedAccount)) {
+    throw new Error("Wait for your account to finish signing in, then choose a songbook.");
+  }
+  const sameBook = reload && id === snapshot.activeSongbookId;
   if (reload) clearSongBrowserIntent();
+  const preferenceKey = reload && snapshot.verifiedAccount ? songbookPreferenceKey(snapshot.verifiedAccount.sub) : null;
+  const previousPreference = preferenceKey ? storageMarker(preferenceKey) : null;
   try {
+    // Save the explicit, verified-account choice before changing the page's
+    // active namespace. A quota failure must not strand a running editor in a
+    // changed scope or turn a failed switch into a different next-login choice.
+    if (preferenceKey) localStorage.setItem(preferenceKey, id);
     localStorage.setItem(ACTIVE_BOOK_KEY, id);
   } catch {
-    if (reload) throw new Error("Songbook could not be switched. Allow browser storage and try again.");
+    if (preferenceKey) {
+      try {
+        if (previousPreference === null) localStorage.removeItem(preferenceKey);
+        else localStorage.setItem(preferenceKey, previousPreference);
+      } catch { /* Existing page scope remains unchanged. */ }
+    }
+    throw new Error("Songbook could not be selected. Allow browser storage and try again.");
   }
+  if (sameBook) return;
   if (reload && options.reopenMySongs && snapshot.status === "signed-in" && snapshot.verifiedAccount) {
     rememberSongBrowserIntent(snapshot.verifiedAccount.sub, id);
   }
@@ -385,8 +416,8 @@ export function setActiveSongbook(id: string, reload = true, options: { reopenMy
   if (reload) window.location.reload();
 }
 
-/** GET /me — bootstraps memberships (server auto-creates a personal
- *  songbook on first touch) and picks an active songbook if none is set. */
+/** GET /me — verify identity/memberships, then restore this account's choice or
+ * offer an unambiguous navigation default. UUID order is not a preference. */
 export async function loadMe(): Promise<Membership[]> {
   const generation = sessionGeneration;
   const request = ++latestMeRequest;
@@ -418,15 +449,33 @@ export async function loadMe(): Promise<Membership[]> {
   // /me is the verified identity; persist it for the next page's cache scope.
   if (COOKIE_SESSIONS) {
     // Identity metadata for cache isolation only. No access/refresh token.
-    localStorage.setItem(TOKENS_KEY, JSON.stringify({ claims: { sub: body.sub } }));
-  } else writeTokens({ ...currentTokens!, claims: { sub: body.sub } });
-  const memberships = body.memberships ?? [];
+    try { localStorage.setItem(TOKENS_KEY, JSON.stringify({ claims: { sub: body.sub } })); }
+    catch {
+      invalidateSongbookScope();
+      clearVerifiedAccount();
+      throw new Error("Account could not be saved on this device. Allow browser storage and try again.");
+    }
+  } else writeTokens({ ...currentTokens!, claims: { sub: body.sub } }, true);
+  const memberships = Array.isArray(body.memberships) ? body.memberships : [];
   const current = getActiveSongbookId();
-  const active =
-    (current && memberships.find((m) => m.songbookId === current)?.songbookId) ||
-    memberships[0]?.songbookId ||
-    null;
-  if (active && active !== current) setActiveSongbook(active, false);
+  const active = chooseSongbook({
+    sub: body.sub, memberships,
+    verifiedCurrentSub: snapshot.verifiedAccount?.sub ?? null,
+    currentBookId: snapshot.activeSongbookId,
+    preferredBookId: storageMarker(songbookPreferenceKey(body.sub)),
+  });
+  if (active && active !== current) {
+    try { setActiveSongbook(active, false); }
+    catch (err) { invalidateSongbookScope(); clearVerifiedAccount(); throw err; }
+  }
+  else if (!active && current) {
+    try { localStorage.removeItem(ACTIVE_BOOK_KEY); }
+    catch {
+      invalidateSongbookScope();
+      clearVerifiedAccount();
+      throw new Error("Songbook could not be selected. Allow browser storage and try again.");
+    }
+  }
   emit({
     memberships,
     activeSongbookId: active,
