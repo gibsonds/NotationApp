@@ -100,7 +100,20 @@ All of these gates remain **off/unconfigured** in the checked-in deployment:
   Client-supplied email, access-token profile data and stub login email never
   count as verification. Turning the gate off disables binding even in old sessions.
   Subject remains the sole account/membership key. No names or method claims are added.
-- Current live sign-in still requests only `openid`; that scope is unchanged.
+- Current live sign-in still requests only `openid`. An optional build-time switch
+  is prepared but remains default-off: the authorization request uses exactly
+  `openid email` only when **both** `NEXT_PUBLIC_MULTI_BOOK_INVITES=1` and
+  `NEXT_PUBLIC_VERIFIED_EMAIL_INVITES=1` are set to the literal string `1`.
+  Missing, false, whitespace-padded or other malformed values keep `openid`.
+  The flag does not register provider scopes or enable backend features. Because
+  these are public build variables, changing them requires a new frontend build;
+  toggling a runtime Lambda flag alone does not change the sign-in request.
+  Before enabling, review the existing OAuth42 client registration, validate
+  the minimal email scope and actual verified claims in a controlled session,
+  and enable the matching backend `VERIFIED_EMAIL_INVITES` contract. Existing
+  sessions need a fresh sign-in to acquire mailbox metadata. Subject mapping,
+  PKCE/nonce/state validation and unavailable sign-in-method display are unchanged.
+  No profile, offline-access or provider-specific scopes are added.
   OAuth42 documents `email` as the scope for `email`/`email_verified`:
   <https://oauth42.com/docs/oidc>. A separately approved provider/client and minimal
   scope review, verified claim observation in a controlled nonproduction session,
