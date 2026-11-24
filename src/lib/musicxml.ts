@@ -246,24 +246,26 @@ export function scoreToMusicXML(score: Score): string {
     lines.push(`  <part id="${esc(staff.id)}">`);
 
     // Group notes by voice and measure for multi-voice support
-    const voiceNotesByMeasure: { voiceNum: number; notesByMeasure: Record<number, Note[]> }[] = [];
+    const voiceNotesByMeasure: { voiceNum: number; notesByMeasure: Map<number, Note[]> }[] = [];
     for (let vi = 0; vi < staff.voices.length; vi++) {
       const voice = staff.voices[vi];
-      const byMeasure: Record<number, Note[]> = {};
+      const byMeasure = new Map<number, Note[]>();
       for (const note of voice.notes) {
-        if (!byMeasure[note.measure]) byMeasure[note.measure] = [];
-        byMeasure[note.measure].push(note);
+        const measureNotes = byMeasure.get(note.measure);
+        if (measureNotes) measureNotes.push(note);
+        else byMeasure.set(note.measure, [note]);
       }
       voiceNotesByMeasure.push({ voiceNum: vi + 1, notesByMeasure: byMeasure });
     }
     const hasMultipleVoices = staff.voices.length > 1;
 
     // Flat view for single-voice backward compat
-    const notesByMeasure: Record<number, Note[]> = {};
+    const notesByMeasure = new Map<number, Note[]>();
     for (const voice of staff.voices) {
       for (const note of voice.notes) {
-        if (!notesByMeasure[note.measure]) notesByMeasure[note.measure] = [];
-        notesByMeasure[note.measure].push(note);
+        const measureNotes = notesByMeasure.get(note.measure);
+        if (measureNotes) measureNotes.push(note);
+        else notesByMeasure.set(note.measure, [note]);
       }
     }
 
@@ -402,7 +404,7 @@ export function scoreToMusicXML(score: Score): string {
         // Multi-voice: render each voice separately with <backup> between them
         for (let vIdx = 0; vIdx < voiceNotesByMeasure.length; vIdx++) {
           const { voiceNum, notesByMeasure: vByMeasure } = voiceNotesByMeasure[vIdx];
-          const vNotes = vByMeasure[m];
+          const vNotes = vByMeasure.get(m);
 
           if (vIdx > 0) {
             // <backup> rewinds the cursor to the start of the measure
@@ -426,7 +428,7 @@ export function scoreToMusicXML(score: Score): string {
         }
       } else {
         // Single voice: original path (no <voice> tags needed for compatibility)
-        const notes = notesByMeasure[m];
+        const notes = notesByMeasure.get(m);
         if (notes && notes.length > 0) {
           emitVoiceNotes(lines, notes, undefined, staff.lyricsMode, beats);
         } else {
