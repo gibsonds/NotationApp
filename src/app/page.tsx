@@ -35,6 +35,7 @@ import { adoptMergedScore } from "@/lib/open-song-sync";
 import { getSongs, restoreBankIfLost, updateSong } from "@/lib/song-bank";
 import { songbookScopeIsCurrent } from "@/lib/songbook-storage";
 import { AUTH_ENABLED, completeSignIn, getSnapshot as getAuthSnapshot, initAuth, subscribe as subscribeAuth } from "@/lib/auth";
+import { matchesSongBrowserIntent, takeSongBrowserIntent, type SongBrowserIntent } from "@/lib/songbook-browser-intent";
 import { clearPendingInvitation, readPendingInvitation } from "@/lib/pending-invitation";
 import type { SongDTO } from "@/lib/song-cloud-types";
 import type { Score } from "@/lib/schema";
@@ -113,6 +114,7 @@ export default function Home() {
   const [autosaveDialogOpen, setAutosaveDialogOpen] = useState(false);
   const [pasteLyricsOpen, setPasteLyricsOpen] = useState(false);
   const [mySongsOpen, setMySongsOpen] = useState(false);
+  const resumeSongBrowser = useRef<SongBrowserIntent | null | undefined>(undefined);
   const [inviteChecked, setInviteChecked] = useState(!AUTH_ENABLED);
   const [inviteToken, setInviteToken] = useState("");
   const [inviteAuthReady, setInviteAuthReady] = useState(false);
@@ -788,7 +790,7 @@ export default function Home() {
   useEffect(() => {
     if (!AUTH_ENABLED) return;
     const onStorage = (event: StorageEvent) => {
-      if ((event.key === "notation-app-auth" || event.key === "notation-app-active-songbook") && !songbookScopeIsCurrent()) {
+      if ((event.key === null || event.key === "notation-app-auth" || event.key === "notation-app-active-songbook") && !songbookScopeIsCurrent()) {
         window.location.reload();
       }
     };
@@ -802,6 +804,7 @@ export default function Home() {
   // Inert on the legacy build (AUTH_ENABLED=false there).
   useEffect(() => {
     if (!AUTH_ENABLED) return;
+    if (resumeSongBrowser.current === undefined) resumeSongBrowser.current = takeSongBrowserIntent();
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
     const state = params.get("state");
@@ -830,9 +833,22 @@ export default function Home() {
         });
       return;
     }
-    void initAuth().catch(() => {
+    let cancelled = false;
+    void initAuth().then(() => {
+      if (cancelled) return;
+      const pending = resumeSongBrowser.current ?? null;
+      resumeSongBrowser.current = null;
+      const current = getAuthSnapshot();
+      if (!authError && !readPendingInvitation() && current.status === "signed-in" && songbookScopeIsCurrent() &&
+        matchesSongBrowserIntent(pending, current.verifiedAccount?.sub ?? null, current.activeSongbookId)) {
+        setMySongsOpen(true);
+      }
+    }).catch(() => {
+      if (cancelled) return;
+      resumeSongBrowser.current = null;
       setInviteError("Couldn’t check your sign-in. Please try again.");
-    }).finally(() => setInviteAuthReady(true));
+    }).finally(() => { if (!cancelled) setInviteAuthReady(true); });
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

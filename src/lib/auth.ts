@@ -17,8 +17,11 @@
  */
 
 import { clearAllApiKeys } from "@/lib/api-key-store";
-import { songbookScopeIsCurrent } from "@/lib/songbook-storage";
+import { invalidateSongbookScope, songbookScopeIsCurrent } from "@/lib/songbook-storage";
 import { challengeS256, generateVerifier, randomState } from "@/lib/pkce";
+import { clearSongBrowserIntent, rememberSongBrowserIntent } from "@/lib/songbook-browser-intent";
+import { chooseSongbook, songbookPreferenceKey } from "@/lib/songbook-preference";
+import { readPendingInvitation } from "@/lib/pending-invitation";
 
 export const OAUTH_ISSUER = process.env.NEXT_PUBLIC_OAUTH_ISSUER ?? "";
 export const OAUTH_CLIENT_ID = process.env.NEXT_PUBLIC_OAUTH_CLIENT_ID ?? "";
@@ -53,6 +56,8 @@ export interface AuthSnapshot {
   claims: SessionClaims | null;
   memberships: Membership[];
   activeSongbookId: string | null;
+  /** In-memory, authenticated /me identity only; never decoded or cached profile claims. */
+  verifiedAccount: { sub: string } | null;
 }
 
 interface StoredTokens {
@@ -70,7 +75,10 @@ let snapshot: AuthSnapshot = {
   claims: null,
   memberships: [],
   activeSongbookId: null,
+  verifiedAccount: null,
 };
+let sessionGeneration = 0;
+let latestMeRequest = 0;
 const listeners = new Set<() => void>();
 
 function emit(next: Partial<AuthSnapshot>): void {
@@ -79,8 +87,25 @@ function emit(next: Partial<AuthSnapshot>): void {
 }
 
 export function subscribe(cb: () => void): () => void {
+  if (listeners.size === 0 && typeof window !== "undefined") window.addEventListener("storage", onSessionStorage);
   listeners.add(cb);
-  return () => listeners.delete(cb);
+  return () => {
+    listeners.delete(cb);
+    if (listeners.size === 0 && typeof window !== "undefined") window.removeEventListener("storage", onSessionStorage);
+  };
+}
+
+function clearVerifiedAccount(): void {
+  sessionGeneration++;
+  emit({ verifiedAccount: null });
+}
+function onSessionStorage(event: StorageEvent): void {
+  if (event.key !== null && event.key !== TOKENS_KEY && event.key !== ACTIVE_BOOK_KEY) return;
+  clearSongBrowserIntent();
+  clearVerifiedAccount();
+  // The page reloads on scope changes. Same-account token refreshes can
+  // reverify display metadata without changing the page's storage namespace.
+  if (songbookScopeIsCurrent()) void loadMe().catch(() => {});
 }
 
 export function getSnapshot(): AuthSnapshot {
@@ -88,6 +113,10 @@ export function getSnapshot(): AuthSnapshot {
 }
 
 // ── Token persistence ──────────────────────────────────────────────────────
+
+function storageMarker(key: string): string | null {
+  try { return localStorage.getItem(key); } catch { return null; }
+}
 
 function readTokens(): StoredTokens | null {
   try {
@@ -98,11 +127,16 @@ function readTokens(): StoredTokens | null {
   }
 }
 
-function writeTokens(t: StoredTokens | null): void {
+function writeTokens(t: StoredTokens | null, required = false): void {
   try {
     if (t) localStorage.setItem(TOKENS_KEY, JSON.stringify(t));
     else localStorage.removeItem(TOKENS_KEY);
   } catch {
+    if (required) {
+      invalidateSongbookScope();
+      clearVerifiedAccount();
+      throw new Error("Account could not be saved on this device. Allow browser storage and try again.");
+    }
     /* quota/blocked — session becomes memory-only, re-login after reload */
   }
 }
@@ -134,6 +168,8 @@ export function redirectUri(): string {
 
 export async function beginSignIn(): Promise<void> {
   if (!AUTH_ENABLED) return;
+  clearSongBrowserIntent();
+  clearVerifiedAccount();
   const invite = new URLSearchParams(window.location.search).get("invite");
   if (invite) sessionStorage.setItem("notation-app-pending-invite", invite);
   const verifier = generateVerifier();
@@ -171,6 +207,8 @@ export async function completeSignIn(code: string, state: string): Promise<boole
     console.warn("[auth] state mismatch — ignoring callback");
     return false;
   }
+  clearSongBrowserIntent();
+  clearVerifiedAccount();
   const res = await fetch(`${API_BASE}/oauth/exchange`, {
     method: "POST",
     headers: { "content-type": "application/json", ...browserRequestHeaders() },
@@ -187,6 +225,7 @@ export async function completeSignIn(code: string, state: string): Promise<boole
   }
   if (COOKIE_SESSIONS) {
     const memberships = await loadMe();
+    if (memberships.length) rememberSignedInBrowser();
     return memberships.length > 0;
   }
   const body = (await res.json()) as {
@@ -204,18 +243,28 @@ export async function completeSignIn(code: string, state: string): Promise<boole
     ...(body.refresh_token ? { refresh_token: body.refresh_token } : {}),
     expires_at: Date.now() + (body.expires_in ?? 3600) * 1000,
     claims,
-  });
+  }, true);
   emit({ status: "signed-in", claims });
-  await loadMe();
-  return true;
+  const memberships = await loadMe();
+  if (memberships.length) rememberSignedInBrowser();
+  return memberships.length > 0;
+}
+
+function rememberSignedInBrowser(): void {
+  if (snapshot.status === "signed-in" && snapshot.verifiedAccount && !readPendingInvitation()) {
+    rememberSongBrowserIntent(snapshot.verifiedAccount.sub, snapshot.activeSongbookId);
+  }
 }
 
 export async function signOut(clearDevice = false): Promise<void> {
+  clearSongBrowserIntent();
+  clearVerifiedAccount();
   if (COOKIE_SESSIONS) {
     const res = await fetch(`${API_BASE}/oauth/logout`, { method: "POST", headers: browserRequestHeaders() });
     if (!res.ok) throw new Error("Could not end the session. Check your connection and try again.");
   }
   writeTokens(null);
+  emit({ status: "signed-out", claims: null, memberships: [], activeSongbookId: null, verifiedAccount: null });
   clearAllApiKeys();
   if (clearDevice) {
     for (const key of Object.keys(localStorage)) {
@@ -303,12 +352,20 @@ async function doRefresh(t: StoredTokens): Promise<string | null> {
 function markExpired(t: StoredTokens): void {
   // Keep claims for the "signed in as X — session expired" UI.
   writeTokens(null);
-  emit({ status: "expired", claims: t.claims });
+  clearSongBrowserIntent();
+  clearVerifiedAccount();
+  emit({ status: "expired", claims: t.claims, verifiedAccount: null });
 }
 
 /** Called by song-cloud on a 401 that carried a token: the token was
  *  revoked/invalid server-side. */
 export function invalidateSession(): void {
+  if (COOKIE_SESSIONS) {
+    clearSongBrowserIntent();
+    clearVerifiedAccount();
+    emit({ status: "expired", claims: null, memberships: [], activeSongbookId: null });
+    return;
+  }
   const t = readTokens();
   if (t) markExpired(t);
 }
@@ -324,28 +381,59 @@ export function getActiveSongbookId(): string | null {
   }
 }
 
-export function setActiveSongbook(id: string, reload = true): void {
+export function setActiveSongbook(id: string, reload = true, options: { reopenMySongs?: boolean } = {}): void {
   if (reload && !snapshot.memberships.some(m => m.songbookId === id)) {
     throw new Error("You do not belong to that songbook.");
   }
+  if (reload && (snapshot.status !== "signed-in" || !snapshot.verifiedAccount)) {
+    throw new Error("Wait for your account to finish signing in, then choose a songbook.");
+  }
+  const sameBook = reload && id === snapshot.activeSongbookId;
+  if (reload) clearSongBrowserIntent();
+  const preferenceKey = reload && snapshot.verifiedAccount ? songbookPreferenceKey(snapshot.verifiedAccount.sub) : null;
+  const previousPreference = preferenceKey ? storageMarker(preferenceKey) : null;
   try {
+    // Save the explicit, verified-account choice before changing the page's
+    // active namespace. A quota failure must not strand a running editor in a
+    // changed scope or turn a failed switch into a different next-login choice.
+    if (preferenceKey) localStorage.setItem(preferenceKey, id);
     localStorage.setItem(ACTIVE_BOOK_KEY, id);
   } catch {
-    /* ignore */
+    if (preferenceKey) {
+      try {
+        if (previousPreference === null) localStorage.removeItem(preferenceKey);
+        else localStorage.setItem(preferenceKey, previousPreference);
+      } catch { /* Existing page scope remains unchanged. */ }
+    }
+    throw new Error("Songbook could not be selected. Allow browser storage and try again.");
   }
+  if (sameBook) return;
+  if (reload && options.reopenMySongs && snapshot.status === "signed-in" && snapshot.verifiedAccount) {
+    rememberSongBrowserIntent(snapshot.verifiedAccount.sub, id);
+  }
+  if (reload) clearVerifiedAccount();
   emit({ activeSongbookId: id });
   if (reload) window.location.reload();
 }
 
-/** GET /me — bootstraps memberships (server auto-creates a personal
- *  songbook on first touch) and picks an active songbook if none is set. */
+/** GET /me — verify identity/memberships, then restore this account's choice or
+ * offer an unambiguous navigation default. UUID order is not a preference. */
 export async function loadMe(): Promise<Membership[]> {
+  const generation = sessionGeneration;
+  const request = ++latestMeRequest;
+  const beforeToken = storageMarker(TOKENS_KEY);
   const token = await getAccessToken();
-  if (!token) return [];
+  if (!token || generation !== sessionGeneration || (COOKIE_SESSIONS && beforeToken !== storageMarker(TOKENS_KEY))) return [];
+  const credentialMarker = storageMarker(TOKENS_KEY);
+  const bookMarker = storageMarker(ACTIVE_BOOK_KEY);
   const res = await fetch(`${API_BASE}/me`, {
     headers: COOKIE_SESSIONS ? browserRequestHeaders() : { authorization: `Bearer ${token}` },
   });
+  const stillCurrent = () => generation === sessionGeneration && request === latestMeRequest &&
+    credentialMarker === storageMarker(TOKENS_KEY) && bookMarker === storageMarker(ACTIVE_BOOK_KEY);
+  if (!stillCurrent()) return [];
   if (!res.ok) {
+    clearVerifiedAccount();
     if (res.status === 401 && COOKIE_SESSIONS) { writeTokens(null); emit({ status: "signed-out", claims: null, memberships: [], activeSongbookId: null }); }
     return [];
   }
@@ -355,20 +443,39 @@ export async function loadMe(): Promise<Membership[]> {
     name?: string;
     memberships: Membership[];
   };
+  if (!stillCurrent() || typeof body.sub !== "string" || !body.sub) return [];
   const currentTokens = readTokens();
   if (!COOKIE_SESSIONS && (!currentTokens || currentTokens.access_token !== token)) return [];
   // /me is the verified identity; persist it for the next page's cache scope.
   if (COOKIE_SESSIONS) {
     // Identity metadata for cache isolation only. No access/refresh token.
-    localStorage.setItem(TOKENS_KEY, JSON.stringify({ claims: { sub: body.sub } }));
-  } else writeTokens({ ...currentTokens!, claims: { sub: body.sub } });
-  const memberships = body.memberships ?? [];
+    try { localStorage.setItem(TOKENS_KEY, JSON.stringify({ claims: { sub: body.sub } })); }
+    catch {
+      invalidateSongbookScope();
+      clearVerifiedAccount();
+      throw new Error("Account could not be saved on this device. Allow browser storage and try again.");
+    }
+  } else writeTokens({ ...currentTokens!, claims: { sub: body.sub } }, true);
+  const memberships = Array.isArray(body.memberships) ? body.memberships : [];
   const current = getActiveSongbookId();
-  const active =
-    (current && memberships.find((m) => m.songbookId === current)?.songbookId) ||
-    memberships[0]?.songbookId ||
-    null;
-  if (active && active !== current) setActiveSongbook(active, false);
+  const active = chooseSongbook({
+    sub: body.sub, memberships,
+    verifiedCurrentSub: snapshot.verifiedAccount?.sub ?? null,
+    currentBookId: snapshot.activeSongbookId,
+    preferredBookId: storageMarker(songbookPreferenceKey(body.sub)),
+  });
+  if (active && active !== current) {
+    try { setActiveSongbook(active, false); }
+    catch (err) { invalidateSongbookScope(); clearVerifiedAccount(); throw err; }
+  }
+  else if (!active && current) {
+    try { localStorage.removeItem(ACTIVE_BOOK_KEY); }
+    catch {
+      invalidateSongbookScope();
+      clearVerifiedAccount();
+      throw new Error("Songbook could not be selected. Allow browser storage and try again.");
+    }
+  }
   emit({
     memberships,
     activeSongbookId: active,
@@ -377,6 +484,7 @@ export async function loadMe(): Promise<Membership[]> {
       sub: body.sub,
 
     },
+    verifiedAccount: { sub: body.sub },
   });
   return memberships;
 }

@@ -161,6 +161,7 @@ async function apiFetch(path: string, init: RequestInit = {}): Promise<Response>
         ...(init.headers ?? {}),
       },
     });
+    if (AUTH_ENABLED && !songbookScopeIsCurrent()) throw new TerminalCloudError("Songbook changed; reload this tab.");
     if (res.status === 401 && AUTH_ENABLED) {
       // Token rejected server-side (revoked / bad). Flip the session to
       // expired so the UI prompts re-login; surface as terminal.
@@ -543,6 +544,7 @@ async function runSyncSongbook(opts?: {
       }
     }
     const finalSongs = [...mergedById.values()].sort((a, b) => a.savedAt - b.savedAt);
+    if (AUTH_ENABLED && !songbookScopeIsCurrent()) throw new TerminalCloudError("Songbook changed; reload this tab.");
     writeLocalSongs(finalSongs);
     onStatus("ok");
     return finalSongs;
