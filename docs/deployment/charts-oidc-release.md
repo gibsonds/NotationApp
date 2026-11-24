@@ -1,11 +1,9 @@
 # Charts release without a Mac AWS login
 
-This is a review candidate, not an applied release. No role, invocation permission,
-route, code, frontend, feature flag, provider setting, secret or song data was
-changed while preparing these files. It is stacked on the reviewed multi-book
-invitation source; review only this branch's additional automation diff or
-cherry-pick its automation commit after reconciling that source through normal PR
-checks. This does not enable or send invitations.
+This standalone change adds release tooling without changing application source
+or enabling invitations. It is independent of the My Songs and multi-book
+invitation changes in PRs #215 and #216. The workflow does not apply IAM, change
+provider settings or secrets, grant songbook access, or send invitations.
 
 ## One-time setup to review separately
 
