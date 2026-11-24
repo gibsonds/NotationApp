@@ -1,14 +1,8 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback, useSyncExternalStore } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useScoreStore } from "@/store/score-store";
-import {
-  AUTH_ENABLED,
-  beginSignIn,
-  getSnapshot as authGetSnapshot,
-  signOut as authSignOut,
-  subscribe as authSubscribe,
-} from "@/lib/auth";
+import AccountStatus from "@/components/AccountStatus";
 import { scoreToMusicXML } from "@/lib/musicxml";
 import { ScoreSchema } from "@/lib/schema";
 import CloudSaveIndicator from "@/components/CloudSaveIndicator";
@@ -498,7 +492,7 @@ export default function MenuBar({
       <input ref={fileInputRef} type="file" accept=".mid,.midi,.snt,.musicxml,.mxl,.xml,.json" onChange={handleImport} className="hidden" />
       <input ref={projectInputRef} type="file" accept=".notation,.json" onChange={handleOpenProject} className="hidden" />
 
-      <div className="flex items-center gap-0.5 px-2 py-1 bg-[#0f0f23] border-b border-white/10 text-gray-300">
+      <div className="flex flex-wrap items-center gap-0.5 px-2 py-1 bg-[#0f0f23] border-b border-white/10 text-gray-300">
         {/* Brand */}
         {SUITE_HOME ? (
           <a href={SUITE_HOME} className="text-sm font-bold text-gray-100 mr-3 whitespace-nowrap focus:outline-none focus:ring-2 focus:ring-blue-500 rounded" title="InferMusic home">InferMusic Charts</a>
@@ -540,7 +534,10 @@ export default function MenuBar({
 
         <CloudSaveIndicator />
 
-        <AccountMenuItem />
+        {onMySongs && <button type="button" onClick={() => { closeMenu(); onMySongs(); }} aria-label="Open My Songs and songbooks"
+          className="min-h-11 px-3 text-xs font-medium text-gray-200 hover:bg-white/10 rounded focus:outline-none focus:ring-2 focus:ring-blue-500">My Songs</button>}
+
+        <AccountStatus />
 
         {/* Spacer — mode + annotate toggles live in the upper-right
             cluster rendered from page.tsx so they hold the same screen
@@ -596,48 +593,6 @@ export default function MenuBar({
         </div>
       </div>
     </>
-  );
-}
-
-/** Sign-in / account chip for the authenticated instance. Renders nothing
- *  on the legacy build (AUTH_ENABLED=false there). */
-function AccountMenuItem() {
-  const auth = useSyncExternalStore(authSubscribe, authGetSnapshot, authGetSnapshot);
-  const [signOutError, setSignOutError] = useState("");
-  const leave = (clear = false) => { void authSignOut(clear).catch(err => setSignOutError(err.message)); };
-  if (!AUTH_ENABLED) return null;
-  if (auth.status === "signed-in" && auth.claims) {
-    const label = "Signed in";
-    const book = auth.memberships.find(m => m.songbookId === auth.activeSongbookId);
-    return (
-      <span className="flex items-center gap-1.5 ml-2 text-xs text-gray-400">
-        <span className="max-w-[160px] truncate" title="Signed in with OAuth42">
-          {book ? `${book.name} · ${label}` : label}
-        </span>
-        <button
-          onClick={() => leave()}
-          className="px-1.5 py-0.5 text-[11px] text-gray-500 hover:text-gray-200 hover:bg-white/10 rounded"
-          title="Sign out"
-        >
-          Sign out
-        </button>
-        <button onClick={() => { if (window.confirm("Sign out and remove this app’s cached songs, drafts, and AI keys from this device? Cloud songs remain saved. Export any unsynced work first.")) leave(true); }} className="px-1.5 py-1 text-[11px] text-gray-500 hover:text-gray-200 rounded" title="Sign out and clear this device">Clear device</button>
-        {signOutError && <span role="alert" className="text-red-400">{signOutError}</span>}
-      </span>
-    );
-  }
-  return (
-    <button
-      onClick={() => beginSignIn()}
-      className="ml-2 px-2.5 py-1 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded"
-      title={
-        auth.status === "expired"
-          ? "Your session expired — sign in again"
-          : "Sign in with OAuth42"
-      }
-    >
-      {auth.status === "expired" ? "Session expired — sign in" : "Sign in"}
-    </button>
   );
 }
 
